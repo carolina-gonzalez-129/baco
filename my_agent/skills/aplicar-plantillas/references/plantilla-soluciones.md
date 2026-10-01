@@ -32,5 +32,5 @@ Escribir únicamente acciones concretas para resolver el problema. Usar verbos e
 3. [Acción confirmada]
 
 ## Requiere AppBuilder
-
+                                                                                                                                                                                                                            
 Incluir esta sección solo si el contenido recibido confirma que se necesita AppBuilder. En caso contrario, omitirla.
