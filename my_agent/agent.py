@@ -13,12 +13,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
-
 BASE_DIR = Path(__file__).resolve().parent
 SKILLS_DIR = BASE_DIR / "skills"
 
-profile = os.getenv("PROFILE")
+PROFILE = os.getenv("PROFILE")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +32,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s"
 )
 """
+
+
 
 # ============================================================
 # MODELO : IMPORTANTE : La free tier nos esta dando problemas
@@ -81,7 +81,22 @@ skills = AgentSkills(
     strict=True,
 )
 
-
+# ============================================================
+# MCP : Despues pasar tools = tools al agente ,
+# IMPORTANTE las tools solo funcionan en este bloque
+#Asique para lo de duplicados ver como hacer bien!
+# ============================================================
+discourse = MCPClient(
+    lambda: stdio_client(
+        StdioServerParameters(
+            command="discourse-mcp",
+            args=["--profile", PROFILE],
+        )
+    )
+)
+#Las tools el agente solo las va a tenr disponibles en este bloque!
+with discourse:
+    tools = discourse.list_tools_sync()
 
 
 
@@ -116,6 +131,8 @@ def create_agent(model):
         model=model,
         plugins=[skills],
     )
+
+
 
 
 # ============================================================
@@ -243,3 +260,4 @@ except Exception as error:
         "\nNo fue posible completar la consulta con Gemini "
         "dentro de los 60 segundos."
     )
+
