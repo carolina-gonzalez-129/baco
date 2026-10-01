@@ -39,28 +39,12 @@ logging.basicConfig(
 # MODELO : IMPORTANTE : La free tier nos esta dando problemas
 # para poder chequear la pata de skills que sean intensivas en
 #procesamiento del lenguaje, por eso estamos en duda sobre si testearlas por ejemplo en un ide agentico o qué.
-#Vamos a tener 2 skills que son muy LLM heavy, la de aplicar plantillas y la de validar formato
-#Y una que no precisa de tanto LLM, la de detectar duplicados
-# probablemente hagamos una mezcla de cosas para la de duplicados, como normalizar datos al principio
-#comparar por titulo y/o categoria entonces usando hash, de forma asíncrona como nos habia indicado Emiliano
-# y despues procedamos a hacer una comparación en embeddings, osea se convierte texto a un vector numerico
-# para hacer la comparacion con lo de coseno entre vectores
-#No hace falta saber todo, pero una noción general es de que
-# dos vectores (por ejemplo en R2) son similares si tienen valores escalares parecidos
-#por ejemplo soy Carolina y carolina Soy tienen ambos [1,1]
-# y si fuesen en R3 x ej me llamo carolina [0, 1, 1] y carolina me llamo [1, 0, 1]
-# pero como ya habiamos visto -1 significaria que son lo opuesto (casi imposible) ,
-# entonces los valores posibles
-#seran entre  0 y 1, para 0 siendo disimiles y 1 siendo el mismo vector.
-#quizas haya que recalibrar el scoring o tener varios umbrales ej mayor a 0.80 posible duplicado, entre 0.75 y 0.80 muy relacionado, y menor a 0.75 contenido distinto
-#Una representacion visual para hacerlo mas ameno seria imaginar por ejemplo dos rectas
-#si van en direcciones opuestas es -1, si van en la misma direccion es 1, si son perpendiculares es 0
-#las desviaciones me darian la mayor disimilitud o similitud
+# IMPORTANTE : En principio hay que esperar si Emiliano ocnfirma lo de que
+#la capa de servicios se ocupe de validaciones y comprobaciones, de ser asi
+#lo de deteccion de duplicados seria tmb de nlp, habria q buscar articulos q sean
+#iguales, similares, y opuestos
+#Tmb si es asi lo del script validate_article pasaria a la capa de servicios
 
-# Respecto al flujo del programa imaginaba que primero baco podria aplicar lo de deteccion xq es lo mas barato para la empresa
-#usar una skill que depende mas de scripts en python
-#Despues podria aplicar la plantilla correspondiente (si es de soluciones con su formato, idem lo de instructivo)
-#y por ultimo aplicar la de validar formato con las pautas de redaccion, lo de los buenos titulos, y toda la documentacion pertinente
 
 ##Como la primer skill que voy a aprobar es intensiva en procesamiento de lenguaje voy
 #a intentar paliar los 503, pero quizas los 429 aun me den antes de que pueda probarla :'c

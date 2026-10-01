@@ -1,3 +1,5 @@
+#IMPORTANTE  : SI EMILIANO CONVALIDA USAR LA CAPA DE SERVICIOS PARA VERIFICACIONES
+#ESTO IRIA AHI, NO ACA!!!
 """Comprobaciones deterministas para el formato mínimo de un artículo."""
 
 from __future__ import annotations
