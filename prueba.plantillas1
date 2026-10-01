@@ -5,5 +5,5 @@ Categoría: Agro
 Se registró la recepción de semillas, pero el stock disponible en el depósito aparece como cero.
 Al revisar los movimientos, se encontró que la recepción quedó pendiente de confirmación.
 Se confirmó el movimiento y se verificó que el producto estuviera asociado al depósito correcto.
- Después de confirmar la operación, el stock disponible se actualizó. Si el problema continúa,
+Después de confirmar la operación, el stock disponible se actualizó. Si el problema continúa,
 revisar si hay otros movimientos pendientes o si se seleccionó otro depósito.

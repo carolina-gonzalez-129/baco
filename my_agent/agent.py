@@ -1,16 +1,24 @@
 #Agente BACO —  inicial, falta skill de detectar duplicados.
 import time
-
 from strands import Agent
 from strands.models.gemini import GeminiModel
 from strands.vended_plugins.skills import AgentSkills
 import logging
 from pathlib import Path
+from strands.tools.mcp import MCPClient
+from mcp import stdio_client, StdioServerParameters
+import os
+import dotenv
+from dotenv import load_dotenv
 
-SKILLS_DIR = Path(
-    r"C:\Users\ahreq\IdeaProjects\GeminiAgente\my_agent\skills"
-)
+load_dotenv()
 
+
+
+BASE_DIR = Path(__file__).resolve().parent
+SKILLS_DIR = BASE_DIR / "skills"
+
+profile = os.getenv("PROFILE")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,10 +66,10 @@ logging.basicConfig(
 #a intentar paliar los 503, pero quizas los 429 aun me den antes de que pueda probarla :'c
 # ============================================================
 
-
+gemini_api_key = os.getenv("GEMINI_API_KEY")
 gemini_model = GeminiModel(
     model_id="gemini-3.8-flash",
-    client_args={"api_key": "AQ.Ab8RN6LSKwEe32XuUYngUsZk67KmX1P6nhTDg0zrGLBmMPoz7g"}
+    client_args={"api_key": gemini_api_key}
 )
 
 # ============================================================
