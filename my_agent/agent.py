@@ -118,11 +118,11 @@ explícitamente o cuando la tarea consista en transformar un contenido
 usando una plantilla.
 
 Cuando se solicite aplicar una plantilla:
-1. Identificá el tipo de plantilla correspondiente.
-2. Aplicá la skill "aplicar-plantillas".
-3. Conservá la información original.
-4. No inventes información faltante.
-5. Devolvé el resultado final claramente separado del contenido original.
+1. Verificá que la solicitud tenga título, categoría, tipo de plantilla (`instructivo` o `soluciones`) y descripción.
+2. Si falta alguno, solicitá únicamente ese dato y no apliques la plantilla todavía.
+3. Aplicá la skill "aplicar-plantillas" solo cuando estén los cuatro datos.
+4. Conservá la información original y no inventes información faltante.
+5. Devolvé únicamente el cuerpo estructurado; no repitas los metadatos ni agregues una indicación sobre la plantilla aplicada.
 """
 
 
@@ -224,9 +224,9 @@ with open("prueba.plantillas1", "r", encoding="utf-8") as file:
 plantilla_prompt = f"""
 Aplicá la skill "aplicar-plantillas" al siguiente contenido.
 
-Determiná si corresponde utilizar la plantilla de solución o la plantilla
-de instructivo. Si no podés determinarlo con seguridad, indicá cuál sería
-la información faltante.
+Usá el tipo de plantilla informado en el contenido. Si falta título,
+categoría, tipo de plantilla o descripción, solicitá ese dato antes de
+aplicar la plantilla.
 
 No inventes datos y no elimines información relevante.
 
@@ -235,8 +235,8 @@ Contenido de prueba:
 {contenido}
 --------------------
 
-Devolvé únicamente el contenido transformado y, al final, una breve
-indicación de la plantilla aplicada.
+Devolvé únicamente el contenido transformado, sin repetir los metadatos ni
+indicar al final qué plantilla aplicaste.
 """
 
 print("\n" + "=" * 50)
@@ -260,4 +260,3 @@ except Exception as error:
         "\nNo fue posible completar la consulta con Gemini "
         "dentro de los 60 segundos."
     )
-

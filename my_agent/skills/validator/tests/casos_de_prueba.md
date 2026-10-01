@@ -45,7 +45,7 @@ Al calcular el impuesto para un vehículo de alta gama valuado en $95.000.000, e
 
 - Incluir `soluciones` entre las etiquetas junto con `impuestos`, `vehículos` y `tasa-imponible`.
 - Proponer un título orientado a la acción y al problema, sin presentar “Error” como etiqueta salvo que forme parte de un mensaje literal del sistema.
-- Organizar el artículo con **Consulta** seguida de **Pasos a seguir**. En este caso incluir, debajo de la descripción del problema en **Consulta**, una frase concisa que anticipe la corrección y después detallar los pasos. No crear una sección **Respuesta**.
+- Organizar el artículo con **Consulta**, **Respuesta** y **Pasos a seguir**, en ese orden.
 - No inventar la ruta de acceso, los nombres de campos ni pasos detallados que no figuran en la entrada.
 - Marcar como bloqueante que las cifras y la regla son ficticias; el borrador solo puede mostrarse como ejemplo de prueba y no aprobarse para publicación.
 - Mantener el aviso de no vigencia fuera del artículo publicable, salvo que se conserve como texto de prueba claramente identificado.

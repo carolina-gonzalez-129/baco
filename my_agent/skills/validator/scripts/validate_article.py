@@ -16,6 +16,7 @@ def validate_article(article: dict[str, Any]) -> dict[str, Any]:
     title = article.get("title")
     category = article.get("category")
     template_type = article.get("template_type")
+    description = article.get("description")
     body = article.get("body", "")
     tags = article.get("tags", [])
 
@@ -25,6 +26,8 @@ def validate_article(article: dict[str, Any]) -> dict[str, Any]:
         findings.append(_finding("Bloqueante", "Categoría", "Falta la categoría.", "Informar una categoría."))
     if template_type not in {"instructivo", "soluciones"}:
         findings.append(_finding("Bloqueante", "Tipo de plantilla", "Debe ser instructivo o soluciones.", "Informar el tipo."))
+    if not isinstance(description, str) or not description.strip():
+        findings.append(_finding("Bloqueante", "Descripción", "Falta la descripción.", "Informar una descripción."))
     if not isinstance(body, str) or not body.strip():
         findings.append(_finding("Bloqueante", "Cuerpo", "Falta el cuerpo del artículo.", "Informar el contenido."))
 
@@ -44,8 +47,8 @@ def validate_article(article: dict[str, Any]) -> dict[str, Any]:
                 findings.append(_finding("Bloqueante", "Estructura", "Falta la sección Consulta.", "Agregar Consulta."))
             if not re.search(r"(?im)^\s*#{0,6}\s*Pasos a seguir\s*:?\s*$", body):
                 findings.append(_finding("Bloqueante", "Estructura", "Falta la sección Pasos a seguir.", "Agregar Pasos a seguir."))
-            if re.search(r"(?im)^\s*#{0,6}\s*Respuesta\s*:?\s*$", body):
-                findings.append(_finding("Requiere ajuste", "Estructura", "No debe existir una sección Respuesta.", "Integrar la explicación en Consulta."))
+            if not re.search(r"(?im)^\s*#{0,6}\s*Respuesta\s*:?\s*$", body):
+                findings.append(_finding("Bloqueante", "Estructura", "Falta la sección Respuesta.", "Agregar Respuesta."))
 
     status = "Pendiente" if any(f["severity"] == "Bloqueante" for f in findings) else (
         "Listo con ajustes sugeridos" if findings else "Listo"

@@ -10,7 +10,8 @@ Entrada:
 
 Resultado esperado:
 
-- Encabezado único con **Título**, **Categoría**, **Tipo de plantilla** y **Etiquetas**.
+- Verificar internamente **Título**, **Categoría**, **Tipo de plantilla** y **Descripción** antes de aplicar la plantilla.
+- No repetir esos metadatos en la salida; devolver únicamente el cuerpo publicable.
 - Secciones del instructivo en el orden definido.
 - Sin tiempo de lectura ni instrucciones editoriales.
 

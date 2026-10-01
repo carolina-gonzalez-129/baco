@@ -1,13 +1,4 @@
-# Ejemplo: Nota de Crédito de Ventas con percepciones
-
-**Título:** Nota de crédito de ventas con percepciones  
-**Categoría:** ERP  
-**Tipo de plantilla:** soluciones  
-**Etiquetas:** soluciones, ERP, percepciones, nota de crédito
-
 ## Consulta
-
-**Ruta:** [Información no proporcionada]
 
 Al realizar una Nota de Crédito de Ventas con percepciones, el monto total no coincide con el de la factura aunque se utilicen los mismos valores.
 
@@ -25,3 +16,7 @@ En la Nota de Crédito, la percepción impacta en el Haber de la misma forma que
 4. Modificar el campo **Impacta en** y configurarlo como **Debe**.
 5. Guardar los cambios.
 6. Volver a generar la Nota de Crédito de Ventas.
+
+## Requiere AppBuilder
+
+El usuario debe tener acceso a AppBuilder para modificar la configuración del documento correspondiente a la Nota de Crédito de Ventas.

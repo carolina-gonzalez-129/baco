@@ -1,11 +1,6 @@
 # Plantilla de salida: Instructivo
 
-La siguiente estructura es el cuerpo publicable. No incluir instrucciones editoriales ni texto entre corchetes que describa cómo trabajar el documento.
-
-**Título:** [título recibido]  
-**Categoría:** [categoría recibida]  
-**Tipo de plantilla:** instructivo  
-**Etiquetas:** instructivo, [etiquetas temáticas recibidas]
+La siguiente estructura es el cuerpo publicable. Título, categoría, tipo de plantilla y descripción ya fueron verificados como metadatos internos; no repetirlos ni convertirlos en un encabezado. No incluir instrucciones editoriales ni texto entre corchetes que describa cómo trabajar el documento.
 
 ## Descripción inicial
 

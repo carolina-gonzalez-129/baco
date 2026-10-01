@@ -7,7 +7,7 @@ description: Identifica si una entrada corresponde a un instructivo o una soluci
 
 Usa esta skill para organizar un texto nuevo o existente como artículo de la Base de Conocimiento.
 
-El tipo de plantilla es un dato obligatorio de entrada. Aplica únicamente la plantilla solicitada. Esta skill es independiente y no invoca otras skills.
+Antes de aplicar una plantilla, verifica que estén disponibles los metadatos mínimos. Son datos de trabajo internos y no deben repetirse en la salida.
 
 ## Datos obligatorios de entrada
 
@@ -16,12 +16,12 @@ La solicitud debe incluir:
 - **Título**
 - **Categoría**
 - **Tipo de plantilla:** exactamente `instructivo` o `soluciones`
-- **Contenido fuente**
-- **Etiquetas temáticas**, si existen
+- **Descripción**
+- **Contenido fuente**, que puede ser la misma descripción cuando no haya información adicional
 
-Si falta el tipo de plantilla, no lo infieras ni apliques una plantilla: solicita ese dato.
+Las etiquetas temáticas son opcionales. Si falta cualquiera de los cuatro datos mínimos, no apliques la plantilla: solicita únicamente el dato faltante. No infieras el tipo de plantilla ni completes datos ausentes con marcadores.
 
-Si falta otro dato, conserva un marcador claro como `[Indicar ...]` únicamente cuando sea posible estructurar el artículo sin inventar información.
+Una vez confirmados los metadatos mínimos, conserva la descripción y todo el contenido fuente confirmado. Los marcadores `[Indicar ...]` solo pueden usarse dentro de una sección cuando falta un detalle operativo que la fuente no proporciona.
 
 ## Aplicación
 
@@ -30,14 +30,8 @@ Si falta otro dato, conserva un marcador claro como `[Indicar ...]` únicamente 
 - Conserva el orden y los nombres de las secciones de la plantilla elegida.
 - Usa los ejemplos de referencia únicamente para comprender el formato. No copies su estructura si contradice la plantilla correspondiente.
 - No uses los casos de prueba como contenido del artículo.
-- Devuelve siempre el encabezado en este orden:
-
-  **Título:** [título recibido]  
-  **Categoría:** [categoría recibida]  
-  **Tipo de plantilla:** [instructivo o soluciones]  
-  **Etiquetas:** [tipo obligatorio y etiquetas temáticas recibidas]
-
-- Después del encabezado, devuelve únicamente el cuerpo publicable del artículo.
+- Usa título, categoría, tipo de plantilla y descripción como etiquetas implícitas de clasificación. No los muestres como encabezado, ficha, resumen ni sección adicional.
+- Devuelve únicamente el cuerpo publicable del artículo.
 - No agregues texto antes o después del artículo.
 - No incluyas comentarios editoriales, observaciones, diagnósticos, estados de revisión ni explicaciones sobre la plantilla aplicada.
 - No incluyas una sección o texto llamado `Plantilla aplicada`.
@@ -106,12 +100,9 @@ En `## Pasos a seguir`:
 
 ## Secciones opcionales
 
-No incluir una sección **Requiere AppBuilder** salvo que:
+Incluir **Requiere AppBuilder** únicamente cuando la solicitud confirme que aplica o que se necesita AppBuilder. Si la solicitud confirma que no aplica, omitirla. Si no hay confirmación, no inventar el requisito ni mostrar una sección de duda.
 
-1. La solicitud indique explícitamente si se necesita AppBuilder; y
-2. La plantilla o el formato de integración requiera esa sección.
-
-Si no se cumplen ambas condiciones, omitirla.
+La sección puede incluir los campos o acciones de AppBuilder confirmados por la fuente.
 
 El tiempo de lectura no forma parte de la salida de esta skill. Si la aplicación lo necesita, debe calcularlo fuera de la skill a partir de la cantidad de palabras.
 
