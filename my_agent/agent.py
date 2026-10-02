@@ -78,17 +78,15 @@ discourse = MCPClient(
         )
     )
 )
-#Las tools el agente solo las va a tenr disponibles en este bloque!
+#Las tools el agente solo las va a tener disponibles en este bloque!
 with discourse:
     tools = discourse.list_tools_sync()
-
-
 
 # ============================================================
 # AGENTE BACO
 # ============================================================
 SYSTEM_PROMPT = """
-Sos BACO, asistente de una Base de Conocimiento.
+Sos BACO, asistente de la Base de Conocimiento Finnegans.
 
 Respondé directo a preguntas generales y de conversación.
 
@@ -96,7 +94,10 @@ Si te piden algo que no podés hacer, por ejemplo eliminar artículos,
 explicá claramente que no tenés esa función.
 
 Nunca inventes títulos, artículos ni datos de la Base de Conocimiento.
+Recordá que el usuario siempre tiene el control final sobre cualquier decisión editorial.
 
+---
+SKILL: aplicar-plantillas
 Activá la skill "aplicar-plantillas" únicamente cuando el usuario lo pida
 explícitamente o cuando la tarea consista en transformar un contenido
 usando una plantilla.
@@ -107,140 +108,30 @@ Cuando se solicite aplicar una plantilla:
 3. Aplicá la skill "aplicar-plantillas" solo cuando estén los cuatro datos.
 4. Conservá la información original y no inventes información faltante.
 5. Devolvé únicamente el cuerpo estructurado; no repitas los metadatos ni agregues una indicación sobre la plantilla aplicada.
+
+---
+SKILL: detectar-duplicados
+Activá la skill "detectar-duplicados" cuando se solicite comparar artículos, evaluar si una entrada nueva ya existe en la base, o arbitrar casos ambiguos de similitud.
+
+Al evaluar duplicados:
+1. No te guíes por la simple coincidencia léxica de términos de ERP. Evaluá la intención operativa y el impacto en el negocio.
+2. Distinguí con rigor entre duplicados reales, variantes paramétricas (ej. distintas jurisdicciones de IIBB como ARBA vs. CABA, países o entes), flujos complementarios u opuestos (ej. compras vs. ventas, primaria vs. secundaria) y subtemas jerárquicos.
+3. No tomes acciones destructivas ni intentes fusionar entradas por tu cuenta; tu tarea es diagnosticar y orientar.
+4. Entregá siempre el dictamen estructurado indicando dictamen, confianza, análisis de divergencia, riesgo operativo y las opciones concretas para que el usuario tome la decisión final.
+
+---
+SKILL: validator
+Activá la skill "validator" cuando se solicite auditar, corregir o verificar la calidad editorial, pautas de títulos, estilo o publicación segura de una entrada.
 """
 
 
 def create_agent(model):
     return Agent(
         model=model,
+        system_prompt=SYSTEM_PROMPT,
         plugins=[skills],
     )
-
-
-
-
-# ============================================================
-# PRUEBAS : Vamos a probar lo de plantillas, de aplicar la de soluciones o instructivo
-#Son operaciones costosas en procesamiento de lenguaje pero ni llama ni ningun modelo local las ejecuta bien
-#entonces si cambio a otro modelo q no sea openai, claude, o gemini, puedo ver falencias donde no las hay
-
-# ============================================================
-def run_with_gemini_retry(
-        prompt: str,
-        max_wait_seconds: int = 60,
-        retry_interval_seconds: int = 10,
-):
-    started_at = time.monotonic()
-    last_error = None
-    attempt = 0
-
-    while True:
-        elapsed = time.monotonic() - started_at
-
-        if elapsed >= max_wait_seconds:
-            break
-
-        attempt += 1
-
-        try:
-            logger.info(
-                "Ejecutando consulta con Gemini. Intento %s",
-                attempt,
-            )
-
-            primary_agent = create_agent(gemini_model)
-            return primary_agent(prompt)
-
-        except Exception as error:
-            last_error = error
-            remaining = max_wait_seconds - (
-                    time.monotonic() - started_at
-            )
-
-            if remaining <= 0:
-                break
-
-            wait_seconds = min(
-                retry_interval_seconds,
-                remaining,
-            )
-
-            logger.warning(
-                "Gemini falló en el intento %s "
-                "(%s: %s). Reintentando en %s segundos. "
-                "Tiempo restante: %.1f segundos.",
-                attempt,
-                type(error).__name__,
-                error,
-                wait_seconds,
-                remaining,
-            )
-
-            time.sleep(wait_seconds)
-
-    logger.error(
-        "Gemini no estuvo disponible durante %s segundos.",
-        max_wait_seconds,
-    )
-
-    if last_error is not None:
-        raise RuntimeError(
-            "No se pudo completar la consulta con Gemini "
-            "dentro del tiempo máximo de espera."
-        ) from last_error
-
-    raise TimeoutError(
-        "Se agotó el tiempo máximo de espera para Gemini."
-    )
-
-
-def print_result(result):
-    print(result)
-
-
 # ============================================================
 # PRUEBA DE APLICAR-PLANTILLAS
 # ============================================================
 
-with open("prueba.plantillas1", "r", encoding="utf-8") as file:
-    contenido = file.read()
-
-plantilla_prompt = f"""
-Aplicá la skill "aplicar-plantillas" al siguiente contenido.
-
-Usá el tipo de plantilla informado en el contenido. Si falta título,
-categoría, tipo de plantilla o descripción, solicitá ese dato antes de
-aplicar la plantilla.
-
-No inventes datos y no elimines información relevante.
-
-Contenido de prueba:
---------------------
-{contenido}
---------------------
-
-Devolvé únicamente el contenido transformado, sin repetir los metadatos ni
-indicar al final qué plantilla aplicaste.
-"""
-
-print("\n" + "=" * 50)
-print("🤖 CONSULTA  — APLICAR PLANTILLAS")
-print("=" * 50)
-
-try:
-    result = run_with_gemini_retry(
-        plantilla_prompt,
-        max_wait_seconds=120,
-        retry_interval_seconds=10,
-    )
-    print_result(result)
-
-except Exception as error:
-    logger.error(
-        "La consulta no pudo completarse con Gemini: %s",
-        error,
-    )
-    print(
-        "\nNo fue posible completar la consulta con Gemini "
-        "dentro de los 60 segundos."
-    )

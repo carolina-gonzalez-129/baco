@@ -52,3 +52,6 @@ if __name__ == "__main__":
 ##IMPORTANTE : Como el servidor va a ser usado por agentes quizas estaria bueno configurar q
 #sea un mcp server si eso compatibiliza con q pueda usarse tmb por usuairos (tiene sentido si vemos lo q nos pasaron ellos
 #osea solo difiere en como se autentica pero
+
+#IMPORTANTE 2 : hay que agotar la capa determinista antes de pedirle cosas al agente en si
+#aunque desde la interfaz de usuario todo parezca como del agente!

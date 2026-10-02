@@ -30,5 +30,5 @@ class Entrada(BaseModel):
         min_length=200,
         description="Descripcion detallada de la entrada (mínimo 200 caracteres)"
     )
-
+##ELLOS LLAMAN A LA DESCRIPCION TITULO! prestar atencion dsps a todo esto
  

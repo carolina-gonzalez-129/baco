@@ -1,31 +1,46 @@
+import json
+import sys
+from contextlib import nullcontext
+from pathlib import Path
+#IMPORTANTE : esto voy a tener q tenerlo en varios mas, revisar toods xq sino da module error
+#Xq no reconoce a my_agent, creo q si no se ejecutan deberia borrarlo
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from my_agent.server.discourse import client
+from my_agent.server.services.normalizar import normalizar
+from rapidfuzz import fuzz
+import hashlib
+from dotenv import load_dotenv
+import os
+import numpy as np
+from rapidfuzz import process, fuzz
+load_dotenv()
+#Cargo la ruta de los articulos normalizados y los convierto a un  dict de python
+#Un dict es implicitamente un hash donde la key es el id y el value el titulo
 
 
-#IMPORTANTE : a las estructuras para comparar voy a guardar en disco, pars q sea mas rapido
-#efectuar dsps las comparaciones y para q no tenga q volver a hacerlo cada vez q se reinicia el servidor
+articulos_normalizados_path = os.getenv("RUTA_ARTICULOS_NORMALIZADOS_JSON")
 
-#NINGUNA DE ESTAS FUNCIONES PROBABLEMENTE SEA ASYNC AUNQUE EL SERVER CUANDO LAS INVOQUE USE ASYNC!
+#creo el dict
+with open(articulos_normalizados_path, "r", encoding="utf-8") as f:
+    articulos_normalizados_dict = json.load(f)
+
+### Uso rapidfuzz xq es una libreria super rapida q usa c y me permite obtener rpetidos
+def buscar_por_titulo_rapidfuzz(string:str):
+    #normalizo el titulo que recibo
+    titulo_normalizado = normalizar(string)
+    #scorer recalibrar cual podria ser el mejor, extractOne itera y busca el q mejor se alinea
+    #LOS THRESHOLDS TENDRIA QUE DESPUES RECALIBRARLOS CUANDO ANTIGRAVITY PROCESE LAS 6000 ENTRADAS
+    match = process.extractOne(titulo_normalizado,articulos_normalizados_dict,scorer=fuzz.WRatio,score_cutoff=80)
+    #match retorna una tupla, pero yo voy a querer dsps quedarme solo con el id para q dsps sea facil
+    #pasarle al server el id y q haga get/id para mostrarselo al user (lo linkearia con la url)
+    return match[2] if match else None
+
+def buscar_por_descripcion(string:str):
+#aca si lo de embeddings, estaria bueno ya guardarlo en disco tmb xq sino es mas pesado generarlo
+ descripcion_normalizada=normalizar(string)
+#creo el embedding generando un dict de descripciones
+#TENDRIA QUE NORMALIZARLOS TMB EN LA DESCRIPCION
+#Ellos los llaman texto asique voy a respetar eso
 
 
 
-#IMPORTANTE : normalizar con slugify el titulo primero de lo q recibo
-from my_agent.server.discourse import client
-#Comparar respecto a los del diccionario de titulos_slug
-#Si hay coincidencia tendria q pasar la url para q dsps el server pueda indicar q ya esta y ofrecer actualizar
-#Si pasa esta validacion va a comparar el codigo hash de la descripcion q recibo respecto a
-#la q esta en la tabla hash q genere de las entradas
-#Si pasa esa validación se utiliza recien ahi lo de embeddings de transformar el texto en un vector nuemrico
-# y despues aplicar lo de coseno entre vectores!
-
-#La gracia va a estar en despues darle estas herramientas a algun IDE agentico, decirle ok aplicame esto a x entradas
-# y para las q queden en un umbral medio ambiguo genera tus propias reglas de como detectar duplicados
-#Revisar que sean casos q no expongan vulnerabilidades de parte de ellos  (Ppor eso el ide agentico estaria bueno q solo tenga el .py
-#y que acceda a bc finnegans como un user comun
-
-
-
-#1 normalizo
-#deberia guardar en otro lado un
-#Mas adelante si esto es poco performante podria hacer una rutina en c que haga un sort x el titulo de la entrada
-#dsps un binary search, hbria q parsear el .json a algun formato q c pueda leer
-#Por eso estaria ueno probar con una libreria en py que use C para leer
