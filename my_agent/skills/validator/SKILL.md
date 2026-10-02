@@ -1,26 +1,50 @@
----
+ ---
 name: validator
-description: Revisa y mejora artículos de la Base de Conocimiento Finnegans según las pautas de títulos, redacción, claridad y publicación segura.
+description: Revisa y mejora entradas de la Base de Conocimiento Finnegans según pautas de redacción, calidad editorial, claridad semántica y publicación segura.
 ---
 
-# Validator de artículos
+# Validator de entradas
 
-Usa esta skill de forma independiente cuando la persona solicite revisar un artículo o texto para la Base de Conocimiento. Sigue las guías de [títulos](references/como_escribir_buenos_titulos.md) y [redacción de la Base de Conocimiento](references/pautas_base_conocimiento.md). Las comprobaciones mecánicas reutilizables están en `scripts/validate_article.py`; los casos de prueba se mantienen en `tests/` y fuera de las referencias que carga el agente.
+Usa esta skill cuando se solicite auditar o mejorar el contenido de una entrada para la Base de Conocimiento. Sigue las guías de [títulos](references/como_escribir_buenos_titulos.md) y [redacción de la Base de Conocimiento](references/pautas_base_conocimiento.md).
+
+> **Nota:** La presencia de los campos obligatorios, la longitud mínima y el formato de datos son garantizados previamente por el servidor. Esta skill se enfoca exclusivamente en la **calidad semántica, editorial, de privacidad y de estilo**.
 
 ## Procedimiento
 
-1. Identificar el tipo de plantilla y revisar título, categoría, descripción, etiquetas y cuerpo. Si falta el tipo de plantilla o información clave, informar el bloqueo en la salida estructurada; no preguntar ni inferir datos dentro de esta skill.
-2. Comprobar que el contenido sea generalizable, útil para los lectores previstos y apto para la Base de Conocimiento pública. Marcar casos particulares de clientes, datos personales, información de procesos internos, bugs sin solución y reportes internos de resolución. No repetir datos sensibles innecesariamente en la respuesta.
-3. Revisar estructura, exactitud editorial, ortografía, gramática, puntuación, claridad, concisión, orden lógico, tono y contexto de los datos. Aplicar la plantilla correspondiente sin confundir secciones ni cambiar el sentido funcional. Ejecutar primero las comprobaciones mecánicas disponibles en `scripts/validate_article.py`.
-4. Revisar el título con las pautas específicas: acción y contexto, infinitivo cuando corresponda, problema concreto, mensaje literal fiel si se cita, y ausencia de redundancias. No agregar la palabra “Error” salvo que forme parte del mensaje textual original.
-5. Comprobar categoría y etiquetas: deben estar presentes; la categoría debe corresponder al frente, industria o módulo y las etiquetas deben describir acción, palabras clave y tipo de publicación. La lista de etiquetas debe incluir siempre el tipo de plantilla exacto: `instructivo` o `soluciones`, aunque la persona no lo haya incluido en sus etiquetas sugeridas. No duplicar la etiqueta si ya está. Si la adecuación de las demás etiquetas no se puede determinar con lo provisto, indicarlo como pendiente, sin inventar valores.
-6. En artículos de solución, comprobar la estructura **Consulta** → **Respuesta** → **Pasos a seguir**; que la consulta esté en presente, la respuesta explique solo una causa respaldada y los pasos estén ordenados y redactados en infinitivo.
-7. Comprobar **Requiere AppBuilder** solo si los pasos requieren AppBuilder o Tipos de Documentos y el usuario necesita ese permiso. Si el permiso o requisito no está confirmado, marcarlo como pendiente; no inferirlo.
-8. Entregar la salida con el formato definido abajo. El modo predeterminado es informe; ofrecer una versión corregida completa solo si se solicita explícitamente `rewrite=true`.
+1. **Seguridad y privacidad (Publicación segura):**
+   Comprobar que el contenido sea apto para una base de conocimiento pública. Marcar como bloqueante:
+    - Datos personales, nombres de clientes o empresas reales.
+    - Capturas de pantalla o textos con información interna confidencial o credenciales.
+    - Menciones a casos privados, tickets de soporte o bugs sin resolución oficial.
+    - Generalizar los ejemplos (usar datos ficticios y genéricos) sin alterar la utilidad del contenido.
+
+2. **Revisión del título (Pautas de títulos):**
+    - Evaluar si expresa claramente la **acción y el contexto** del usuario en el sistema.
+    - Verificar el uso de verbos en **infinitivo** cuando corresponda (ej. "Configurar", "Emitir", "Consultar").
+    - Identificar si describe un problema concreto y no abstracto.
+    - **Regla de "Error":** Comprobar que no se use la palabra "Error" salvo que cite textualmente un mensaje del sistema entre comillas.
+    - Eliminar fórmulas redundantes (ej. "Cómo hacer para...") y verificar que no termine en punto final.
+
+3. **Adecuación de categoría y permisos:**
+    - Evaluar si la categoría asignada tiene sentido temático con el módulo o proceso explicado (ej. Agro, Ventas, Finanzas, etc.).
+    - **AppBuilder / Tipos de Documentos:** Si el procedimiento requiere herramientas avanzadas como AppBuilder o parametrización de Tipos de Documentos, comprobar si se advierte al lector sobre los permisos requeridos. Si no está confirmado, indicarlo como pendiente o sugerencia; no inventarlo.
+
+4. **Calidad de redacción y tono (NLP / Editorial):**
+    - Revisar ortografía, gramática, claridad y concisión.
+    - Comprobar el tono característico de Finnegans (profesional, directo, accesible).
+    - Verificar la coherencia lógica: ¿los pasos explicados realmente resuelven la consulta planteada?
+    - Si el texto es ambiguo o confuso, señalarlo con una acción correctiva clara en lugar de asumir interpretaciones.
+
+5. **Estructura según tipo de plantilla:**
+    - **Soluciones:** Verificar que la consulta esté planteada en presente, la respuesta explique una causa respaldada y los pasos a seguir estén redactados en infinitivo y en orden cronológico estricto.
+    - **Instructivo:** Verificar que el objetivo esté claro desde el inicio y que las instrucciones sigan una secuencia paso a paso fácil de seguir.
+
+6. **Entrega del resultado:**
+   El modo predeterminado es emitir el informe de auditoría. Si la persona solicita explícitamente `rewrite=true`, ofrecer además la versión corregida completa lista para publicar.
 
 ## Formato de salida
 
-Devolver un objeto o bloque equivalente a:
+Devolver el informe con la siguiente estructura:
 
 ```text
 Estado: Listo | Listo con ajustes sugeridos | Pendiente
@@ -35,23 +59,3 @@ Hallazgos:
   Descripción: ...
   Acción: ...
 Versión corregida: solo si rewrite=true
-```
-
-Clasificar cada hallazgo únicamente como:
-
-- **Bloqueante:** riesgo de publicación (por ejemplo, información personal, caso privado, bug sin solución o dato interno), falta un dato esencial o el texto contradice la fuente.
-- **Requiere ajuste:** incumplimiento editorial o problema de claridad, estructura, ortografía o formato que se pueda corregir.
-- **Sugerencia:** mejora opcional que no impide publicar.
-
-Cerrar con un estado: **Listo**, **Listo con ajustes sugeridos** o **Pendiente**. Usar **Pendiente** si hay bloqueantes o datos esenciales sin confirmar. “Pendiente” es un estado, no una severidad. La revisión editorial no verifica de manera independiente que las instrucciones sean técnicamente correctas; señalar esa limitación si corresponde.
-
-## Reglas
-
-- No inventar categorías, etiquetas, rutas, mensajes, resultados, causas ni requisitos de permisos.
-- Asegurar que todas las entradas tengan título, categoría, tipo de plantilla y descripción; también deben tener la etiqueta de tipo (`instructivo` o `soluciones`) y conservar las etiquetas temáticas proporcionadas, normalizando solo el formato cuando haga falta.
-- No alterar el significado técnico para mejorar el estilo. Si el texto es ambiguo o contradictorio, señalarlo en vez de elegir una interpretación.
-- Conservar exactamente los mensajes del sistema entre comillas; no corregir ni parafrasear su contenido citado.
-- Generalizar detalles particulares únicamente si se puede preservar la información útil. Si no se puede, pedir una versión anonimizada o marcar la entrada como no apta.
-- No afirmar que una entrada es publicable si contiene información que debe excluirse de una base pública.
-- No afirmar que herramientas externas, otra persona o un revisor adicional fueron consultados si no ocurrió.
-- Las comprobaciones mecánicas no sustituyen la revisión semántica de generalización, privacidad, causa confirmada y claridad.
