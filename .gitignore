@@ -1,3 +1,11 @@
 .env
 .env.*
 !.env.example
+# Ignora todas las carpetas __pycache__ del proyecto (en cualquier nivel)
+__pycache__/
+*.pyc
+
+# Ignora entornos virtuales
+.venv/
+venv/
+
