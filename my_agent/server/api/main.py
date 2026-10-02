@@ -49,3 +49,6 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("my_agent.server.api.main:app", host="localhost", port=8080, reload=True)
 
+##IMPORTANTE : Como el servidor va a ser usado por agentes quizas estaria bueno configurar q
+#sea un mcp server si eso compatibiliza con q pueda usarse tmb por usuairos (tiene sentido si vemos lo q nos pasaron ellos
+#osea solo difiere en como se autentica pero
