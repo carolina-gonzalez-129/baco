@@ -3,7 +3,7 @@ strands-agents-tools>=0.2.0
 
 requests
 python-dotenv
-python-dotenv
 
 
 fastapi
+uvicorn
