@@ -26,7 +26,7 @@ articulos_normalizados_path = os.getenv("RUTA_ARTICULOS_NORMALIZADOS_JSON")
 with open(articulos_normalizados_path, "r", encoding="utf-8") as f:
     articulos_normalizados_dict = json.load(f)
 
-### Uso rapidfuzz xq es una libreria super rapida q usa c y me permite obtener rpetidos
+ 
 def buscar_por_titulo_rapidfuzz(string:str):
     #normalizo el titulo que recibo
     titulo_normalizado = normalizar(string)
@@ -37,11 +37,4 @@ def buscar_por_titulo_rapidfuzz(string:str):
     #pasarle al server el id y q haga get/id para mostrarselo al user (lo linkearia con la url)
     return match[2] if match else None
 
-def buscar_por_descripcion(string: str):
-    #Ellos llaman texto a la descripcion asique voy a respetar eso
-    #Voy a usar embeddings para transformar la descripcion normalizada a un vector n dimensional
-    #se va a comparar con el que se genero ejecutando normalizar_articulos.py
-    descripcion_normalizada = normalizar(string)
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    embedding = model.encode(descripcion_normalizada)
-    #Chroma query es mucho mejor que lo de coseno entre vectores
+#def buscar_en_embedding()
