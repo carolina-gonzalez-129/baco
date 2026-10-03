@@ -1,5 +1,4 @@
 #Agente BACO —  inicial, falta skill de detectar duplicados.
-import time
 from strands import Agent
 from strands.models.gemini import GeminiModel
 from strands.vended_plugins.skills import AgentSkills
@@ -8,7 +7,6 @@ from pathlib import Path
 from strands.tools.mcp import MCPClient
 from mcp import stdio_client, StdioServerParameters
 import os
-import dotenv
 from dotenv import load_dotenv
 
 load_dotenv()
