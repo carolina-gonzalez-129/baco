@@ -1,16 +1,18 @@
+from urllib.request import Request
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 import sys
 from pathlib import Path
 #IMPORTANTE : quizas deba usar esto para resolver lo del path my_agent en varios archivos
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+#dsps tengo q corregir eso
+from starsessions import SessionMiddleware
+from starsessions.backends.redis import RedisBackend
 
 # Create a FastAPI app instance
 app = FastAPI(
-    title="My First FastAPI App",
-    description="This is a simple FastAPI application for learning purposes.",
 )
 
 #Esto es para que despues conectemos el front con el back
@@ -55,3 +57,38 @@ if __name__ == "__main__":
 
 #IMPORTANTE 2 : hay que agotar la capa determinista antes de pedirle cosas al agente en si
 #aunque desde la interfaz de usuario todo parezca como del agente!
+
+session_backend = RedisBackend(url="redis://localhost:6379/0")
+
+# 2. Add the session middleware to FastAPI
+app.add_middleware(
+    SessionMiddleware,
+    backend=session_backend,
+    secret_key="your-super-secret-key-change-this",  # Used to sign the session cookie
+    session_cookie="session",                       # Name of the cookie in the browser
+    lifetime=3600,                                  # Session duration in seconds (1 hour)
+    rolling=True,                                   # Refresh lifetime on every request
+)
+#PARA LO DE PERSISTENCIA DE SESION HTTP SE AGREGO REDIS, por lo de que tiene ue permitir por ej tener un borrador
+
+
+@app.post("/login")
+async def login(request: Request):
+    # Store data persistently in the server-side session
+    request.session["user_id"] = 42
+    request.session["is_authenticated"] = True
+    return {"message": "Logged in and session persisted!"}
+
+@app.get("/profile")
+async def profile(request: Request):
+    # Retrieve data on subsequent requests
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return {"error": "Not authenticated"}
+    return {"user_id": user_id}
+
+@app.post("/logout")
+async def logout(request: Request):
+    # Clear the session data from Redis and the cookie
+    request.session.clear()
+    return {"message": "Logged out successfully"}

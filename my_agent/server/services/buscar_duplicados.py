@@ -2,6 +2,11 @@ import json
 import sys
 from contextlib import nullcontext
 from pathlib import Path
+
+import collection
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
 #IMPORTANTE : esto voy a tener q tenerlo en varios mas, revisar toods xq sino da module error
 #Xq no reconoce a my_agent, creo q si no se ejecutan deberia borrarlo
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -35,12 +40,11 @@ def buscar_por_titulo_rapidfuzz(string:str):
     #pasarle al server el id y q haga get/id para mostrarselo al user (lo linkearia con la url)
     return match[2] if match else None
 
-def buscar_por_descripcion(string:str):
-#aca si lo de embeddings, estaria bueno ya guardarlo en disco tmb xq sino es mas pesado generarlo
- descripcion_normalizada=normalizar(string)
-#creo el embedding generando un dict de descripciones
-#TENDRIA QUE NORMALIZARLOS TMB EN LA DESCRIPCION
-#Ellos los llaman texto asique voy a respetar eso
-
-
-
+def buscar_por_descripcion(string: str):
+    #Ellos llaman texto a la descripcion asique voy a respetar eso
+    #Voy a usar embeddings para transformar la descripcion normalizada a un vector n dimensional
+    #se va a comparar con el que se genero ejecutando normalizar_articulos.py
+    descripcion_normalizada = normalizar(string)
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    embedding = model.encode(descripcion_normalizada)
+    #Chroma query es mucho mejor que lo de coseno entre vectores

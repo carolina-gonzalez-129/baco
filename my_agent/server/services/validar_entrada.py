@@ -5,7 +5,7 @@
 #Para que a la skill de validator entonces solo le quede lo de nlp, osea tiene q aplicar pautas de redaccion buenos titulos y demas
 #Incluso aunque el agente exista xq paso los otros filtros podria utilizarse
 
-from my_agent.server.schemas.entrada import Entrada, TipoPlantilla
+from my_agent.server.schemas.articulo import Entrada, TipoPlantilla
 import re
 from typing import Any
 
