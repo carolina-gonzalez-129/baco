@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>BACO — Especificación Técnica y Arquitectura del Sistema</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 18mm 16mm;
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: #1e293b;
+      background-color: #ffffff;
+      margin: 0;
+      padding: 0;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+      color: #0f172a;
+      font-weight: 700;
+      line-height: 1.25;
+      page-break-after: avoid;
+    }
+    
+    h1 {
+      font-size: 22pt;
+      color: #1e3a8a;
+      border-bottom: 2.5px solid #2563eb;
+      padding-bottom: 8px;
+      margin-top: 0;
+      margin-bottom: 12px;
+    }
+    
+    h2 {
+      font-size: 14pt;
+      color: #1e40af;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+    
+    h3 {
+      font-size: 11.5pt;
+      color: #1e293b;
+      margin-top: 16px;
+      margin-bottom: 6px;
+    }
+    
+    p {
+      margin-top: 0;
+      margin-bottom: 8px;
+      text-align: justify;
+    }
+    
+    strong {
+      color: #0f172a;
+      font-weight: 600;
+    }
+    
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e2e8f0;
+      margin: 18px 0;
+    }
+    
+    ul, ol {
+      margin-top: 0;
+      margin-bottom: 10px;
+      padding-left: 22px;
+    }
+    
+    li {
+      margin-bottom: 4px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+    }
+    
+    th, td {
+      padding: 7px 10px;
+      border: 1px solid #cbd5e1;
+      text-align: left;
+      vertical-align: top;
+    }
+    
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+    
+    code {
+      font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      font-size: 9pt;
+      background-color: #f1f5f9;
+      color: #b91c1c;
+      padding: 1.5px 4px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+    }
+    
+    pre {
+      background-color: #0f172a;
+      color: #f8fafc;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      font-size: 8.5pt;
+      line-height: 1.45;
+      overflow-x: auto;
+      margin: 10px 0;
+      page-break-inside: avoid;
+    }
+    
+    pre code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    
+    blockquote {
+      margin: 10px 0;
+      padding: 8px 14px;
+      background-color: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      color: #1e3a8a;
+      border-radius: 0 4px 4px 0;
+      page-break-inside: avoid;
+    }
+    
+    blockquote p {
+      margin: 0;
+      text-align: left;
+    }
+    
+    .mermaid-container {
+      text-align: center;
+      margin: 16px 0;
+      padding: 12px;
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    
+    .mermaid {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    }
+
+    .document-header {
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+      color: white;
+      padding: 18px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .document-header h1 {
+      color: white;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+      padding-bottom: 6px;
+      margin-bottom: 6px;
+      font-size: 20pt;
+    }
+    
+    .document-header .subtitle {
+      font-size: 11pt;
+      opacity: 0.95;
+      font-weight: 500;
+    }
+    
+    .document-header .meta {
+      font-size: 8.5pt;
+      opacity: 0.8;
+      margin-top: 8px;
+    }
+  </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'neutral',
+      fontFamily: 'Segoe UI, -apple-system, sans-serif',
+      fontSize: 12,
+      flowchart: {
+        htmlLabels: true,
+        curve: 'basis'
+      }
+    });
+    window.addEventListener('load', async () => {
+      await mermaid.run();
+      document.body.classList.add('mermaid-ready');
+    });
+  </script>
+</head>
+<body>
+  <h1>BACO — Especificación Técnica y Arquitectura del Sistema</h1>
+<p><strong>Asistente Inteligente y Motor Editorial para la Base de Conocimiento Finnegans</strong>
+<em>Documento de referencia para el equipo de desarrollo e ingeniería</em></p>
+<hr />
+<h2>1. Resumen Ejecutivo y Propósito del Proyecto</h2>
+<p>El proyecto <strong>BACO</strong> nace con el objetivo de optimizar, auditar y elevar la calidad editorial y técnica de los artículos publicados en la Base de Conocimiento de Finnegans (alojada en Discourse: <a href="https://bc-dev.finneg.com">bc-dev.finneg.com</a>).</p>
+<p>En una organización con un ERP de alta complejidad y más de 4.500 artículos técnicos, los redactores, consultores y agentes de soporte enfrentan desafíos críticos:</p>
+<ul>
+<li><strong>Proliferación de duplicados y canibalización de búsquedas:</strong> Coexistencia de artículos redundantes o, por el contrario, unificación errónea de artículos que corresponden a distintas jurisdicciones impositivas (ej. ARBA vs. CABA).</li>
+<li><strong>Heterogeneidad en la estructura:</strong> Falta de apego a las plantillas estándar oficiales de Finnegans (<em>Instructivo</em> y <em>Soluciones</em>).</li>
+<li><strong>Riesgos de publicación y privacidad:</strong> Filtración involuntaria de datos sensibles de clientes reales (CUITs, razones sociales, contraseñas, capturas de pantalla con información privada) o números de tickets de soporte internos.</li>
+<li><strong>Costos y límites de cómputo en IA:</strong> Riesgo de sobreutilizar llamadas a Modelos de Lenguaje (LLMs) para tareas triviales que un algoritmo determinista resuelve en milisegundos.</li>
+</ul>
+<p>Para resolver esto, BACO implementa una <strong>arquitectura híbrida en dos capas</strong>: una <strong>capa determinista de alto rendimiento</strong> (en el servidor con Python, PostgreSQL y expresiones regulares) que actúa como <em>gatekeeper</em>, y una <strong>capa agentica basada en LLM y Skills NLP</strong> (con Strands Agents y Google Gemini) que interviene exclusivamente en razonamiento semántico complejo y decisiones editoriales con supervisión humana (<em>Human-in-the-Loop</em>).</p>
+<div class="mermaid-container"><pre class="mermaid">
+flowchart TD
+    subgraph Origen ["1. Fuente Externa"]
+        Discourse["Discourse API (bc-dev.finneg.com)<br/>+4.500 Tópicos"]
+    end
+
+    subgraph Pipeline ["2. Pipeline de Datos & Sincronización"]
+        Cron[".bat Programado / Tarea Windows<br/>Miércoles 11:00 AM"] --> Sync["actualizar_nuevos_articulos.py<br/>Detección incremental (corte a 15 temas)"]
+        Discourse -->|GET /latest.json| Sync
+        Sync -->|Normalización + Limpieza HTML| Postgres[(PostgreSQL baco_db<br/>articulos, categorias, tags)]
+    end
+
+    subgraph Backend ["3. Servidor de Aplicación (FastAPI)"]
+        API["FastAPI (main.py)<br/>CORS, Async I/O, OpenAPI"]
+        ServiciosDet["Capa Determinista (services/)<br/>- validar_articulo.py (Estructura/Reglas)<br/>- normalizar.py (Regex/Unicode)<br/>- buscar_duplicados.py (Fuzzy/SQL)"]
+        API --> ServiciosDet
+        ServiciosDet <--> Postgres
+    end
+
+    subgraph Agentic ["4. Capa Agentica (Strands + Gemini)"]
+        Agent["Agente BACO (agent.py)<br/>Gemini 3.8 Flash + MCP Discourse"]
+        Skill1["Skill: aplicar_plantillas<br/>Normalización sintáctica e infinitivos"]
+        Skill2["Skill: detectar_duplicados<br/>Arbitraje semántico en zona de ambigüedad"]
+        Skill3["Skill: validador<br/>Auditoría de privacidad, estilo y coherencia"]
+        Agent --- Skill1
+        Agent --- Skill2
+        Agent --- Skill3
+    end
+
+    API -->|Handoff de casos validados/ambiguos| Agent
+    Postgres -.->|Futuro: Embeddings pgvector| Agent
+</pre></div>
+<hr />
+<h2>2. Stack Tecnológico Integral</h2>
+<p>A continuación se detalla cada una de las tecnologías empleadas en la solución actual, su versión/paquete y la justificación técnica de su elección:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Tecnología / Biblioteca</th>
+<th style="text-align:left">Rol en el Proyecto</th>
+<th style="text-align:left">¿Por qué se eligió?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Python 3.12+</strong></td>
+<td style="text-align:left">Runtime principal del backend y scripts de datos.</td>
+<td style="text-align:left">Tipado estático moderno, rendimiento mejorado y soporte nativo para librerías asíncronas modernas.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Strands Agents SDK</strong> (<code>strands-agents</code>, <code>strands-agents-tools</code>)</td>
+<td style="text-align:left">Framework agentico modular.</td>
+<td style="text-align:left">Diseñado para orquestación de agentes con soporte nativo de <strong>Skills</strong> bajo especificación de carpetas (<code>SKILL.md</code> + <code>references/</code>), plugins desacoplados y conectores MCP.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Google Gemini 3.8 Flash</strong> (<code>google-genai</code>)</td>
+<td style="text-align:left">Modelo fundacional de lenguaje (LLM).</td>
+<td style="text-align:left">Gran velocidad de inferencia, amplia ventana de contexto y bajo costo por token, ideal para procesamiento editorial intensivo y síntesis de artículos largos.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>FastAPI</strong> (<code>fastapi</code>)</td>
+<td style="text-align:left">Framework web para la API REST del backend.</td>
+<td style="text-align:left">Asincronismo nativo con <code>async/await</code>, validación estricta en tiempo de ejecución, alto rendimiento I/O y generación automática de contratos OpenAPI / Swagger.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Uvicorn</strong> (<code>uvicorn</code>)</td>
+<td style="text-align:left">Servidor ASGI para FastAPI.</td>
+<td style="text-align:left">Servidor ultrarrápido basado en <code>uvloop</code> y <code>httptools</code> para producción y desarrollo local.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Pydantic v2</strong> (<code>pydantic</code>)</td>
+<td style="text-align:left">Modelado y validación de esquemas de datos.</td>
+<td style="text-align:left">Validación rápida de payloads en Rust/Python (<code>ArticuloSchema</code>, <code>Tag</code>), garantizando que la estructura de los datos cumpla las reglas antes de llegar a la lógica de negocio.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>PostgreSQL 16+</strong></td>
+<td style="text-align:left">Base de datos relacional transaccional y analítica.</td>
+<td style="text-align:left">Motor ACID corporativo para almacenar el catálogo unificado de artículos, categorías y etiquetas. Listo para vectorización nativa mediante <code>pgvector</code>.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Psycopg 3</strong> (<code>psycopg</code>)</td>
+<td style="text-align:left">Driver nativo de PostgreSQL para Python.</td>
+<td style="text-align:left">Driver oficial de última generación con soporte para cursores del lado del servidor, sentencias preparadas eficientes, tipos nativos y pools de conexión asíncronos.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Discourse REST API</strong> &amp; <strong>Discourse MCP</strong> (<code>mcp</code>)</td>
+<td style="text-align:left">Integración con la plataforma de conocimiento de Finnegans.</td>
+<td style="text-align:left">Consumo directo de tópicos vía HTTP (<code>/latest.json</code>, <code>/t/{id}.json</code>) e integración de herramientas agenticas mediante el Model Context Protocol (MCP).</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>HTTPX</strong> (<code>httpx</code>)</td>
+<td style="text-align:left">Cliente HTTP de última generación.</td>
+<td style="text-align:left">Soporta HTTP/1.1 y HTTP/2, pooling de conexiones, timeouts granulares y compatibilidad tanto sincrónica (scripts) como asincrónica (FastAPI).</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>BeautifulSoup4</strong> (<code>beautifulsoup4</code>)</td>
+<td style="text-align:left">Parseo y extracción de texto HTML.</td>
+<td style="text-align:left">Limpieza del campo <code>cooked</code> de Discourse, preservando saltos de línea y jerarquía de texto sin corromper la lectura.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Unidecode / Unicodedata &amp; RegEx</strong></td>
+<td style="text-align:left">Normalización determinista de strings.</td>
+<td style="text-align:left">Remoción de tildes, signos ortográficos y espaciados redundantes para comparación rápida y consistente de títulos y etiquetas.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Windows Batch (.bat) &amp; Task Scheduler</strong></td>
+<td style="text-align:left">Automatización programada de sincronización.</td>
+<td style="text-align:left">Ejecución periódica (miércoles 11:00 AM) desatendida en el entorno Windows con redirección completa de logs y códigos de error.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>python-dotenv</strong> (<code>python-dotenv</code>)</td>
+<td style="text-align:left">Manejo seguro de configuración y secretos.</td>
+<td style="text-align:left">Lectura transparente de variables de entorno (<code>.env</code>) sin hardcodear claves de API ni credenciales de base de datos.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. Justificación de PostgreSQL (¿Por qué se eligió aunque aún no esté la matriz de embeddings?)</h2>
+<p>Durante las fases iniciales del proyecto se exploraron alternativas como archivos JSON planos (<code>articulos.json</code>) y bases vectoriales embebidas en SQLite como <strong>ChromaDB</strong>. Sin embargo, se migró a <strong>PostgreSQL</strong> (<code>baco_db</code>) como decisión estratégica y arquitectónica:</p>
+<h3>3.1. Limitaciones de los JSONs y de las bases vectoriales aisladas</h3>
+<ol>
+<li><strong>Pérdida de integridad relacional:</strong> Los artículos en Discourse no son bloques de texto aislados; tienen categorías formales, múltiples etiquetas (tags), fechas de actualización y relaciones jerárquicas. Un JSON plano o una base vectorial pura no pueden garantizar claves foráneas ni integridad referencial si un tag o categoría cambia.</li>
+<li><strong>Escalabilidad y concurrencia:</strong> Manejar más de 4.500 artículos en un JSON de varios megabytes en memoria bloquea el hilo de ejecución, impide actualizaciones concurrentes y se corrompe con facilidad si un proceso falla a mitad de escritura.</li>
+<li><strong>Búsquedas deterministas pobres:</strong> Para filtrar por categoría, rango de fechas o slugs de tags, una base vectorial es ineficiente y lenta en comparación con un motor relacional indexado con índices B-Tree.</li>
+</ol>
+<h3>3.2. Ventajas inmediatas de PostgreSQL hoy en BACO</h3>
+<ul>
+<li><strong>Transaccionalidad (ACID):</strong> Las inserciones se realizan en bloques atómicos. Si un artículo falla en su descarga o parseo, se hace <code>ROLLBACK</code> y la base de datos queda intacta.</li>
+<li><strong>Estructura Normalizada:</strong> Se cuenta con un esquema de 4 tablas vinculadas:
+<ul>
+<li><code>categorias (id, nombre)</code></li>
+<li><code>tags (id, name, slug)</code></li>
+<li><code>articulos (id, titulo, categoria_id, url, texto, titulo_normalizado, actualizado, creado_en)</code></li>
+<li><code>articulo_tags (articulo_id, tag_id)</code> con <code>ON DELETE CASCADE</code>.</li>
+</ul>
+</li>
+<li><strong>Indexación especializada:</strong> Índices en <code>categoria_id</code>, <code>actualizado</code>, <code>slug</code> y en la columna calculada <code>titulo_normalizado</code>, permitiendo consultas en menos de 2 milisegundos sobre 4.597 artículos.</li>
+</ul>
+<h3>3.3. Preparación futura con <code>pgvector</code> (La verdadera razón de fondo)</h3>
+<p>En lugar de fragmentar la infraestructura con un motor relacional para metadatos (ej. MySQL/SQLite) y otro servicio externo para vectores (ej. Pinecone o ChromaDB), <strong>PostgreSQL resuelve ambos mundos con la extensión oficial <code>pgvector</code></strong>:</p>
+<ul>
+<li>Se añade una simple columna: <code>ALTER TABLE articulos ADD COLUMN embedding vector(768);</code> (o la dimensión del modelo de embeddings de Google/HuggingFace que se elija).</li>
+<li><strong>Búsqueda Híbrida (Hybrid Search) en una sola consulta SQL:</strong> Permite combinar filtros deterministas de negocio con similitud semántica coseno:<pre><code class="language-sql">SELECT id, titulo, 1 - (embedding &lt;=&gt; :query_embedding) AS similitud
+FROM articulos
+WHERE categoria_id = 12
+  AND actualizado &gt;= '2026-01-01'
+ORDER BY embedding &lt;=&gt; :query_embedding
+LIMIT 5;
+</code></pre>
+</li>
+<li><strong>Índices HNSW / IVFFlat:</strong> PostgreSQL indexa vectores de alta dimensionalidad de forma nativa en memoria, eliminando la necesidad de sincronizar dos bases de datos distintas.</li>
+</ul>
+<hr />
+<h2>4. Pipeline de Sincronización Incremental (<code>actualizar_nuevos_articulos.py</code>)</h2>
+<p>El script ubicado en <code>baco/server/discourse/actualizar_nuevos_articulos.py</code> resuelve la ingesta continua de novedades desde el foro de Discourse de Finnegans sin saturar la red ni la API.</p>
+<h3>4.1. Estrategia y Algoritmo de Corte Temprano (<em>Early Exit</em>)</h3>
+<p>A diferencia del descargador inicial masivo (<code>descargar_articulos.py</code>), este script aplica una estrategia incremental:</p>
+<ol>
+<li><strong>Carga en memoria del set de IDs existentes:</strong> Ejecuta <code>SELECT id FROM articulos;</code> y construye un <code>set</code> de Python (<code>ids_existentes</code>), permitiendo comprobaciones de pertenencia en $O(1)$.</li>
+<li><strong>Paginación cronológica descendente:</strong> Consulta el endpoint <code>/latest.json?order=created&amp;page=N</code>, obteniendo los tópicos ordenados desde el más nuevo hacia el más antiguo.</li>
+<li><strong>Corte a los 15 consecutivos (<code>MAX_CONSECUTIVOS_EXISTENTES = 15</code>):</strong>
+<ul>
+<li>A medida que desciende por la lista de tópicos, compara cada <code>tema_id</code> con el conjunto de IDs de la base.</li>
+<li>Si encuentra un tema nuevo, lo procesa e inserta.</li>
+<li>Si encuentra un tema que ya existe, incrementa un contador de consecutivos.</li>
+<li><strong>En cuanto el contador llega a 15 temas seguidos existentes, el script deduce que ya alcanzó la frontera histórica donde la base estaba al día y aborta el bucle inmediatamente.</strong> Esto ahorra cientos de peticiones HTTP innecesarias.</li>
+</ul>
+</li>
+</ol>
+<h3>4.2. Resiliencia, Rate Limiting y Limpieza</h3>
+<ul>
+<li><strong>Manejo inteligente de Rate Limits (HTTP 429):</strong> La función <code>pedir()</code> intercepta cabeceras <code>Retry-After</code>. Si Discourse responde con 429, el script pausa exactamente los segundos requeridos por el servidor antes de reintentar.</li>
+<li><strong>Reintentos con Backoff Exponencial:</strong> Para errores transitorios del servidor (HTTP 502, 503, 504), reintenta hasta 5 veces aumentando progresivamente el tiempo de espera.</li>
+<li><strong>Extracción limpia:</strong> Usa <code>BeautifulSoup4</code> sobre el HTML renderizado (<code>cooked</code>) para garantizar que títulos, listas y párrafos conserven sus saltos de línea en lugar de convertirse en un único bloque de texto sin formato.</li>
+<li><strong>Normalización integrada:</strong> Calcula al vuelo <code>titulo_normalizado</code> mediante <code>baco.server.services.normalizar</code> para que el artículo quede inmediatamente preparado para búsquedas deterministas.</li>
+</ul>
+<hr />
+<h2>5. Automatización con Script Batch (.bat) y Plan de Dockerización</h2>
+<p>Para mantener la base sincronizada de forma autónoma sin intervención humana, se desarrolló una rutina de automatización.</p>
+<h3>5.1. La Rutina <code>ejecutar_actualizacion.bat</code></h3>
+<p>Ubicado en la raíz del proyecto, el archivo batch realiza las siguientes acciones:</p>
+<ol>
+<li>Posiciona la consola en el directorio raíz del proyecto (<code>cd /d &quot;C:\Users\ahreq\IdeaProjects\GeminiAgente&quot;</code>).</li>
+<li>Agrega una cabecera con la fecha y hora actual en <code>actualizar_articulos.log</code>.</li>
+<li>Ejecuta el módulo de Python utilizando el ejecutable aislado del entorno virtual:<pre><code class="language-cmd">&quot;.venv\Scripts\python.exe&quot; -m baco.server.discourse.actualizar_nuevos_articulos &gt;&gt; &quot;actualizar_articulos.log&quot; 2&gt;&amp;1
+</code></pre>
+</li>
+<li>Captura el código de retorno (<code>%ERRORLEVEL%</code>) e imprime la confirmación en el log.</li>
+</ol>
+<h3>5.2. Comando para los compañeros (Ejecución y Programación)</h3>
+<h4>A. Ejecución manual inmediata (Prueba desde consola)</h4>
+<p>Cualquier compañero que tenga el proyecto clonado y el entorno virtual configurado puede ejecutar la sincronización con un solo comando:</p>
+<pre><code class="language-powershell"># Opción 1: Ejecutar directamente el archivo batch
+.\ejecutar_actualizacion.bat
+
+# Opción 2: Ejecutar el módulo mediante el entorno virtual
+python -m baco.server.discourse.actualizar_nuevos_articulos
+</code></pre>
+<h4>B. Comando para registrar la Tarea Programada en Windows (Miércoles 11:00 AM)</h4>
+<p>Para que se ejecute de forma automática todas las semanas en su propia máquina Windows, pueden crear la tarea con el siguiente comando en PowerShell (abierto como Administrador):</p>
+<pre><code class="language-powershell">schtasks /create /tn &quot;BACO_Actualizar_Articulos&quot; /tr &quot;C:\Users\ahreq\IdeaProjects\GeminiAgente\ejecutar_actualizacion.bat&quot; /sc weekly /d WED /st 11:00 /rl HIGHEST /f
+</code></pre>
+<p><em>(Nota: Reemplazar la ruta absoluta por la ruta donde el compañero tenga clonado el repositorio).</em></p>
+<h3>5.3. Dockerización Futura (Hacia la arquitectura de producción)</h3>
+<p>La automatización mediante <code>.bat</code> y Programador de Tareas de Windows es una solución práctica para el entorno de desarrollo local, pero presenta limitaciones:</p>
+<ul>
+<li>Depende de que la computadora esté encendida a las 11:00 AM.</li>
+<li>Utiliza rutas absolutas de Windows.</li>
+<li>Depende del runtime y las versiones locales del sistema operativo.</li>
+</ul>
+<p><strong>Plan de migración a Docker:</strong>
+Se propone una arquitectura desacoplada en <code>docker-compose.yml</code>:</p>
+<ol>
+<li><strong>Contenedor <code>baco-db</code>:</strong> Imagen <code>pgvector/pgvector:pg16</code> para disponer de PostgreSQL con vectorización nativa lista.</li>
+<li><strong>Contenedor <code>baco-api</code>:</strong> Imagen ligera Python 3.12 con FastAPI sirviendo las peticiones del frontend.</li>
+<li><strong>Contenedor <code>baco-worker</code> / Cron:</strong> Contenedor Python que ejecuta un planificador interno (como Celery Beat, APScheduler o un demonio cron en Alpine Linux) para disparar <code>actualizar_nuevos_articulos.py</code> en base al horario configurado en variables de entorno, sin depender del host.</li>
+</ol>
+<hr />
+<h2>6. Separación de Capas: Determinista vs. Agentica</h2>
+<p>Una de las decisiones arquitectónicas más importantes del proyecto fue <strong>erradicar las validaciones deterministas del ámbito de las Skills y del Prompt del LLM</strong>, concentrándolas en la capa de servicios del servidor (<code>baco/server/services/</code>).</p>
+<div class="mermaid-container"><pre class="mermaid">
+flowchart LR
+    subgraph Entrada ["Texto / Borrador"]
+        Doc[Borrador de Artículo]
+    end
+
+    subgraph CapaDeterminista ["Capa Determinista (Servidor / Python)"]
+        V1["validar_articulo.py"]
+        V2["Longitud >= 300 caracteres"]
+        V3["Tags >= 2 (con instructivo o soluciones)"]
+        V4["Título sin punto final / Sin 'Cómo...'"]
+        V5["Marcadores pendientes [Indicar...]"]
+        V6["Categoría obligatoria"]
+    end
+
+    subgraph Filtro ["Resultado Estructural"]
+        Pasa{"¿Supera validación?"}
+    end
+
+    subgraph CapaAgentica ["Capa Agentica (Strands + Gemini)"]
+        S1["validador: Privacidad / PII / CUITs reales"]
+        S2["validador: Coherencia conceptual ERP"]
+        S3["aplicar_plantillas: Modo infinitivo y markdown"]
+        S4["detectar_duplicados: Arbitraje en zona de ambigüedad"]
+    end
+
+    Doc --> CapaDeterminista
+    CapaDeterminista --> Pasa
+    Pasa -- "No (Bloqueante)" --> Rechazo["Rechazo instantáneo (0 ms) con lista de hallazgos"]
+    Pasa -- "Sí (Válido o Requiere Ajuste)" --> CapaAgentica
+</pre></div>
+<h3>6.1. ¿Por qué NO hacer todo con el Agente / LLM?</h3>
+<ol>
+<li><strong>Costo computacional y financiero:</strong> Consultar a Gemini o a cualquier LLM para verificar si un texto tiene al menos 300 caracteres o si termina en punto final cuesta tokens y dinero innecesario.</li>
+<li><strong>Latencia extrema:</strong> La validación determinista en Python tarda <strong>0.5 milisegundos</strong>. Una llamada a la API de un LLM toma entre <strong>800 ms y 3.500 ms</strong>.</li>
+<li><strong>Determinismo vs. Probabilidad:</strong> Los LLMs son probabilísticos; pueden &quot;pasar por alto&quot; reglas sintácticas estrictas o alucinar que un tag está presente cuando no lo está. Una función en Python es 100% binaria y predecible.</li>
+<li><strong>Protección contra saturación de cuotas (Rate Limits 429/503):</strong> Al filtrar los borradores incompletos o mal formados en el servidor, se evita llamar al LLM con datos basura.</li>
+</ol>
+<h3>6.2. Matriz de Responsabilidades</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Aspecto a Validar / Procesar</th>
+<th style="text-align:left">Capa Responsable</th>
+<th style="text-align:left">Mecanismo Técnico</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Presencia obligatoria de Título y Categoría</td>
+<td style="text-align:left"><strong>Determinista</strong></td>
+<td style="text-align:left"><code>validar_articulo.py</code> (Chequeo directo de atributos)</td>
+</tr>
+<tr>
+<td style="text-align:left">Longitud mínima de texto (&gt;= 300 caracteres)</td>
+<td style="text-align:left"><strong>Determinista</strong></td>
+<td style="text-align:left"><code>len(texto.strip()) &gt;= 300</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Cantidad de tags (&gt;= 2) y presencia de tag de tipo</td>
+<td style="text-align:left"><strong>Determinista</strong></td>
+<td style="text-align:left">Verificación de pertenencia en sets (<code>'instructivo'</code>, <code>'soluciones'</code>)</td>
+</tr>
+<tr>
+<td style="text-align:left">Título: sin punto final y sin fórmulas (&quot;Cómo...&quot;)</td>
+<td style="text-align:left"><strong>Determinista</strong></td>
+<td style="text-align:left">Expresiones regulares (<code>re.match</code>, <code>re.search</code>)</td>
+</tr>
+<tr>
+<td style="text-align:left">Detección de marcadores pendientes (<code>[Indicar ...]</code>)</td>
+<td style="text-align:left"><strong>Determinista</strong></td>
+<td style="text-align:left">Regex <code>r&quot;\[Indicar[^]]*\]&quot;</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Búsqueda inicial de títulos idénticos o cuasi-idénticos</td>
+<td style="text-align:left"><strong>Determinista</strong></td>
+<td style="text-align:left">SQL sobre <code>titulo_normalizado</code> y algoritmos de distancia de Levenshtein</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Detección de datos privados (PII, CUITs, clientes reales)</strong></td>
+<td style="text-align:left"><strong>Agentica (Skill: validador)</strong></td>
+<td style="text-align:left">Comprensión semántica y contextual de entidades nombradas</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Detección de tokens, claves o tickets de soporte internos</strong></td>
+<td style="text-align:left"><strong>Agentica (Skill: validador)</strong></td>
+<td style="text-align:left">Reconocimiento de jerga y números de ticket en contexto</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Coherencia causa-efecto (¿los pasos resuelven el error?)</strong></td>
+<td style="text-align:left"><strong>Agentica (Skill: validador)</strong></td>
+<td style="text-align:left">Razonamiento lógico sobre el flujo del problema y la solución</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Redacción en infinitivo y reestructuración de plantilla</strong></td>
+<td style="text-align:left"><strong>Agentica (Skill: aplicar_plantillas)</strong></td>
+<td style="text-align:left">Síntesis editorial, eliminación de muletillas y reformulación sintáctica</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Arbitraje de duplicados en variantes paramétricas</strong></td>
+<td style="text-align:left"><strong>Agentica (Skill: detectar_duplicados)</strong></td>
+<td style="text-align:left">Comprensión de normativas ERP (ARBA vs. CABA, Compras vs. Ventas)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>7. Skills Desarrolladas y sus Criterios de Dominio</h2>
+<p>Las tres skills se encuentran implementadas bajo la convención estándar en la carpeta <code>baco/skills/</code>. Cada skill contiene su respectivo archivo descriptivo <code>SKILL.md</code> y una subcarpeta <code>references/</code> con ejemplos y pautas.</p>
+<h3>7.1. Skill: <code>aplicar_plantillas</code></h3>
+<ul>
+<li><strong>Misión:</strong> Actúa como motor de transformación semántica y estilística para redactar artículos bajo el estándar de Finnegans.</li>
+<li><strong>Reglas operativas esenciales:</strong>
+<ol>
+<li><strong>Modo infinitivo estricto:</strong> Convierte instrucciones redactadas en imperativo o segunda persona (<em>&quot;ingresá a ventas y hacé clic&quot;</em>) a infinitivo neutro (<em>&quot;Ingresar a ventas y hacer clic&quot;</em>).</li>
+<li><strong>Cero alucinación (Fidelidad factual):</strong> Prohibido inventar rutas, botones, módulos o pantallas que no figuren en el borrador original.</li>
+<li><strong>Marcadores explícitos:</strong> Si el borrador omite un dato indispensable para completar el procedimiento, la skill inserta un marcador <code>[Indicar ...]</code> para que el redactor lo complete manualmente.</li>
+<li><strong>Salida limpia:</strong> Devuelve exclusivamente el Markdown del artículo final, sin preámbulos conversacionales (<em>&quot;Hola, aquí tienes el artículo...&quot;</em>) ni fichas redundantes.</li>
+</ol>
+</li>
+<li><strong>Estructuras admitidas:</strong>
+<ul>
+<li><strong>Instructivo:</strong> Secciones <code>## Objetivo</code>, <code>## Alcance (Qué hace y qué no hace)</code>, <code>## Requisitos previos</code>, <code>## Procedimiento paso a paso</code>, <code>## Resultado esperado</code>.</li>
+<li><strong>Soluciones:</strong> Secciones <code>## Consulta</code> (con síntoma y error textual entre comillas), <code>## Respuesta</code> (causa raíz conceptual, sin pasos), <code>## Pasos a seguir</code> (secuencia numerada en infinitivo). Incluye condicionalmente <code>## Requiere AppBuilder</code> si aplica.</li>
+</ul>
+</li>
+</ul>
+<h3>7.2. Skill: <code>detectar_duplicados</code></h3>
+<ul>
+<li><strong>Misión:</strong> Arbitrar casos ambiguos que hayan superado el filtro determinista inicial, evitando tanto la redundancia innecesaria como la unificación destructiva de procedimientos distintos.</li>
+<li><strong>Principio Human-In-The-Loop (HITL):</strong> El agente nunca elimina ni fusiona artículos por su cuenta; entrega un dictamen estructurado y formula opciones para que el editor humano tome la decisión final.</li>
+<li><strong>Taxonomía de casos del dominio ERP Finnegans:</strong>
+<ol>
+<li><strong>Duplicado Real:</strong> Mismo objetivo de negocio (<em>Job-to-be-Done</em>) y mismo procedimiento redactado con palabras distintas o singular/plural. <em>Acción: Unificar.</em></li>
+<li><strong>Variante Paramétrica (¡El caso más crítico!):</strong> Pantallas y pasos casi idénticos pero con regímenes impositivos, jurisdicciones o países distintos (ej. <em>Retenciones IIBB ARBA</em> vs. <em>Retenciones IIBB CABA</em>; <em>Factura Electrónica Argentina</em> vs. <em>Facturación Uruguay</em>). <strong>Fusionar estos artículos provocaría que un cliente aplique una configuración fiscal errónea en su sistema.</strong> <em>Acción: Mantener estrictamente separados.</em></li>
+<li><strong>Flujo Complementario u Opuesto:</strong> Misma entidad de negocio pero etapas cronológicas opuestas (ej. <em>Factura de Compra</em> vs. <em>Factura de Venta</em>, <em>Liquidación Primaria</em> vs. <em>Secundaria</em>). <em>Acción: Mantener separados con enlaces cruzados.</em></li>
+<li><strong>Relación Jerárquica:</strong> Un artículo general sobre el módulo frente a un artículo puntual sobre un error o solapa específica. <em>Acción: Mantener separados o sugerir integración como acápite.</em></li>
+</ol>
+</li>
+<li><strong>Salida estructurada obligatoria:</strong> Dictamen, Nivel de Confianza, Análisis de Divergencia Semántica, Riesgo Operativo y Opciones Accionables (Recomendada y alternativas).</li>
+</ul>
+<h3>7.3. Skill: <code>validador</code></h3>
+<ul>
+<li><strong>Misión:</strong> Auditoría de excelencia editorial, seguridad de la información y coherencia técnica previa a la publicación.</li>
+<li><strong>Ejes de auditoría:</strong>
+<ol>
+<li><strong>Publicación Segura y Privacidad (Detección de PII):</strong> Detección proactiva de CUITs reales, razones sociales de clientes reales, correos electrónicos corporativos, credenciales, URLs de entornos internos o menciones a tickets de soporte (<em>&quot;Ticket #94821&quot;</em>).</li>
+<li><strong>Calidad Semántica del Título:</strong> Verificar que exprese la acción y el contexto en el ERP de forma clara y unívoca.</li>
+<li><strong>Coherencia Conceptual:</strong> Validar que el procedimiento técnico pertenezca realmente a la categoría asignada (ej. que una configuración de sueldos no esté en la categoría de cuentas a cobrar).</li>
+<li><strong>Coherencia Causa-Efecto:</strong> Constatar que los pasos descritos solucionen efectivamente el mensaje de error o problema expuesto.</li>
+</ol>
+</li>
+</ul>
+<hr />
+<h2>8. ¿Qué es FastAPI, Estado Actual y Qué Falta Implementar?</h2>
+<h3>8.1. ¿Qué es FastAPI?</h3>
+<p><strong>FastAPI</strong> es un framework web moderno y de muy alto rendimiento para construir APIs con Python basado en estándares abiertos:</p>
+<ul>
+<li><strong>Asincronía nativa (<code>async</code> / <code>await</code>):</strong> A diferencia de frameworks sincrónicos como Flask tradicional o Django clásico, FastAPI está construido sobre <strong>Starlette</strong>, lo que le permite manejar miles de conexiones concurrentes en espera de I/O (consultas a base de datos o llamadas a la API de Gemini) sin bloquear hilos.</li>
+<li><strong>Tipado estático con Pydantic:</strong> Los datos entrantes se validan automáticamente con las clases de Pydantic. Si un cliente envía un JSON inválido, FastAPI responde automáticamente con un error HTTP 422 claro y estructurado.</li>
+<li><strong>Documentación OpenAPI interactiva:</strong> Genera de forma automática una interfaz web Swagger UI accesible en <code>/docs</code> donde cualquiera puede probar los endpoints sin necesidad de Postman.</li>
+</ul>
+<h3>8.2. Estado Actual de la API (<code>baco/server/app/main.py</code>)</h3>
+<p>En el estado actual del repositorio, el archivo <code>main.py</code> contiene:</p>
+<ul>
+<li>Inicialización de la aplicación FastAPI (<code>app = FastAPI()</code>).</li>
+<li>Configuración de <code>CORSMiddleware</code> para habilitar peticiones desde clientes locales (<code>localhost</code> y <code>127.0.0.1</code>).</li>
+<li>Endpoint de verificación de salud (<em>healthcheck</em>): <code>GET /</code> devolviendo <code>{&quot;message&quot;: &quot;Es reactiva? Si xd&quot;}</code>.</li>
+<li>Bloque de ejecución con Uvicorn en el puerto <code>8080</code>.</li>
+<li>Anotaciones sobre manejo de sesiones con Redis para persistencia de borradores.</li>
+</ul>
+<h3>8.3. Qué falta implementar en FastAPI (Hoja de Ruta del Backend)</h3>
+<p>Para conectar el frontend y completar la arquitectura de BACO, resta implementar los siguientes módulos y rutas en FastAPI:</p>
+<div class="mermaid-container"><pre class="mermaid">
+flowchart TD
+    subgraph EndpointsFaltantes ["Endpoints REST a Implementar en FastAPI"]
+        E1["POST /api/articulos/validar-estructura<br/>(Ejecuta validar_articulo.py determinista)"]
+        E2["POST /api/articulos/detectar-duplicados<br/>(Busca candidatos SQL/Fuzzy + Arbitraje Agentico)"]
+        E3["POST /api/articulos/aplicar-plantilla<br/>(Ejecuta Skill aplicar_plantillas con Gemini)"]
+        E4["POST /api/articulos/auditar-semantica<br/>(Ejecuta Skill validador con Gemini)"]
+        E5["GET /api/articulos (Listado paginado)<br/>GET /api/categorias (Para combos del front)"]
+        E6["POST /api/articulos/streaming<br/>(Server-Sent Events / SSE para generación en tiempo real)"]
+    end
+</pre></div>
+<ol>
+<li><strong>Endpoints de Validación Determinista (Rápidos):</strong>
+<ul>
+<li><code>POST /api/articulos/validar-estructura</code>: Recibe el borrador en un payload <code>ArticuloSchema</code> y devuelve de inmediato el JSON de <code>validar_estructura_articulo()</code> con la lista de <code>findings</code> (severidad, campo, descripción y acción sugerida).</li>
+</ul>
+</li>
+<li><strong>Endpoints Agenticos de Transformación y Auditoría:</strong>
+<ul>
+<li><code>POST /api/articulos/aplicar-plantilla</code>: Invoca al agente Strands activando la skill <code>aplicar_plantillas</code> y retorna el cuerpo en Markdown normalizado.</li>
+<li><code>POST /api/articulos/auditar-semantica</code>: Invoca la skill <code>validador</code> sobre el artículo y devuelve el informe de privacidad, título, coherencia y estilo.</li>
+</ul>
+</li>
+<li><strong>Endpoint Híbrido de Duplicados:</strong>
+<ul>
+<li><code>POST /api/articulos/analizar-duplicados</code>:
+<ul>
+<li><em>Fase 1 (Determinista):</em> Normaliza el título y busca coincidencias en <code>baco_db</code> con similitud de texto mayor al 70%.</li>
+<li><em>Fase 2 (Agentica):</em> Si hay coincidencias moderadas/ambiguas, pasa el par sospechoso a la skill <code>detectar_duplicados</code> y devuelve el dictamen estructurado para el usuario.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>Streaming en Tiempo Real (Server-Sent Events - SSE):</strong>
+<ul>
+<li>Como las respuestas de los LLMs en artículos extensos pueden demorar varios segundos, es necesario implementar un endpoint con streaming para que el usuario en el frontend vea el texto generándose palabra por palabra en lugar de ver una pantalla de carga congelada.</li>
+</ul>
+</li>
+<li><strong>Persistencia de Borradores y Manejo de Sesión:</strong>
+<ul>
+<li>Endpoint para guardar borradores en progreso (<code>drafts</code>) en PostgreSQL o Redis para que el usuario no pierda su trabajo si recarga la página.</li>
+</ul>
+</li>
+<li><strong>Manejo Global de Excepciones y Modelos de Respuesta:</strong>
+<ul>
+<li>Estandarizar respuestas de error con códigos HTTP semánticos (400 Bad Request, 404 Not Found, 422 Unprocessable Entity, 500 Internal Server Error) y contratos Pydantic para la documentación en Swagger.</li>
+</ul>
+</li>
+</ol>
+<hr />
+<h2>9. Guía de Puesta en Marcha Rápida para el Equipo</h2>
+<p>Para que cualquier miembro del equipo clone y ejecute el proyecto en su máquina:</p>
+<h3>Paso 1: Clonar y configurar variables de entorno</h3>
+<pre><code class="language-bash">git clone https://github.com/carolina-gonzalez-129/baco.git
+cd baco
+</code></pre>
+<p>Crear un archivo <code>.env</code> en la raíz tomando como base las credenciales del equipo:</p>
+<pre><code class="language-env">DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=tu_contraseña
+DB_NAME=baco_db
+
+DISCOURSE_API_KEY=tu_api_key_de_discourse
+DISCOURSE_API_USERNAME=system
+DISCOURSE_URL=bc-dev.finneg.com
+
+GEMINI_API_KEY=tu_api_key_de_gemini
+PROFILE=tu_perfil_mcp
+</code></pre>
+<h3>Paso 2: Crear entorno virtual e instalar dependencias</h3>
+<pre><code class="language-powershell">python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+</code></pre>
+<h3>Paso 3: Inicializar la Base de Datos PostgreSQL</h3>
+<p>Asegurarse de tener PostgreSQL corriendo localmente y ejecutar:</p>
+<pre><code class="language-powershell">python -m baco.server.db.cargar_articulos_postgres
+</code></pre>
+<p><em>Esto verificará o creará <code>baco_db</code>, generará las 4 tablas con sus claves foráneas e índices, e importará el set de datos inicial si está disponible.</em></p>
+<h3>Paso 4: Probar la Sincronización Incremental</h3>
+<pre><code class="language-powershell">python -m baco.server.discourse.actualizar_nuevos_articulos
+</code></pre>
+<h3>Paso 5: Levantar el Servidor FastAPI</h3>
+<pre><code class="language-powershell">uvicorn baco.server.app.main:app --reload --host localhost --port 8080
+</code></pre>
+<p>Abrir el navegador en <a href="http://localhost:8080/docs">http://localhost:8080/docs</a> para ver la documentación interactiva Swagger.</p>
+<hr />
+<p><em>Documento elaborado para el equipo de desarrollo de BACO.</em></p>
+
+</body>
+</html>

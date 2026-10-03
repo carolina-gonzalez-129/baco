@@ -104,9 +104,10 @@ def sincronizar_nuevos_articulos():
     )
     
     try:
-        # Aseguramos que la columna titulo_normalizado exista en la tabla
+        # Aseguramos que las columnas normalizadas existan en la tabla
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS titulo_normalizado VARCHAR(500);")
+            cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS texto_normalizado TEXT;")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_titulo_norm ON articulos(titulo_normalizado);")
         conn.commit()
 
@@ -187,8 +188,9 @@ def sincronizar_nuevos_articulos():
                             except Exception:
                                 pass
 
-                        # Normalizamos el título para búsquedas rápidas
-                        titulo_norm = normalizar(titulo)
+                        # Normalizamos el título y el texto para búsquedas rápidas
+                        titulo_norm = normalizar(titulo or "")
+                        texto_norm = normalizar(texto_crudo or "")
 
                         with conn.cursor() as cur:
                             # A. Insertar categoría si no existe
@@ -229,12 +231,19 @@ def sincronizar_nuevos_articulos():
                                         if tag_row:
                                             tags_a_vincular.append(tag_row[0])
 
-                            # C. Insertar el artículo nuevo
+                            # C. Insertar el artículo nuevo con titulo y texto normalizados
                             cur.execute("""
-                                INSERT INTO articulos (id, titulo, categoria_id, url, texto, titulo_normalizado, actualizado)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (id) DO NOTHING;
-                            """, (tema_id, titulo, cat_id, url, texto_crudo, titulo_norm, fecha_dt))
+                                INSERT INTO articulos (id, titulo, categoria_id, url, texto, titulo_normalizado, texto_normalizado, actualizado)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (id) DO UPDATE SET
+                                    titulo = EXCLUDED.titulo,
+                                    categoria_id = EXCLUDED.categoria_id,
+                                    url = EXCLUDED.url,
+                                    texto = EXCLUDED.texto,
+                                    titulo_normalizado = EXCLUDED.titulo_normalizado,
+                                    texto_normalizado = EXCLUDED.texto_normalizado,
+                                    actualizado = EXCLUDED.actualizado;
+                            """, (tema_id, titulo, cat_id, url, texto_crudo, titulo_norm, texto_norm, fecha_dt))
 
                             # D. Vincular artículo con sus tags
                             for tag_id in tags_a_vincular:

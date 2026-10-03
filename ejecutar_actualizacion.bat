@@ -14,9 +14,12 @@ echo ======================================================== >> "actualizar_art
 echo Sincronizacion iniciada: %DATE% %TIME% >> "actualizar_articulos.log"
 echo ======================================================== >> "actualizar_articulos.log"
 
-REM 3. Ejecutar el script usando el Python del entorno virtual (.venv)
+REM 3. Ejecutar sincronizacion desde Discourse (inserta articulos con titulo y texto normalizados)
 ".venv\Scripts\python.exe" -m baco.server.discourse.actualizar_nuevos_articulos >> "actualizar_articulos.log" 2>&1
 
-REM 4. Registrar finalización
+REM 4. Asegurar que cualquier articulo pendiente quede con titulo y texto normalizado
+".venv\Scripts\python.exe" baco\server\db\rellenar_normalizados.py >> "actualizar_articulos.log" 2>&1
+
+REM 5. Registrar finalización
 echo Sincronizacion finalizada con codigo: %ERRORLEVEL% >> "actualizar_articulos.log"
 echo. >> "actualizar_articulos.log"

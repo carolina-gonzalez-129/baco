@@ -53,26 +53,8 @@ if __name__ == "__main__":
 
 #session_backend = RedisBackend(url="redis://localhost:6379/0")
 
-# # =========================================================
-# # PARA LODE PERSISTENCIA DE SESION VER DE USAR REDIS
-# # =========================================================
-# session_store = RedisStore("redis://localhost:6379/0")
-# app.add_middleware(
-#     SessionMiddleware,
-#     store=session_store,
-#     cookie_name="baco_session",
-#     cookie_https_only=
-#     lifetime=3600 * 24
-# )
-# #
-#
-#
-# @app.post("/login")
-# async def login(request: Request):
-#     # Store data persistently in the server-side session
-#     request.session["user_id"] = 42
-#     request.session["is_authenticated"] = True
-#     return {"message": "Logged in and session persisted!"}
+
+
 #
 # @app.get("/profile")
 # async def profile(request: Request):

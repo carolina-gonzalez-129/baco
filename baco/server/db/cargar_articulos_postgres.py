@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime
 import psycopg
 from dotenv import load_dotenv
+from baco.server.services.normalizar import normalizar
 #SOLO NORMALIZA TITULOS!
 #IMPORTANTE : esto voy a tener q tenerlo en varios mas, revisar toods xq sino da module error
 #Xq no reconoce a my_agent
@@ -37,6 +38,7 @@ DDL_SCHEMA = """
                  categoria_id INT,
                  url TEXT NOT NULL,
                  texto TEXT NOT NULL,
+                 titulo_normalizado VARCHAR(500),
                  texto_normalizado TEXT,
                  actualizado TIMESTAMPTZ,
                  creado_en TIMESTAMPTZ DEFAULT NOW(),
@@ -133,12 +135,16 @@ def importar_articulos():
             except Exception:
                 pass
 
+        tit_raw = item.get("titulo", "")
+        txt_raw = item.get("texto", "")
         articulos_rows.append((
             art_id,
-            item.get("titulo", ""),
+            tit_raw,
             cat_id,
             item.get("url", ""),
-            item.get("texto", ""),
+            txt_raw,
+            normalizar(tit_raw),
+            normalizar(txt_raw),
             fecha_dt
         ))
 
@@ -164,16 +170,18 @@ def importar_articulos():
                                 ON CONFLICT (id) DO NOTHING;
                             """, tag_data)
 
-            # 3. Insertar Artículos
+            # 3. Insertar Artículos con campos normalizados
             print(f" Insertando {len(articulos_rows)} artículos...")
             cur.executemany("""
-                            INSERT INTO articulos (id, titulo, categoria_id, url, texto, actualizado)
-                            VALUES (%s, %s, %s, %s, %s, %s)
+                            INSERT INTO articulos (id, titulo, categoria_id, url, texto, titulo_normalizado, texto_normalizado, actualizado)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (id) DO UPDATE SET
-                                titulo = EXCLUDED.titulo,
-                                                        url = EXCLUDED.url,
-                                                        texto = EXCLUDED.texto,
-                                                        actualizado = EXCLUDED.actualizado;
+                                    titulo = EXCLUDED.titulo,
+                                    url = EXCLUDED.url,
+                                    texto = EXCLUDED.texto,
+                                    titulo_normalizado = EXCLUDED.titulo_normalizado,
+                                    texto_normalizado = EXCLUDED.texto_normalizado,
+                                    actualizado = EXCLUDED.actualizado;
                             """, articulos_rows)
 
             # 4. Insertar Relación Artículo <-> Tags

@@ -10,3 +10,5 @@ uvicorn
 httpx
 pydantic
 mcp
+psycopg
+beautifulsoup4
