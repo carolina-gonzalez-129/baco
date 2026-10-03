@@ -1,10 +1,7 @@
 import json
 import sys
-from contextlib import nullcontext
 from pathlib import Path
 
-import collection
-import numpy as np
 from sentence_transformers import SentenceTransformer
 
 #IMPORTANTE : esto voy a tener q tenerlo en varios mas, revisar toods xq sino da module error
@@ -13,10 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from my_agent.server.discourse import client
 from my_agent.server.services.normalizar import normalizar
 from rapidfuzz import fuzz
-import hashlib
+
 from dotenv import load_dotenv
 import os
-import numpy as np
+
 from rapidfuzz import process, fuzz
 load_dotenv()
 #Cargo la ruta de los articulos normalizados y los convierto a un  dict de python
