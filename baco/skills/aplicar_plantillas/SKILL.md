@@ -1,120 +1,60 @@
 ---
 name: aplicar_plantillas
-description: Identifica si una entrada corresponde a un instructivo o una solución y la organiza usando la plantilla Instructivo o Soluciones de Finnegans.
+description: Transforma y normaliza borradores o textos de la Base de Conocimiento Finnegans al formato estructurado de Instructivo o Soluciones mediante procesamiento del lenguaje natural.
 ---
 
-# Aplicar plantillas
+# Aplicar plantillas (Motor de Transformación NLP)
 
-Usa esta skill para organizar un texto nuevo o existente como artículo de la Base de Conocimiento.
+Usa esta skill para procesar, limpiar y reestructurar semánticamente textos en bruto o borradores, convirtiéndolos en artículos publicables bajo los estándares editoriales de Finnegans (**Instructivo** o **Soluciones**).
 
-Antes de aplicar una plantilla, verifica que estén disponibles los metadatos mínimos. Son datos de trabajo internos y no deben repetirse en la salida.
+> **Garantía del Servidor:** La presencia de campos obligatorios (título, categoría, texto base) y la validación de tipos son garantizadas previamente por la capa determinista de la aplicación. Esta skill opera directamente sobre el contenido como un **transformador lingüístico y semántico**, enfocándose en la redacción, síntesis y estructura.
 
-## Datos obligatorios de entrada
+---
 
-La solicitud debe incluir:
+## Directrices de Transformación Lingüística
 
-- **Título**
-- **Categoría**
-- **Tipo de plantilla:** exactamente `instructivo` o `soluciones`
-- **Descripción**
-- **Contenido fuente**, que puede ser la misma descripción cuando no haya información adicional
+1. **Comprensión Semántica:** Analiza el texto fuente para identificar el propósito operativo real (aprender a usar una función vs. diagnosticar y corregir un error).
+2. **Normalización Verbal:** 
+   * Redacta todos los pasos y acciones en **modo infinitivo** (ej. *"Ingresar a...", "Seleccionar el comprobante...", "Hacer clic en Guardar"*), eliminando el uso de imperativos o segunda persona (*"ingresá", "debés seleccionar"*).
+3. **Fidelidad Factual (Cero Alucinación):** 
+   * Conserva toda la información técnica, nombres de parámetros y rutas operativas confirmadas en la fuente.
+   * Nunca inventes pantallas, módulos, botones, causas de error ni capacidades inexistentes en Finnegans.
+   * Si en la fuente falta un dato operativo puntual que el usuario debe completar, inserta un marcador explícito: `[Indicar ...]`.
+4. **Limpieza Editorial:** 
+   * Elimina redundancias, muletillas, fórmulas conversacionales (*"A continuación veremos...", "En este artículo te enseño..."*) y comentarios personales del autor.
+   * Devuelve **únicamente** el cuerpo Markdown del artículo final listo para ser publicado (sin saludos, sin metadatos duplicados como ficha técnica, y sin explicaciones sobre la plantilla aplicada).
 
-Las etiquetas temáticas son opcionales. Si falta cualquiera de los cuatro datos mínimos, no apliques la plantilla: solicita únicamente el dato faltante. No infieras el tipo de plantilla ni completes datos ausentes con marcadores.
+---
 
-Una vez confirmados los metadatos mínimos, conserva la descripción y todo el contenido fuente confirmado. Los marcadores `[Indicar ...]` solo pueden usarse dentro de una sección cuando falta un detalle operativo que la fuente no proporciona.
+## Estructuras por Tipo de Plantilla
 
-## Aplicación
+### 1. Plantilla `instructivo`
+Aplica la estructura detallada en [references/plantilla-instructivo.md](references/plantilla-instructivo.md) cuando el contenido describe un procedimiento paso a paso o una funcionalidad regular del sistema.
 
-- Para `instructivo`, usa [la plantilla Instructivo](references/plantilla-instructivo.md).
-- Para `soluciones`, usa [la plantilla de Soluciones](references/plantilla-soluciones.md).
-- Conserva el orden y los nombres de las secciones de la plantilla elegida.
-- Usa los ejemplos de referencia únicamente para comprender el formato. No copies su estructura si contradice la plantilla correspondiente.
-- No uses los casos de prueba como contenido del artículo.
-- Usa título, categoría, tipo de plantilla y descripción como etiquetas implícitas de clasificación. No los muestres como encabezado, ficha, resumen ni sección adicional.
-- Devuelve únicamente el cuerpo publicable del artículo.
-- No agregues texto antes o después del artículo.
-- No incluyas comentarios editoriales, observaciones, diagnósticos, estados de revisión ni explicaciones sobre la plantilla aplicada.
-- No incluyas una sección o texto llamado `Plantilla aplicada`.
-- No repitas el encabezado ni ninguna sección.
-- No inventes categorías, rutas, pantallas, causas, mensajes, datos, acciones, resultados ni capacidades del sistema.
-- Si falta información, conserva un marcador claro como `[Indicar ruta]` dentro de la sección correspondiente.
-- Conserva toda la información confirmada del contenido fuente.
+* **Objetivo:** Sintetizar con claridad en uno o dos párrafos qué permite realizar la funcionalidad.
+* **Alcance ("Qué hace y qué no hace"):** Extraer y contrastar los límites confirmados del módulo si el texto fuente los menciona.
+* **Requisitos previos:** Aislar configuraciones previas, permisos o datos maestros necesarios.
+* **Procedimiento paso a paso:** Desglosar la secuencia cronológica numerada con verbos en infinitivo.
+* **Resultado esperado:** Detallar el comprobante, asiento o estado final que produce el procedimiento.
 
-## Reglas para instructivos
+### 2. Plantilla `soluciones`
+Aplica la estructura detallada en [references/plantilla-soluciones.md](references/plantilla-soluciones.md) cuando el contenido describe la resolución de un mensaje de error, comportamiento anómalo o consulta frecuente (*Q&A técnico*).
 
-Para la plantilla `instructivo`:
+Debe incluir exactamente estas tres secciones principales:
+1. `## Consulta`: 
+   * Describe el síntoma o consulta en tiempo presente.
+   * Cita textualmente el mensaje de error entre comillas si está presente en la fuente.
+   * **No** adelantar la solución ni explicar las causas aquí.
+2. `## Respuesta`: 
+   * Explica la causa raíz y el porqué del comportamiento observado según la fuente.
+   * **No** listar pasos operativos ni instrucciones numeradas aquí.
+3. `## Pasos a seguir`: 
+   * Secuencia ordenada y numerada de pasos para resolver el problema.
+   * Verbos en infinitivo, directos y enfocados exclusivamente en la acción de corrección.
 
-- Respetar exactamente las secciones definidas en `references/plantilla-instructivo.md`.
-- Incluir **Qué hace y qué no hace** cuando el contenido describa el alcance o comportamiento de una funcionalidad.
-- Usar únicamente capacidades y límites confirmados.
-- Si no hay información suficiente sobre una capacidad o límite, conservar un marcador pendiente en lugar de inventarlo.
-- Escribir las acciones y los pasos con verbos en infinitivo.
+---
 
-## Reglas para soluciones
+## Secciones Condicionales por Dominio
 
-Para la plantilla `soluciones`, incluir exactamente estas secciones y en este orden:
-
-1. `## Consulta`
-2. `## Respuesta`
-3. `## Pasos a seguir`
-
-### Consulta
-
-En `## Consulta`:
-
-- Describir únicamente el problema observado.
-- Incluir las acciones que provocan el problema, si fueron proporcionadas.
-- Describir el comportamiento observado del sistema.
-- Incluir el mensaje de error, si fue proporcionado.
-- Mantener la redacción en tiempo presente.
-- Incluir la ruta únicamente si fue proporcionada.
-- No explicar la causa.
-- No explicar por qué ocurre el problema.
-- No incluir instrucciones para resolverlo.
-- No incluir pasos de solución.
-
-### Respuesta
-
-En `## Respuesta`:
-
-- Explicar la causa del inconveniente.
-- Explicar por qué ocurre el comportamiento observado.
-- Explicar por qué la solución corrige el problema.
-- Usar únicamente información confirmada en el contenido fuente.
-- Si la causa no está confirmada, indicarla como posible causa.
-- No inventar causas, datos ni comportamientos.
-- No repetir innecesariamente la descripción de `Consulta`.
-- No incluir pasos operativos numerados.
-
-### Pasos a seguir
-
-En `## Pasos a seguir`:
-
-- Incluir únicamente acciones operativas para resolver el problema.
-- Usar verbos en infinitivo.
-- Numerar los pasos en orden.
-- Mantener únicamente acciones confirmadas en el contenido fuente.
-- Incluir la ruta de acceso únicamente si fue proporcionada.
-- No agregar explicaciones conceptuales ni causas dentro de esta sección.
-- No inventar pasos, pantallas, botones, rutas o resultados.
-
-## Secciones opcionales
-
-Incluir **Requiere AppBuilder** únicamente cuando la solicitud confirme que aplica o que se necesita AppBuilder. Si la solicitud confirma que no aplica, omitirla. Si no hay confirmación, no inventar el requisito ni mostrar una sección de duda.
-
-La sección puede incluir los campos o acciones de AppBuilder confirmados por la fuente.
-
-El tiempo de lectura no forma parte de la salida de esta skill. Si la aplicación lo necesita, debe calcularlo fuera de la skill a partir de la cantidad de palabras.
-
-No incluir instrucciones sobre botones de edición, Paint, colores de marca, publicación ni otras pautas editoriales en el artículo.
-
-## Etiquetas
-
-Las etiquetas deben incluir siempre el tipo correspondiente:
-
-- `instructivo` para la plantilla Instructivo.
-- `soluciones` para la plantilla Soluciones.
-
-Conservar las etiquetas temáticas recibidas y no inventar etiquetas adicionales, salvo la etiqueta obligatoria del tipo.
-
-Usar siempre la forma `soluciones`, incluso cuando el texto fuente diga “Solución”.
+* **Requiere AppBuilder:** Incluir esta sección técnica únicamente si el texto fuente confirma explícitamente el uso de personalizaciones o parametrizaciones en AppBuilder. Si no aplica o no se menciona, omitir por completo.
+* **Etiqueta de tipo:** Asegurar internamente la etiqueta `instructivo` o `soluciones` según corresponda.

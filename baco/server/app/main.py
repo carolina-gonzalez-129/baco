@@ -5,11 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 
-# Create a FastAPI app instance
 app = FastAPI(
 )
- 
-
 
 #Esto es para que despues conectemos el front con el back
 #y quizas porque se pueden añadir varias validaciones deterministas aca.
