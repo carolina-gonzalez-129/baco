@@ -1,5 +1,5 @@
 ---
-name: detectar-duplicados
+name: detectar_duplicados
 description: Arbitra casos ambiguos de duplicación entre entradas de la Base de Conocimiento Finnegans mediante análisis semántico profundo, distinguiendo duplicados reales de variantes paramétricas, flujos opuestos o subtemas para asistir la decisión final del usuario.
 ---
 

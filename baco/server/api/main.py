@@ -1,19 +1,15 @@
-from urllib.request import Request
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 from pathlib import Path
-#IMPORTANTE : quizas deba usar esto para resolver lo del path my_agent en varios archivos
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-#dsps tengo q corregir eso
-from starsessions import SessionMiddleware
 
 
 # Create a FastAPI app instance
 app = FastAPI(
 )
+ 
+
 
 #Esto es para que despues conectemos el front con el back
 #y quizas porque se pueden añadir varias validaciones deterministas aca.
@@ -49,7 +45,7 @@ async def first_example():
 #
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("my_agent.server.api.main:app", host="localhost", port=8080, reload=True)
+    uvicorn.run("baco.server.api.main:app", host="localhost", port=8080, reload=True)
 
 ##IMPORTANTE : Como el servidor va a ser usado por agentes quizas estaria bueno configurar q
 #sea un mcp server si eso compatibiliza con q pueda usarse tmb por usuairos (tiene sentido si vemos lo q nos pasaron ellos

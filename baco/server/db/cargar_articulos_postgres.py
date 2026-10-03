@@ -20,8 +20,7 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME", "baco_db")
 
-# Ruta al archivo articulos.json
-RUTA_JSON = PROJECT_ROOT / "my_agent" / "server" / "discourse" / "data" / "articulos.json"
+RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
 
 
 DDL_SCHEMA = """

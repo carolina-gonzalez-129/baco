@@ -5,7 +5,7 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/my_agent/skills/detectar-duplicados/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/baco/skills/detectar_duplicados/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/mi-agente-discourse/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.12 (GeminiAgente)" jdkType="Python SDK" />

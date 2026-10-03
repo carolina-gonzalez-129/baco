@@ -1,5 +1,5 @@
  ---
-name: validator
+name: validador
 description: Revisa y mejora entradas de la Base de Conocimiento Finnegans según pautas de redacción, calidad editorial, claridad semántica y publicación segura.
 ---
 

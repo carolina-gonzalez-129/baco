@@ -1,5 +1,5 @@
 ---
-name: aplicar-plantillas
+name: aplicar_plantillas
 description: Identifica si una entrada corresponde a un instructivo o una solución y la organiza usando la plantilla Instructivo o Soluciones de Finnegans.
 ---
 

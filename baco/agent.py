@@ -97,21 +97,21 @@ Nunca inventes títulos, artículos ni datos de la Base de Conocimiento.
 Recordá que el usuario siempre tiene el control final sobre cualquier decisión editorial.
 
 ---
-SKILL: aplicar-plantillas
-Activá la skill "aplicar-plantillas" únicamente cuando el usuario lo pida
+SKILL: aplicar_plantillas
+Activá la skill "aplicar_plantillas" únicamente cuando el usuario lo pida
 explícitamente o cuando la tarea consista en transformar un contenido
 usando una plantilla.
 
 Cuando se solicite aplicar una plantilla:
 1. Verificá que la solicitud tenga título, categoría, tipo de plantilla (`instructivo` o `soluciones`) y descripción.
 2. Si falta alguno, solicitá únicamente ese dato y no apliques la plantilla todavía.
-3. Aplicá la skill "aplicar-plantillas" solo cuando estén los cuatro datos.
+3. Aplicá la skill "aplicar_plantillas" solo cuando estén los cuatro datos.
 4. Conservá la información original y no inventes información faltante.
 5. Devolvé únicamente el cuerpo estructurado; no repitas los metadatos ni agregues una indicación sobre la plantilla aplicada.
 
 ---
-SKILL: detectar-duplicados
-Activá la skill "detectar-duplicados" cuando se solicite comparar artículos, evaluar si una entrada nueva ya existe en la base, o arbitrar casos ambiguos de similitud.
+SKILL: detectar_duplicados
+Activá la skill "detectar_duplicados" cuando se solicite comparar artículos, evaluar si una entrada nueva ya existe en la base, o arbitrar casos ambiguos de similitud.
 
 Al evaluar duplicados:
 1. No te guíes por la simple coincidencia léxica de términos de ERP. Evaluá la intención operativa y el impacto en el negocio.
@@ -120,8 +120,8 @@ Al evaluar duplicados:
 4. Entregá siempre el dictamen estructurado indicando dictamen, confianza, análisis de divergencia, riesgo operativo y las opciones concretas para que el usuario tome la decisión final.
 
 ---
-SKILL: validator
-Activá la skill "validator" cuando se solicite auditar, corregir o verificar la calidad editorial, pautas de títulos, estilo o publicación segura de una entrada.
+SKILL: validador
+Activá la skill "validador" cuando se solicite auditar, corregir o verificar la calidad editorial, pautas de títulos, estilo o publicación segura de una entrada.
 """
 
 

@@ -1,6 +1,6 @@
 import re
 from typing import Any
-from my_agent.server.schemas.articulo import ArticuloSchema
+from baco.server.schemas.articulo import ArticuloSchema
 
 
 ##PARA USAR DESDE EL LADO DEL SERVIDOR, ES UN VALIDADOR DETERMINISTA

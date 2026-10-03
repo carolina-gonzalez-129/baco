@@ -20,26 +20,11 @@ import time
 import httpx
 from bs4 import BeautifulSoup
 
-from my_agent.server.discourse.client import BASE, headers
+from baco.server.discourse.client import BASE, headers
 
-import json
-import os
-import sys
-import time
-from pathlib import Path
-
-import httpx
-from bs4 import BeautifulSoup
-
-# Le pido a client las credenciales para autenticarme
-try:
-    from client import BASE, headers
-except ModuleNotFoundError:
-    from my_agent.server.discourse.client import BASE, headers
-
-# Carpeta data dentro de discourse/
-CURRENT_DIR = Path(__file__).resolve().parent
-DATA_DIR = Path(os.environ.get("DATA_DIR", CURRENT_DIR / "data"))
+# Carpeta data en la raíz del proyecto
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = Path(os.environ.get("DATA_DIR", PROJECT_ROOT / "data"))
 SALIDA = DATA_DIR / "articulos.json"
 
 PAUSA = 0.2
