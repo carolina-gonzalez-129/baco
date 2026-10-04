@@ -63,6 +63,11 @@ def comparar_por_embeddings(titulo, texto):
     ...
 
 #PRUEBA
+
 if __name__ == "__main__":
     #Buscar algo dsps para medir latencia.
+
+    #HAY QUE ARREGLAR DESPUES LO DE QUE LA CONEXION SEA ALGO QUE SE COMPARTE EN UN POOL PARA QUE
+    #NO TARDE TANTO, ES LO QUE MAS TARDA DE TODO.
     print(buscar_generico("titulo","Tablero de análisis de tropa",3))
+print(buscar_generico("titulo","Preguntas Frecuentes",3))
