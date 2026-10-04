@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baco"
+version = "0.1.0"
+description = "BACO - Asistente de Base de Conocimiento Finnegans"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "strands-agents>=1.0.0",
+    "strands-agents-tools>=0.2.0",
+    "requests",
+    "python-dotenv",
+    "fastapi",
+    "uvicorn",
+    "httpx",
+    "pydantic",
+    "mcp",
+    "psycopg>=3.1.0",
+    "beautifulsoup4",
+    "sentence-transformers>=3.0.0",
+    "pytest>=8.0.0",
+    "tqdm",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["baco*"]

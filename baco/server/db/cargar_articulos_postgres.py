@@ -5,15 +5,10 @@ from pathlib import Path
 from datetime import datetime
 import psycopg
 from dotenv import load_dotenv
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(PROJECT_ROOT))
-
 from baco.server.services.normalizar import normalizar
-try:
-    from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
-except ImportError:
-    from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
 
 

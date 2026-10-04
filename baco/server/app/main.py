@@ -1,12 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-
-app = FastAPI(
-)
+app = FastAPI()
 
 #Esto es para que despues conectemos el front con el back
 #y quizas porque se pueden añadir varias validaciones deterministas aca.
@@ -42,7 +37,7 @@ async def first_example():
 #
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("baco.server.api.main:app", host="localhost", port=8080, reload=True)
+    uvicorn.run("baco.server.app.main:app", host="localhost", port=8080, reload=True)
 
 ##IMPORTANTE : Como el servidor va a ser usado por agentes quizas estaria bueno configurar q
 #sea un mcp server si eso compatibiliza con q pueda usarse tmb por usuairos (tiene sentido si vemos lo q nos pasaron ellos
