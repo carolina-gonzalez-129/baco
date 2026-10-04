@@ -11,7 +11,6 @@ from baco.server.db.config import get_conn
 # A LO ALMACENADO SE GENERA A PARTIR DE NORMALIZAR.PY
 
 
-
 def buscar_titulo(titulo: str, limite: int = 5):
     # recibo un titulo, lo hasheo (internamente se normaliza)
     # y lo busco en el arbol b
@@ -22,7 +21,7 @@ def buscar_titulo(titulo: str, limite: int = 5):
     with get_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, titulo, url
+                SELECT titulo, url
                 FROM articulos
                 WHERE hash_titulo = %s
                 ORDER BY id
@@ -32,7 +31,7 @@ def buscar_titulo(titulo: str, limite: int = 5):
             )
 
             return [
-                {"id": id_, "titulo": t, "url": u}
+                {"titulo": t, "url": u}
                 for id_, t, u in cur.fetchall()
             ]
 
