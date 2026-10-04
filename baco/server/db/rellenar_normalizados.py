@@ -6,19 +6,10 @@ import psycopg
 from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(PROJECT_ROOT / "baco" / "server"))
-sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-try:
-    from services.normalizar import normalizar, calcular_hash
-except ImportError:
-    from baco.server.services.normalizar import normalizar, calcular_hash
-
-try:
-    from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
-except ImportError:
-    from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.services.normalizar import normalizar, calcular_hash
+from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
 
 
 def asegurar_columnas_e_indices(conn):

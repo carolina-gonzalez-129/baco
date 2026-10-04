@@ -5,13 +5,7 @@ de la base de conocimiento de nuevo
 Idealmente habria q volver a ejecutar esto solo cuando estemos x dar la demo, xq son muchas entradas
 
 """
-import sys
 from pathlib import Path
-#IMPORTANTE : esto voy a tener q tenerlo en varios mas, revisar toods xq sino da module error
-#Xq no reconoce a my_agent
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
 import json
 import os
 import time
