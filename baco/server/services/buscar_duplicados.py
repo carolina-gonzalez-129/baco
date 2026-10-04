@@ -1,16 +1,15 @@
-import sys
-from pathlib import Path
 from psycopg import sql
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(PROJECT_ROOT))
-
 from baco.server.services.normalizar import normalizar, calcular_hash
+from baco.server.services.embeddings import embedding_texto
 from baco.server.db.config import get_conn
 # Modulo de busqueda determinista
 # IMPORTANTE : TODO LO DE NORMALIZAR Y HASHEAR PARA CONSISTENCIA RESPECTO
 # A LO ALMACENADO SE GENERA A PARTIR DE NORMALIZAR.PY
 #EMBEDDINGS NO NORMALIZAR
+#1) buscar_generico(texto), si pasa va a pg_trgm con gin, si pasa se evalua el texto (la descripcion)
+# aplicando los mismos pasos, si pasa se le calcula el embedding a ambos con sentence transformers xq no tenemos un modelo fijado
+#y se hace una comparacion ponderada donde el titulo pese mas, de los embeddings.
+
 #USAR PG_TRGM CON GIN
 #Y por ultimo embeddings de ponderacion de ambos, ir calibrando empiricamente el peso
 #TMB tener en cuenta lo de que ya puedan haberme mandado categoria m  para mas adelante

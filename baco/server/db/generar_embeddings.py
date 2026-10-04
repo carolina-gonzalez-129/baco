@@ -7,27 +7,24 @@ import psycopg
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-# Configuración de rutas del proyecto
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(PROJECT_ROOT / "baco" / "server"))
-sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 # Configuración de base de datos
-try:
-    from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
-except ImportError:
-    from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+
+from baco.server.services.embeddings import (
+    embedding_texto,
+    MODEL_TEXTO_NAME,
+    DIM_TEXTO,
+)
 
 # Modelos y dimensiones oficiales
 MODEL_TITULO_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 DIM_TITULO = 384
-
-MODEL_TEXTO_NAME = "intfloat/multilingual-e5-base"
-DIM_TEXTO = 768
 MAX_SEQ_LENGTH_TEXTO = 512
 
 BATCH_SIZE = 8
@@ -203,8 +200,8 @@ def generar_embeddings():
 
                 txt_idx = len(textos_a_calcular) if necesita_txt else None
                 if necesita_txt:
-                    # Texto con e5: anteponer 'passage: ' al texto original sin normalizar ni hashear
-                    textos_a_calcular.append(f"passage: {txt_orig}")
+                    # Texto original sin normalizar ni hashear; embedding_texto aplicará limpiar_suave, truncar_1000 y prefijo query:
+                    textos_a_calcular.append(txt_orig)
 
                 info_lote.append({
                     "id": art_id,
@@ -219,8 +216,9 @@ def generar_embeddings():
                 model_titulo.encode(titulos_a_calcular, normalize_embeddings=True, show_progress_bar=False)
                 if (titulos_a_calcular and model_titulo) else []
             )
+            # embedding_texto es el punto único de entrada para embeddings de texto
             vectores_txt = (
-                model_texto.encode(textos_a_calcular, normalize_embeddings=True, show_progress_bar=False)
+                embedding_texto(textos_a_calcular, model=model_texto)
                 if (textos_a_calcular and model_texto) else []
             )
 
@@ -233,7 +231,7 @@ def generar_embeddings():
                     )
                     vec_txt_str = (
                         "[" + ",".join(str(f) for f in vectores_txt[item["txt_idx"]]) + "]"
-                        if item["necesita_txt"] else None
+                        if (item["necesita_txt"] and vectores_txt and vectores_txt[item["txt_idx"]] is not None) else None
                     )
 
                     if vec_tit_str is not None and vec_txt_str is not None:
