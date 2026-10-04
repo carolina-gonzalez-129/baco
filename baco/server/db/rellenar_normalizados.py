@@ -22,10 +22,9 @@ def asegurar_columnas_e_indices(conn):
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS hash_texto CHAR(32);")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS embedding_titulo vector(384);")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS embedding_texto vector(768);")
-        cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS texto_1000 text GENERATED ALWAYS AS (left(texto_normalizado, 1000)) STORED;")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_hash_titulo ON articulos(hash_titulo);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_hash_texto ON articulos(hash_texto);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_texto1000_trgm ON articulos USING gin (texto_1000 gin_trgm_ops);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_titulo_trgm ON articulos USING gin (titulo_normalizado gin_trgm_ops);")
     conn.commit()
 
 
