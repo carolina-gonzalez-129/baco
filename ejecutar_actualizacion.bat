@@ -25,10 +25,10 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 2: Normalizar texto/titulo, asegurar columnas/indices (pg_trgm/texto_1000) y actualizar hashes
+REM Paso 2: Normalizar texto/titulo, asegurar columnas/indices (pg_trgm en titulos) y actualizar hashes
 REM --------------------------------------------------------------------------
-echo [2/3] Normalizando y actualizando hashes (texto_1000 y pg_trgm)...
-echo [2/3] Normalizando y actualizando hashes (texto_1000 y pg_trgm)... >> "%LOG_FILE%"
+echo [2/3] Normalizando y actualizando hashes (pg_trgm en titulos)...
+echo [2/3] Normalizando y actualizando hashes (pg_trgm en titulos)... >> "%LOG_FILE%"
 ".venv\Scripts\python.exe" -m baco.server.db.rellenar_normalizados >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Fallo la normalizacion y calculo de hashes. Codigo: %ERRORLEVEL%
