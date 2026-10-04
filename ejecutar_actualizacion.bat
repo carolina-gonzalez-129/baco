@@ -25,11 +25,11 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 2: Normalizar texto/titulo y actualizar hashes (e invalidar embeddings si hubo cambios)
+REM Paso 2: Normalizar texto/titulo, asegurar columnas/indices (pg_trgm/texto_1000) y actualizar hashes
 REM --------------------------------------------------------------------------
-echo [2/3] Normalizando y actualizando hashes...
-echo [2/3] Normalizando y actualizando hashes... >> "%LOG_FILE%"
-".venv\Scripts\python.exe" baco\server\db\rellenar_normalizados.py >> "%LOG_FILE%" 2>&1
+echo [2/3] Normalizando y actualizando hashes (texto_1000 y pg_trgm)...
+echo [2/3] Normalizando y actualizando hashes (texto_1000 y pg_trgm)... >> "%LOG_FILE%"
+".venv\Scripts\python.exe" -m baco.server.db.rellenar_normalizados >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Fallo la normalizacion y calculo de hashes. Codigo: %ERRORLEVEL%
     echo [ERROR] Fallo la normalizacion y calculo de hashes. Codigo: %ERRORLEVEL% >> "%LOG_FILE%"
@@ -37,11 +37,11 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 3: Generar embeddings locales para pendientes (sentence-transformers)
+REM Paso 3: Generar embeddings locales para pendientes (Titulo: MiniLM 384d, Texto: E5 768d)
 REM --------------------------------------------------------------------------
-echo [3/3] Generando embeddings pendientes...
-echo [3/3] Generando embeddings pendientes... >> "%LOG_FILE%"
-".venv\Scripts\python.exe" baco\server\db\generar_embeddings.py >> "%LOG_FILE%" 2>&1
+echo [3/3] Generando embeddings pendientes (titulo y texto)...
+echo [3/3] Generando embeddings pendientes (titulo y texto)... >> "%LOG_FILE%"
+".venv\Scripts\python.exe" -m baco.server.db.generar_embeddings >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Fallo la generacion de embeddings. Codigo: %ERRORLEVEL%
     echo [ERROR] Fallo la generacion de embeddings. Codigo: %ERRORLEVEL% >> "%LOG_FILE%"

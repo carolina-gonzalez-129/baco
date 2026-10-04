@@ -13,16 +13,19 @@ from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAM
 
 
 def asegurar_columnas_e_indices(conn):
-    """Asegura que existan las columnas de hashes e índices."""
+    """Asegura que existan las extensiones, columnas de hashes, embeddings, normalizados e índices."""
     with conn.cursor() as cur:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS titulo_normalizado VARCHAR(500);")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS texto_normalizado TEXT;")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS hash_titulo CHAR(32);")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS hash_texto CHAR(32);")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS embedding_titulo vector(384);")
         cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS embedding_texto vector(768);")
+        cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS texto_1000 text GENERATED ALWAYS AS (left(texto_normalizado, 1000)) STORED;")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_hash_titulo ON articulos(hash_titulo);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_hash_texto ON articulos(hash_texto);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_texto1000_trgm ON articulos USING gin (texto_1000 gin_trgm_ops);")
     conn.commit()
 
 

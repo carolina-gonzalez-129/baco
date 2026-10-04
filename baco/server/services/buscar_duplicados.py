@@ -11,6 +11,8 @@ print(f"imports: {(time.perf_counter() - t0):.2f} s")
 # IMPORTANTE : TODO LO DE NORMALIZAR Y HASHEAR PARA CONSISTENCIA RESPECTO
 # A LO ALMACENADO SE GENERA A PARTIR DE NORMALIZAR.PY
 #EMBEDDINGS NO NORMALIZAR
+#El embedding tmb q se calcula y el que se almacena son a partir de embeddings.py
+
 #1) buscar_generico(texto), si pasa va a pg_trgm con gin, si pasa se evalua el texto (la descripcion)
 # aplicando los mismos pasos, si pasa se le calcula el embedding a ambos con sentence transformers xq no tenemos un modelo fijado
 #y se hace una comparacion ponderada donde el titulo pese mas, de los embeddings.
@@ -18,6 +20,13 @@ print(f"imports: {(time.perf_counter() - t0):.2f} s")
 #USAR PG_TRGM CON GIN
 #Y por ultimo embeddings de ponderacion de ambos, ir calibrando empiricamente el peso
 #TMB tener en cuenta lo de que ya puedan haberme mandado categoria m  para mas adelante
+#Busqueda convirtiendo a hash el titulo y buscando en un b tree, es muy rapido
+#Lo del limite ir calibrandolo despues
+def buscar_por_titulo(titulo:str):
+    return buscar_generico("texto",titulo,1)
+def buscar_por_texto(texto:str):
+    return buscar_generico("texto",texto,1)
+
 
 
 COLUMNAS_PERMITIDAS = {
@@ -55,12 +64,6 @@ def buscar_generico(campo: str, valor: str, limite: int = 5):
         f"query: {(t3-t2)*1000:.1f} ms"
     )
     return [{"id": i, "titulo": t, "url": u} for i, t, u in filas]
-
-#PARA REDUCIR LATENCIA
-def comparar_por_embeddings(titulo, texto):
-    from baco.server.services.embeddings import embedding_texto
-    #Y titulo tmb
-    ...
 
 #PRUEBA
 
