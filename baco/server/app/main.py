@@ -1,7 +1,18 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Precalentar ambos modelos de embeddings en el arranque del servidor, no al importar
+    from baco.server.services.embeddings import get_model_titulo, get_model_texto
+    get_model_titulo()
+    get_model_texto()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 #Esto es para que despues conectemos el front con el back
 #y quizas porque se pueden añadir varias validaciones deterministas aca.

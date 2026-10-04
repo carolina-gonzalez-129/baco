@@ -5,14 +5,21 @@ PUNTO DE ENTRADA ÚNICO OFICIAL para generar embeddings del campo texto en BACO,
 tanto para los artículos indexados en la base de datos como para artículos entrantes
 en la búsqueda de duplicados.
 """
+from __future__ import annotations
 
 import logging
 import re
-from typing import Callable, Sequence
-import torch
-from sentence_transformers import SentenceTransformer
+from typing import TYPE_CHECKING, Callable, Sequence
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+# Configuración del modelo oficial para embeddings de título
+MODEL_TITULO_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+DIM_TITULO = 384
+_MODEL_TITULO_INSTANCE: SentenceTransformer | None = None
 
 # Configuración del modelo oficial para embeddings de texto
 MODEL_TEXTO_NAME = "intfloat/multilingual-e5-base"
@@ -24,10 +31,27 @@ MAX_CARACTERES_TEXTO = 1000
 _MODEL_TEXTO_INSTANCE: SentenceTransformer | None = None
 
 
+def get_model_titulo() -> SentenceTransformer:
+    """Retorna la instancia única (singleton) del modelo SentenceTransformer para títulos."""
+    global _MODEL_TITULO_INSTANCE
+    if _MODEL_TITULO_INSTANCE is None:
+        import torch
+        from sentence_transformers import SentenceTransformer
+
+        logger.info(f"Cargando modelo de embeddings de título: {MODEL_TITULO_NAME}...")
+        if not torch.cuda.is_available():
+            torch.set_num_threads(min(4, torch.get_num_threads()))
+        _MODEL_TITULO_INSTANCE = SentenceTransformer(MODEL_TITULO_NAME)
+    return _MODEL_TITULO_INSTANCE
+
+
 def get_model_texto() -> SentenceTransformer:
     """Retorna la instancia única (singleton) del modelo SentenceTransformer para texto."""
     global _MODEL_TEXTO_INSTANCE
     if _MODEL_TEXTO_INSTANCE is None:
+        import torch
+        from sentence_transformers import SentenceTransformer
+
         logger.info(f"Cargando modelo de embeddings de texto: {MODEL_TEXTO_NAME}...")
         # Optimizar uso de hilos en CPU
         if not torch.cuda.is_available():

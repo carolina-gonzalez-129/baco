@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import psycopg
-from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -18,13 +17,14 @@ from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAM
 
 from baco.server.services.embeddings import (
     embedding_texto,
+    get_model_titulo,
+    get_model_texto,
+    MODEL_TITULO_NAME,
+    DIM_TITULO,
     MODEL_TEXTO_NAME,
     DIM_TEXTO,
 )
 
-# Modelos y dimensiones oficiales
-MODEL_TITULO_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
-DIM_TITULO = 384
 MAX_SEQ_LENGTH_TEXTO = 512
 
 BATCH_SIZE = 8
@@ -150,7 +150,7 @@ def generar_embeddings():
         model_titulo = None
         if hay_pendientes_titulo:
             print(f" Cargando modelo para títulos: {MODEL_TITULO_NAME}...")
-            model_titulo = SentenceTransformer(MODEL_TITULO_NAME)
+            model_titulo = get_model_titulo()
             validar_contra_meta(conn, "titulo", model_titulo, MODEL_TITULO_NAME, DIM_TITULO)
         else:
             print(" Embeddings de título: todos completos (no se requiere cargar MiniLM).")
@@ -159,7 +159,7 @@ def generar_embeddings():
         model_texto = None
         if hay_pendientes_texto:
             print(f" Cargando modelo para textos: {MODEL_TEXTO_NAME}...")
-            model_texto = SentenceTransformer(MODEL_TEXTO_NAME)
+            model_texto = get_model_texto()
             model_texto.max_seq_length = MAX_SEQ_LENGTH_TEXTO
             validar_contra_meta(conn, "texto", model_texto, MODEL_TEXTO_NAME, DIM_TEXTO)
 
