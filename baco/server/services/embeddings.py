@@ -1,9 +1,13 @@
 """
 Módulo de servicios de embeddings para BACO.
 
-PUNTO DE ENTRADA ÚNICO OFICIAL para generar embeddings del campo texto en BACO,
-tanto para los artículos indexados en la base de datos como para artículos entrantes
-en la búsqueda de duplicados.
+PUNTO DE ENTRADA ÚNICO OFICIAL para generar embeddings de TÍTULO y de TEXTO en BACO,
+tanto para los artículos indexados en la base de datos (PostgreSQL / baco_db)
+como para los artículos entrantes en la búsqueda de duplicados.
+
+Configuración de Modelos:
+- TÍTULO: 'paraphrase-multilingual-MiniLM-L12-v2' (Dimensión: 384)
+- TEXTO:  'intfloat/multilingual-e5-base' (Dimensión: 768, prefijo: 'query: ')
 """
 from __future__ import annotations
 
@@ -85,8 +89,6 @@ def colapsar_espacios(texto: str) -> str:
 
 
 # Lista ordenada de funciones de limpieza suave.
-# Para agregar posteriormente una función de limpieza de plantilla (ej. limpiar_plantilla),
-# basta con agregarla a esta lista sin necesidad de reescribir limpiar_suave.
 FUNCIONES_LIMPIEZA_SUAVE: list[Callable[[str], str]] = [
     eliminar_lineas_image,
     eliminar_dimensiones_peso_discourse,
@@ -127,7 +129,6 @@ def truncar_1000(texto: str | None, limite: int = MAX_CARACTERES_TEXTO) -> str:
     if not texto or len(texto) <= limite:
         return texto or ""
 
-    # Si justo el carácter en el índice 'limite' es un espacio, el corte hasta 'limite' no parte palabras
     if texto[limite] == " ":
         return texto[:limite].rstrip()
 
@@ -140,16 +141,89 @@ def truncar_1000(texto: str | None, limite: int = MAX_CARACTERES_TEXTO) -> str:
 
 
 # ===========================================================================
-# 3. Punto de entrada único: embedding_texto
+# 3. Punto de entrada único: embedding_titulo
+# ===========================================================================
+
+def embedding_titulo(
+        titulo_original: str | Sequence[str] | None,
+        batch_size: int = 32,
+        show_progress_bar: bool = False,
+        model: SentenceTransformer | None = None,
+) -> list[float] | list[list[float] | None] | None:
+    """PUNTO DE ENTRADA ÚNICO para generar embeddings del campo TÍTULO en BACO.
+
+    Aplica el pipeline oficial:
+      1. Preserva el título original (con mayúsculas, tildes y signos).
+      2. Colapsa espacios redundantes.
+      3. Genera el embedding usando el modelo paraphrase-multilingual-MiniLM-L12-v2
+         con normalize_embeddings=True (norma L2 = 1.0).
+
+    Retorna:
+        - Si titulo_original es str: list[float] con 384 flotantes normalizados.
+          Si está vacío o es None, devuelve None.
+        - Si titulo_original es Sequence[str]: list[list[float] | None] con un vector
+          por cada elemento (o None si ese elemento estaba vacío).
+        - Si titulo_original es None: None.
+    """
+    if titulo_original is None:
+        return None
+
+    sentence_model = model or get_model_titulo()
+
+    # Caso 1: Un solo título (artículo entrante o unitario)
+    if isinstance(titulo_original, str):
+        titulo_limpio = colapsar_espacios(titulo_original)
+        if not titulo_limpio:
+            return None
+
+        vector = sentence_model.encode(
+            titulo_limpio,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        return vector.tolist()
+
+    # Caso 2: Procesamiento por lote (batch)
+    titulos_a_codificar: list[str] = []
+    indices_a_codificar: list[int] = []
+
+    for idx, tit in enumerate(titulo_original):
+        if tit is None or not tit.strip():
+            continue
+        limpio = colapsar_espacios(tit)
+        if not limpio:
+            continue
+        titulos_a_codificar.append(limpio)
+        indices_a_codificar.append(idx)
+
+    if not titulos_a_codificar:
+        return [None] * len(titulo_original)
+
+    vectores = sentence_model.encode(
+        titulos_a_codificar,
+        batch_size=batch_size,
+        normalize_embeddings=True,
+        show_progress_bar=show_progress_bar,
+    )
+
+    resultados: list[list[float] | None] = [None] * len(titulo_original)
+    for pos_vector, idx_original in enumerate(indices_a_codificar):
+        resultados[idx_original] = vectores[pos_vector].tolist()
+
+    return resultados
+
+
+# ===========================================================================
+# 4. Punto de entrada único: embedding_texto
 # ===========================================================================
 
 def embedding_texto(
-    texto_original: str | Sequence[str] | None,
-    batch_size: int = 32,
-    show_progress_bar: bool = False,
-    model: SentenceTransformer | None = None,
+        texto_original: str | Sequence[str] | None,
+        batch_size: int = 32,
+        show_progress_bar: bool = False,
+        model: SentenceTransformer | None = None,
 ) -> list[float] | list[list[float] | None] | None:
-    """PUNTO DE ENTRADA ÚNICO para generar embeddings del campo texto en BACO.
+    """PUNTO DE ENTRADA ÚNICO para generar embeddings del campo TEXTO en BACO.
 
     Aplica el pipeline oficial:
       1. limpiar_suave(texto_original): elimina residuos de Discourse y colapsa espacios.
@@ -157,20 +231,6 @@ def embedding_texto(
       2. truncar_1000(texto_limpio): corta a un máximo de 1000 caracteres sin partir palabras.
       3. Antepone el prefijo oficial del modelo E5: 'query: '.
       4. Genera el embedding usando el modelo intfloat/multilingual-e5-base con normalize_embeddings=True.
-
-    Firma:
-        embedding_texto(texto_original, batch_size=32, show_progress_bar=False, model=None)
-
-    Parámetros:
-        texto_original (str | Sequence[str] | None):
-            Texto original del artículo (o lista/secuencia de textos originales).
-            IMPORTANTE: Debe ser el texto ORIGINAL del artículo, nunca texto_normalizado.
-        batch_size (int, opcional):
-            Tamaño de lote para codificación si se recibe una lista. Por defecto 32.
-        show_progress_bar (bool, opcional):
-            Muestra la barra de progreso de sentence-transformers si es True.
-        model (SentenceTransformer, opcional):
-            Instancia opcional del modelo ya cargada. Si es None, utiliza el singleton get_model_texto().
 
     Retorna:
         - Si texto_original es str: list[float] con 768 flotantes normalizados (norma L2 = 1.0).

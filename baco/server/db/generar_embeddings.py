@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
 
 from baco.server.services.embeddings import (
+    embedding_titulo,
     embedding_texto,
     get_model_titulo,
     get_model_texto,
@@ -213,7 +214,7 @@ def generar_embeddings():
 
             # Generar vectores normalizados
             vectores_tit = (
-                model_titulo.encode(titulos_a_calcular, normalize_embeddings=True, show_progress_bar=False)
+                embedding_titulo(titulos_a_calcular, model=model_titulo)
                 if (titulos_a_calcular and model_titulo) else []
             )
             # embedding_texto es el punto único de entrada para embeddings de texto
