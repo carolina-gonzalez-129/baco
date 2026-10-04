@@ -12,3 +12,6 @@ pydantic
 mcp
 psycopg
 beautifulsoup4
+sentence-transformers>=3.0.0
+pytest>=8.0.0
+tqdm

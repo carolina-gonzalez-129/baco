@@ -31,12 +31,9 @@ from baco.server.services.normalizar import normalizar
 
 load_dotenv()
 
-# Configuración de base de datos
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", 5432))
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME", "baco_db")
+
+from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+
 
 # Configuración de API Discourse
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
@@ -99,9 +96,7 @@ def sincronizar_nuevos_articulos():
     print(f"=== Sincronización Incremental: Finnegans API -> {DB_NAME} ===")
     
     # 1. Conectar a PostgreSQL
-    conn = psycopg.connect(
-        host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, dbname=DB_NAME
-    )
+    conn = get_conn()
     
     try:
         # Aseguramos que las columnas normalizadas existan en la tabla
@@ -188,10 +183,6 @@ def sincronizar_nuevos_articulos():
                             except Exception:
                                 pass
 
-                        # Normalizamos el título y el texto para búsquedas rápidas
-                        titulo_norm = normalizar(titulo or "")
-                        texto_norm = normalizar(texto_crudo or "")
-
                         with conn.cursor() as cur:
                             # A. Insertar categoría si no existe
                             if cat_id:
@@ -231,19 +222,17 @@ def sincronizar_nuevos_articulos():
                                         if tag_row:
                                             tags_a_vincular.append(tag_row[0])
 
-                            # C. Insertar el artículo nuevo con titulo y texto normalizados
+                            # C. Sincronizar contenido crudo del artículo (sin tocar hashes ni embeddings)
                             cur.execute("""
-                                INSERT INTO articulos (id, titulo, categoria_id, url, texto, titulo_normalizado, texto_normalizado, actualizado)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                INSERT INTO articulos (id, titulo, categoria_id, url, texto, actualizado)
+                                VALUES (%s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (id) DO UPDATE SET
                                     titulo = EXCLUDED.titulo,
                                     categoria_id = EXCLUDED.categoria_id,
                                     url = EXCLUDED.url,
                                     texto = EXCLUDED.texto,
-                                    titulo_normalizado = EXCLUDED.titulo_normalizado,
-                                    texto_normalizado = EXCLUDED.texto_normalizado,
                                     actualizado = EXCLUDED.actualizado;
-                            """, (tema_id, titulo, cat_id, url, texto_crudo, titulo_norm, texto_norm, fecha_dt))
+                            """, (tema_id, titulo, cat_id, url, texto_crudo, fecha_dt))
 
                             # D. Vincular artículo con sus tags
                             for tag_id in tags_a_vincular:

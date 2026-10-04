@@ -5,21 +5,14 @@ from pathlib import Path
 from datetime import datetime
 import psycopg
 from dotenv import load_dotenv
-from baco.server.services.normalizar import normalizar
-#SOLO NORMALIZA TITULOS!
-#IMPORTANTE : esto voy a tener q tenerlo en varios mas, revisar toods xq sino da module error
-#Xq no reconoce a my_agent
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# Cargar variables de entorno desde la raíz del proyecto
-load_dotenv()
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", 5432))
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME", "baco_db")
+from baco.server.services.normalizar import normalizar
+try:
+    from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+except ImportError:
+    from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
 
 RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
 
@@ -68,10 +61,7 @@ DDL_SCHEMA = """
 def asegurar_base_de_datos():
     """Crea la base de datos 'baco_db' si no existe."""
     print(f" Verificando existencia de la base de datos '{DB_NAME}'...")
-    with psycopg.connect(
-            host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, dbname="postgres",
-            autocommit=True
-    ) as conn:
+    with get_conn(dbname="postgres", autocommit=True) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (DB_NAME,))
             if not cur.fetchone():
@@ -84,9 +74,7 @@ def asegurar_base_de_datos():
 def asegurar_tablas():
     """Crea las tablas e índices dentro de 'baco_db'."""
     print(f" Creando estructura de tablas en '{DB_NAME}'...")
-    with psycopg.connect(
-            host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, dbname=DB_NAME
-    ) as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(DDL_SCHEMA)
         conn.commit()
@@ -148,9 +136,7 @@ def importar_articulos():
             fecha_dt
         ))
 
-    with psycopg.connect(
-            host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, dbname=DB_NAME
-    ) as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             # 1. Insertar Categorías
             print(f" Insertando {len(categorias_dict)} categorías...")
