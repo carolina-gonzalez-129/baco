@@ -1,7 +1,12 @@
+import time
+t0 = time.perf_counter()
+
 from psycopg import sql
 from baco.server.services.normalizar import normalizar, calcular_hash
-from baco.server.services.embeddings import embedding_texto
 from baco.server.db.config import get_conn
+
+print(f"imports: {(time.perf_counter() - t0):.2f} s")
+
 # Modulo de busqueda determinista
 # IMPORTANTE : TODO LO DE NORMALIZAR Y HASHEAR PARA CONSISTENCIA RESPECTO
 # A LO ALMACENADO SE GENERA A PARTIR DE NORMALIZAR.PY
@@ -19,13 +24,16 @@ COLUMNAS_PERMITIDAS = {
     "titulo": "hash_titulo",
     "texto": "hash_texto",
 }
-#Para poder usarlo tanto en texto como en titulo
-def buscar_generico(campo:str, valor:str, limite: int = 5):
-    #Lo busco en un arbol b+ que se creo haciendo indexing, lo hasheo con calcular_hash, e internamente se normaliza
+
+def buscar_generico(campo: str, valor: str, limite: int = 5):
     columna = COLUMNAS_PERMITIDAS.get(campo)
     if columna is None:
         raise ValueError("Campo no valido")
-    hash_valor=calcular_hash(valor)
+
+    t0 = time.perf_counter()
+    hash_valor = calcular_hash(valor)
+    t1 = time.perf_counter()
+
     query = sql.SQL("""
                     SELECT id, titulo, url
                     FROM articulos
@@ -34,15 +42,27 @@ def buscar_generico(campo:str, valor:str, limite: int = 5):
                     LIMIT %s
                     """).format(col=sql.Identifier(columna))
 
-    with get_conn() as conn, conn.cursor() as cur:
-        cur.execute(query, (hash_valor, limite))
-        return [
-            {"id": i, "titulo": t, "url": u}
-            for i, t, u in cur.fetchall()
-        ]
+    with get_conn() as conn:
+        t2 = time.perf_counter()          # conexión lista
+        with conn.cursor() as cur:
+            cur.execute(query, (hash_valor, limite))
+            filas = cur.fetchall()
+        t3 = time.perf_counter()          # query terminada
 
+    print(
+        f"hash: {(t1-t0)*1000:.1f} ms | "
+        f"conexión: {(t2-t1)*1000:.1f} ms | "
+        f"query: {(t3-t2)*1000:.1f} ms"
+    )
+    return [{"id": i, "titulo": t, "url": u} for i, t, u in filas]
+
+#PARA REDUCIR LATENCIA
+def comparar_por_embeddings(titulo, texto):
+    from baco.server.services.embeddings import embedding_texto
+    #Y titulo tmb
+    ...
 
 #PRUEBA
 if __name__ == "__main__":
-    print(buscar_generico("titulo","Tablero de análisis de tropa",5))
-    print(buscar_generico("texto","Consulta\n:\nAl intentar obtener COE para un certificado 1116A de compra de granos aparece un aviso de error.\njava.lang.numberformatexception: For imput string: \"______\"\nimage\n950×752 52.9 KB\nRespuesta:\nEsto sucede porque en la transacción del Análisis de grano vinculado al traslado el campo “Nro. Boletín” tiene cargado un dato que no suma el total de caracteres requeridos por el campo.\nPasos a seguir\n:\nDirigirse a la medicion de granos vinculada al traslado y tomar una de las siguientes acciones:\nDejar vacío el campo Nro. Boletín y guardar el cambio.\nCompletar todos los caracteres del campo y guardar el campo.\nimage\n1016×746 80.9 KB\nLuego de esto se puede volver al certificado y obtener COE.",5))
+    #Buscar algo dsps para medir latencia.
+    print(buscar_generico("titulo","Tablero de análisis de tropa",3))
