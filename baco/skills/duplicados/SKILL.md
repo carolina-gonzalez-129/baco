@@ -1,5 +1,5 @@
 ---
-name: detectar_duplicados
+name: duplicados
 description: Arbitra casos ambiguos de duplicación entre artículos de la Base de Conocimiento Finnegans mediante análisis semántico profundo y conocimiento del dominio ERP.
 ---
 
