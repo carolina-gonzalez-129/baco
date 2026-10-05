@@ -1,11 +1,8 @@
 import os
 import json
-import sys
 from pathlib import Path
 from datetime import datetime
-import psycopg
-from dotenv import load_dotenv
-from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.db.config import DB_NAME, get_conn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
