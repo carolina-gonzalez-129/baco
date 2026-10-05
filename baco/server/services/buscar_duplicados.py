@@ -2,31 +2,19 @@ import time
 t0 = time.perf_counter()
 
 from psycopg import sql
-from baco.server.services.normalizar import normalizar, calcular_hash
 from baco.server.db.config import get_conn
 
 print(f"imports: {(time.perf_counter() - t0):.2f} s")
 
 # Modulo de busqueda determinista
-# IMPORTANTE : TODO LO DE NORMALIZAR Y HASHEAR PARA CONSISTENCIA RESPECTO
-# A LO ALMACENADO SE GENERA A PARTIR DE NORMALIZAR.PY
-#EMBEDDINGS NO NORMALIZAR
-#El embedding tmb q se calcula y el que se almacena son a partir de embeddings.py
+# NOTA: Normalización y hash MD5 están automatizados en PostgreSQL con normalizar_texto()
+# y columnas GENERATED ALWAYS AS ... STORED.
 
-#1) buscar_generico(texto), si pasa va a pg_trgm con gin, si pasa se evalua el texto (la descripcion)
-# aplicando los mismos pasos, si pasa se le calcula el embedding a ambos con sentence transformers xq no tenemos un modelo fijado
-#y se hace una comparacion ponderada donde el titulo pese mas, de los embeddings.
+def buscar_por_titulo(titulo: str):
+    return buscar_generico("titulo", titulo, 1)
 
-#USAR PG_TRGM CON GIN
-#Y por ultimo embeddings de ponderacion de ambos, ir calibrando empiricamente el peso
-#TMB tener en cuenta lo de que ya puedan haberme mandado categoria m  para mas adelante
-#Busqueda convirtiendo a hash el titulo y buscando en un b tree, es muy rapido
-#Lo del limite ir calibrandolo despues
-def buscar_por_titulo(titulo:str):
-    return buscar_generico("texto",titulo,1)
-def buscar_por_texto(texto:str):
-    return buscar_generico("texto",texto,1)
-
+def buscar_por_texto(texto: str):
+    return buscar_generico("texto", texto, 1)
 
 
 COLUMNAS_PERMITIDAS = {
@@ -39,14 +27,15 @@ def buscar_generico(campo: str, valor: str, limite: int = 5):
     if columna is None:
         raise ValueError("Campo no valido")
 
-    t0 = time.perf_counter()
-    hash_valor = calcular_hash(valor)
-    t1 = time.perf_counter()
+    if not valor or not valor.strip():
+        return []
 
+    t0 = time.perf_counter()
+    # Delegamos normalización y MD5 a PostgreSQL usando la función inmutable normalizar_texto()
     query = sql.SQL("""
                     SELECT id, titulo, url
                     FROM articulos
-                    WHERE {col} = %s
+                    WHERE {col} = md5(normalizar_texto(%s))
                     ORDER BY id
                     LIMIT %s
                     """).format(col=sql.Identifier(columna))
@@ -54,13 +43,12 @@ def buscar_generico(campo: str, valor: str, limite: int = 5):
     with get_conn() as conn:
         t2 = time.perf_counter()          # conexión lista
         with conn.cursor() as cur:
-            cur.execute(query, (hash_valor, limite))
+            cur.execute(query, (valor, limite))
             filas = cur.fetchall()
         t3 = time.perf_counter()          # query terminada
 
     print(
-        f"hash: {(t1-t0)*1000:.1f} ms | "
-        f"conexión: {(t2-t1)*1000:.1f} ms | "
+        f"conexión: {(t2-t0)*1000:.1f} ms | "
         f"query: {(t3-t2)*1000:.1f} ms"
     )
     return [{"id": i, "titulo": t, "url": u} for i, t, u in filas]
@@ -73,4 +61,4 @@ if __name__ == "__main__":
     #HAY QUE ARREGLAR DESPUES LO DE QUE LA CONEXION SEA ALGO QUE SE COMPARTE EN UN POOL PARA QUE
     #NO TARDE TANTO, ES LO QUE MAS TARDA DE TODO.
     print(buscar_generico("titulo","Tablero de análisis de tropa",3))
-print(buscar_generico("titulo","Preguntas Frecuentes",3))
+    print(buscar_generico("titulo","Preguntas Frecuentes",3))

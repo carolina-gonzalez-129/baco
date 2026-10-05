@@ -68,6 +68,18 @@ def get_model_texto() -> SentenceTransformer:
 # 1. Pipeline de funciones de limpieza suave (extensible)
 # ===========================================================================
 
+def limpiar_html_bs4(texto: str) -> str:
+    """Extrae texto plano eliminando etiquetas HTML con BeautifulSoup si existen."""
+    if not texto:
+        return ""
+    if "<" in texto and ">" in texto:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(texto, "html.parser")
+        lineas = [l.strip() for l in soup.get_text("\n").splitlines() if l.strip()]
+        return " ".join(lineas)
+    return texto
+
+
 def eliminar_lineas_image(texto: str) -> str:
     """Elimina líneas que dicen solo 'image' (regex multilínea ^image$, insensible a mayúsculas)."""
     return re.sub(r"(?mi)^\s*image\s*$", " ", texto)
@@ -90,6 +102,7 @@ def colapsar_espacios(texto: str) -> str:
 
 # Lista ordenada de funciones de limpieza suave.
 FUNCIONES_LIMPIEZA_SUAVE: list[Callable[[str], str]] = [
+    limpiar_html_bs4,
     eliminar_lineas_image,
     eliminar_dimensiones_peso_discourse,
     eliminar_pipes_dimensiones_discourse,

@@ -17,6 +17,8 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         pass
 import time
 from pathlib import Path
+import re
+import unicodedata
 from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
@@ -25,9 +27,15 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-from baco.server.services.normalizar import normalizar
-
 load_dotenv()
+
+
+def generar_slug(texto: str) -> str:
+    """Genera un slug simple para tags sin depender de normalizar.py."""
+    if not texto:
+        return ""
+    t = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^\w\s-]", "", t).strip().lower().replace(" ", "-")
 
 
 from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
@@ -97,13 +105,6 @@ def sincronizar_nuevos_articulos():
     conn = get_conn()
     
     try:
-        # Aseguramos que las columnas normalizadas existan en la tabla
-        with conn.cursor() as cur:
-            cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS titulo_normalizado VARCHAR(500);")
-            cur.execute("ALTER TABLE articulos ADD COLUMN IF NOT EXISTS texto_normalizado TEXT;")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_articulos_titulo_norm ON articulos(titulo_normalizado);")
-        conn.commit()
-
         ids_existentes = obtener_ids_existentes(conn)
         print(f"1. Artículos existentes actualmente en baco_db: {len(ids_existentes)}")
 
@@ -201,7 +202,7 @@ def sincronizar_nuevos_articulos():
                                     # En latest.json los tags a veces vienen como strings simples
                                     t_id = None
                                     t_name = t
-                                    t_slug = normalizar(t)
+                                    t_slug = generar_slug(t)
                                 else:
                                     continue
 
