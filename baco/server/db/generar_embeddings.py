@@ -88,7 +88,7 @@ def obtener_articulos_pendientes(conn):
             FROM articulos 
             WHERE (embedding_titulo IS NULL AND hash_titulo IS NOT NULL)
                OR (embedding_texto IS NULL AND hash_texto IS NOT NULL)
-            ORDER BY id ASC;
+            ORDER BY id;
         """)
         return cur.fetchall()
 

@@ -21,9 +21,9 @@ RETURNS text AS $$
             regexp_replace(
                 regexp_replace(
                     lower(public.unaccent('public.unaccent', coalesce(t, ''))),
-                    '[^\w\s]|_', ' ', 'g'
+                    '[^\\w\\s]|_', ' ', 'g'
                 ),
-                '\s+', ' ', 'g'
+                '\\s+', ' ', 'g'
             )
         ),
         ''
@@ -49,14 +49,12 @@ CREATE TABLE IF NOT EXISTS articulos (
         CASE 
             WHEN normalizar_texto(titulo) IS NOT NULL 
             THEN md5(normalizar_texto(titulo)) 
-            ELSE NULL 
         END
     ) STORED,
     hash_texto text GENERATED ALWAYS AS (
         CASE 
             WHEN normalizar_texto(texto) IS NOT NULL 
             THEN md5(normalizar_texto(texto)) 
-            ELSE NULL 
         END
     ) STORED,
     embedding_titulo vector(384),

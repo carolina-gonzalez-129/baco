@@ -6,14 +6,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import pytest
 from baco.server.services.embeddings import (
     limpiar_suave,
     truncar_1000,
     embedding_texto,
     FUNCIONES_LIMPIEZA_SUAVE,
-    MODEL_TEXTO_NAME,
-    DIM_TEXTO,
+    DIM_TEXTO
 )
 
 

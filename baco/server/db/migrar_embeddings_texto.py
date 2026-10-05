@@ -121,7 +121,7 @@ def obtener_articulos_pendientes(conn, force: bool = False, limit: int | None = 
             SELECT id, texto 
             FROM articulos 
             WHERE id NOT IN (SELECT articulo_id FROM migracion_embeddings_texto)
-            ORDER BY id ASC
+            ORDER BY id 
         """
         if limit:
             query += f" LIMIT {limit}"
