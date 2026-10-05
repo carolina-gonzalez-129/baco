@@ -1,13 +1,10 @@
-import os
-import sys
 from pathlib import Path
 from dotenv import load_dotenv
-import psycopg
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
-from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.db.config import get_conn
 
 
 def verificar_estado_hashes_y_normalizados():

@@ -13,12 +13,9 @@ Características:
 
 import argparse
 import logging
-import os
-import sys
 import time
 from pathlib import Path
 from dotenv import load_dotenv
-import psycopg
 from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -27,7 +24,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("migrar_embeddings_texto")
 
-from baco.server.db.config import get_conn, DB_NAME
+from baco.server.db.config import get_conn
 
 from baco.server.services.embeddings import (
     embedding_texto,

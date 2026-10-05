@@ -1,9 +1,6 @@
 import logging
-import os
-import sys
 from pathlib import Path
 from dotenv import load_dotenv
-import psycopg
 from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -13,7 +10,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 # Configuración de base de datos
-from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.db.config import get_conn
 
 from baco.server.services.embeddings import (
     embedding_titulo,

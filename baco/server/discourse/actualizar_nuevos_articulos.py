@@ -16,16 +16,12 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 import time
-from pathlib import Path
 import re
 import unicodedata
 from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
-import psycopg
 from dotenv import load_dotenv
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 load_dotenv()
 
@@ -38,7 +34,7 @@ def generar_slug(texto: str) -> str:
     return re.sub(r"[^\w\s-]", "", t).strip().lower().replace(" ", "-")
 
 
-from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
+from baco.server.db.config import DB_NAME, get_conn
 
 
 # Configuración de API Discourse
