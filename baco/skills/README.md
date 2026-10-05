@@ -2,9 +2,9 @@
 
 Esta carpeta contiene tres skills:
 
-- `aplicar_plantillas/`: transforma y normaliza el texto aplicando la plantilla correspondiente —Instructivo o Soluciones—. Contiene las plantillas y ejemplos en `references/`.
+- `plantillas/`: transforma y normaliza el texto aplicando la plantilla correspondiente —Instructivo o Soluciones—. Contiene las plantillas y ejemplos en `references/`.
 - `validador/`: audita títulos, redacción, calidad semántica y publicación segura antes de finalizar un artículo. Contiene las pautas de estilo en `references/`.
-- `detectar_duplicados/`: arbitra casos ambiguos de duplicación mediante análisis semántico profundo para que el usuario tome la decisión final fundamentada. Contiene los criterios y casos en `references/` y `tests/`.
+- `duplicados/`: arbitra casos ambiguos de duplicación mediante análisis semántico profundo para que el usuario tome la decisión final fundamentada. Contiene los criterios y casos en `references/` y `tests/`.
 
 Cada carpeta representa una skill independiente con su propio `SKILL.md` y sus recursos de consulta en `references/`.
 

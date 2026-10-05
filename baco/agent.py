@@ -4,8 +4,8 @@ from strands.models.gemini import GeminiModel
 from strands.vended_plugins.skills import AgentSkills
 import logging
 from pathlib import Path
-from strands.tools.mcp import MCPClient
-from mcp import stdio_client, StdioServerParameters
+#from strands.tools.mcp import MCPClient dejo comentadas xq no se usan pero baco debe poder conectarse al mcp de discourse
+#from mcp import stdio_client, StdioServerParameters #lo mismo q lo anterior.
 import os
 from dotenv import load_dotenv
 
