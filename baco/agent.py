@@ -75,7 +75,7 @@ skills = AgentSkills(
 
 # ============================================================
 # AGENTE BACO : afinar prompt despues acorde a buenas practicas como progressive disclosure
-#y ver que todo se respete para que esta capa solo se encargue de lo nlp, nada determinista
+#y ver que tod o se respete para que esta capa solo se encargue de lo nlp, nada determinista
 # ============================================================
 SYSTEM_PROMPT = """
 Sos BACO, asistente de la Base de Conocimiento Finnegans.
