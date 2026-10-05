@@ -5,7 +5,6 @@ from pathlib import Path
 from datetime import datetime
 import psycopg
 from dotenv import load_dotenv
-from baco.server.services.normalizar import normalizar
 from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, get_conn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -13,45 +12,85 @@ RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "artic
 
 
 DDL_SCHEMA = """
-             -- 1. Tabla de Categorías
-             CREATE TABLE IF NOT EXISTS categorias (
-                                                       id INT PRIMARY KEY,
-                                                       nombre VARCHAR(150)
-                 );
+-- Extensiones requeridas
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- 2. Tabla de Artículos
-             CREATE TABLE IF NOT EXISTS articulos (
-                                                      id INT PRIMARY KEY,
-                                                      titulo VARCHAR(500) NOT NULL,
-                 categoria_id INT,
-                 url TEXT NOT NULL,
-                 texto TEXT NOT NULL,
-                 titulo_normalizado VARCHAR(500),
-                 texto_normalizado TEXT,
-                 actualizado TIMESTAMPTZ,
-                 creado_en TIMESTAMPTZ DEFAULT NOW(),
-                 CONSTRAINT fk_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL
-                 );
+-- Función canónica e inmutable de normalización en PostgreSQL
+CREATE OR REPLACE FUNCTION normalizar_texto(t text)
+RETURNS text AS $$
+    SELECT NULLIF(
+        trim(
+            regexp_replace(
+                regexp_replace(
+                    lower(public.unaccent('public.unaccent', coalesce(t, ''))),
+                    '[^\w\s]|_', ' ', 'g'
+                ),
+                '\s+', ' ', 'g'
+            )
+        ),
+        ''
+    );
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+
+-- 1. Tabla de Categorías
+CREATE TABLE IF NOT EXISTS categorias (
+    id INT PRIMARY KEY,
+    nombre VARCHAR(150)
+);
+
+-- 2. Tabla de Artículos con campos generados STORED
+CREATE TABLE IF NOT EXISTS articulos (
+    id INT PRIMARY KEY,
+    titulo VARCHAR(500) NOT NULL,
+    categoria_id INT,
+    url TEXT NOT NULL,
+    texto TEXT NOT NULL,
+    titulo_normalizado text GENERATED ALWAYS AS (normalizar_texto(titulo)) STORED,
+    texto_normalizado text GENERATED ALWAYS AS (normalizar_texto(texto)) STORED,
+    hash_titulo text GENERATED ALWAYS AS (
+        CASE 
+            WHEN normalizar_texto(titulo) IS NOT NULL 
+            THEN md5(normalizar_texto(titulo)) 
+            ELSE NULL 
+        END
+    ) STORED,
+    hash_texto text GENERATED ALWAYS AS (
+        CASE 
+            WHEN normalizar_texto(texto) IS NOT NULL 
+            THEN md5(normalizar_texto(texto)) 
+            ELSE NULL 
+        END
+    ) STORED,
+    embedding_titulo vector(384),
+    embedding_texto vector(768),
+    actualizado TIMESTAMPTZ,
+    creado_en TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT fk_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL
+);
 
 -- 3. Tabla de Tags
-             CREATE TABLE IF NOT EXISTS tags (
-                                                 id INT PRIMARY KEY,
-                                                 name VARCHAR(100) NOT NULL,
-                 slug VARCHAR(100) NOT NULL
-                 );
+CREATE TABLE IF NOT EXISTS tags (
+    id INT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) NOT NULL
+);
 
 -- 4. Tabla intermedia Artículos <-> Tags
-             CREATE TABLE IF NOT EXISTS articulo_tags (
-                                                          articulo_id INT REFERENCES articulos(id) ON DELETE CASCADE,
-                 tag_id INT REFERENCES tags(id) ON DELETE CASCADE,
-                 PRIMARY KEY (articulo_id, tag_id)
-                 );
+CREATE TABLE IF NOT EXISTS articulo_tags (
+    articulo_id INT REFERENCES articulos(id) ON DELETE CASCADE,
+    tag_id INT REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (articulo_id, tag_id)
+);
 
 -- Índices para búsquedas ultra rápidas
-             CREATE INDEX IF NOT EXISTS idx_articulos_categoria ON articulos(categoria_id);
-             CREATE INDEX IF NOT EXISTS idx_articulos_actualizado ON articulos(actualizado);
-             CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug); \
-             """
+CREATE INDEX IF NOT EXISTS idx_articulos_categoria ON articulos(categoria_id);
+CREATE INDEX IF NOT EXISTS idx_articulos_actualizado ON articulos(actualizado);
+CREATE INDEX IF NOT EXISTS idx_articulos_hash_titulo ON articulos(hash_titulo);
+CREATE INDEX IF NOT EXISTS idx_articulos_hash_texto ON articulos(hash_texto);
+CREATE INDEX IF NOT EXISTS idx_articulos_titulo_trgm ON articulos USING gin (titulo_normalizado gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
+"""
 
 def asegurar_base_de_datos():
     """Crea la base de datos 'baco_db' si no existe."""
@@ -120,14 +159,13 @@ def importar_articulos():
 
         tit_raw = item.get("titulo", "")
         txt_raw = item.get("texto", "")
+        # No hace falta normalizar en Python: PostgreSQL lo calcula automáticamente (STORED)
         articulos_rows.append((
             art_id,
             tit_raw,
             cat_id,
             item.get("url", ""),
             txt_raw,
-            normalizar(tit_raw),
-            normalizar(txt_raw),
             fecha_dt
         ))
 
@@ -151,17 +189,15 @@ def importar_articulos():
                                 ON CONFLICT (id) DO NOTHING;
                             """, tag_data)
 
-            # 3. Insertar Artículos con campos normalizados
+            # 3. Insertar Artículos (campos normalizados y hashes se calculan en PostgreSQL vía STORED)
             print(f" Insertando {len(articulos_rows)} artículos...")
             cur.executemany("""
-                            INSERT INTO articulos (id, titulo, categoria_id, url, texto, titulo_normalizado, texto_normalizado, actualizado)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO articulos (id, titulo, categoria_id, url, texto, actualizado)
+                            VALUES (%s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (id) DO UPDATE SET
                                     titulo = EXCLUDED.titulo,
                                     url = EXCLUDED.url,
                                     texto = EXCLUDED.texto,
-                                    titulo_normalizado = EXCLUDED.titulo_normalizado,
-                                    texto_normalizado = EXCLUDED.texto_normalizado,
                                     actualizado = EXCLUDED.actualizado;
                             """, articulos_rows)
 
