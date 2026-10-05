@@ -1,5 +1,5 @@
 ---
-name: aplicar_plantillas
+name: plantillas
 description: Transforma y normaliza borradores o textos de la Base de Conocimiento Finnegans al formato estructurado de Instructivo o Soluciones mediante procesamiento del lenguaje natural.
 ---
 

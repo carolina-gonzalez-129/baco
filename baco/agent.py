@@ -34,18 +34,7 @@ logging.basicConfig(
 
 
 # ============================================================
-# MODELO : IMPORTANTE : La free tier nos esta dando problemas
-# para poder chequear la pata de skills que sean intensivas en
-#procesamiento del lenguaje, por eso estamos en duda sobre si testearlas por ejemplo en un ide agentico o qué.
-# IMPORTANTE : En principio hay que esperar si Emiliano ocnfirma lo de que
-#la capa de servicios se ocupe de validaciones y comprobaciones, de ser asi
-#lo de deteccion de duplicados seria tmb de nlp, habria q buscar articulos q sean
-#iguales, similares, y opuestos
-#Tmb si es asi lo del script validate_article pasaria a la capa de servicios
-
-
-##Como la primer skill que voy a aprobar es intensiva en procesamiento de lenguaje voy
-#a intentar paliar los 503, pero quizas los 429 aun me den antes de que pueda probarla :'c
+# MODELO
 # ============================================================
 
 gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -67,21 +56,26 @@ skills = AgentSkills(
 # MCP : Despues pasar tools = tools al agente ,
 # IMPORTANTE las tools solo funcionan en este bloque
 #Asique para lo de duplicados ver como hacer bien!
-# ============================================================
-discourse = MCPClient(
-    lambda: stdio_client(
-        StdioServerParameters(
-            command="discourse-mcp",
-            args=["--profile", PROFILE],
-        )
-    )
-)
+#discourse = MCPClient(
+#lambda: stdio_client(
+ #   StdioServerParameters(
+  #      command="discourse-mcp",
+#      args=["--profile", PROFILE],
+# )
+# )
+# )
 #Las tools el agente solo las va a tener disponibles en este bloque!
-with discourse:
-    tools = discourse.list_tools_sync()
+# with discourse:
+#  tools = discourse.list_tools_sync()
+#
+#
 
 # ============================================================
-# AGENTE BACO
+
+
+# ============================================================
+# AGENTE BACO : afinar prompt despues acorde a buenas practicas como progressive disclosure
+#y ver que todo se respete para que esta capa solo se encargue de lo nlp, nada determinista
 # ============================================================
 SYSTEM_PROMPT = """
 Sos BACO, asistente de la Base de Conocimiento Finnegans.
@@ -95,8 +89,8 @@ Nunca inventes títulos, artículos ni datos de la Base de Conocimiento.
 Recordá que el usuario siempre tiene el control final sobre cualquier decisión editorial.
 
 ---
-SKILL: aplicar_plantillas
-Activá la skill "aplicar_plantillas" cuando se solicite transformar, estructurar o normalizar
+SKILL: plantillas
+Activá la skill "plantillas" cuando se solicite transformar, estructurar o normalizar
 un contenido al formato estándar de Instructivo o Soluciones.
 Confiá en que la integridad estructural básica y los metadatos vienen pre-validados por el servidor.
 Tu tarea es puramente lingüística y de síntesis editorial:
@@ -106,8 +100,8 @@ Tu tarea es puramente lingüística y de síntesis editorial:
 4. Devolver únicamente el cuerpo Markdown final listo para publicar, sin encabezados redundantes ni explicaciones accesorias.
 
 ---
-SKILL: detectar_duplicados
-Activá la skill "detectar_duplicados" cuando se solicite arbitrar casos ambiguos de similitud
+SKILL: duplicados
+Activá la skill "duplicados" cuando se solicite arbitrar casos ambiguos de similitud
 entre artículos derivados por la capa de servicios.
 Al evaluar duplicados:
 1. No te guíes por la simple coincidencia léxica de términos de ERP. Evaluá la intención operativa y el impacto en el negocio.
@@ -127,13 +121,15 @@ Tu foco es la auditoría semántica profunda:
 """
 
 
-def create_agent(model):
+def create_agent():
     return Agent(
-        model=model,
+        model=gemini_model,
         system_prompt=SYSTEM_PROMPT,
         plugins=[skills],
     )
-# ============================================================
-# PRUEBA DE APLICAR-PLANTILLAS
-# ============================================================
+
+
+if __name__ == "__main__":
+    agent = create_agent()
+    agent("Por que es tan frecuente el error 503 usando una api key gratuita?")
 
