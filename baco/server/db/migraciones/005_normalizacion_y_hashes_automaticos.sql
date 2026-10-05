@@ -45,14 +45,14 @@ ALTER TABLE articulos
         CASE 
             WHEN normalizar_texto(titulo) IS NOT NULL 
             THEN md5(normalizar_texto(titulo)) 
-            ELSE NULL 
+
         END
     ) STORED,
     ADD COLUMN hash_texto text GENERATED ALWAYS AS (
         CASE 
             WHEN normalizar_texto(texto) IS NOT NULL 
             THEN md5(normalizar_texto(texto)) 
-            ELSE NULL 
+
         END
     ) STORED;
 
