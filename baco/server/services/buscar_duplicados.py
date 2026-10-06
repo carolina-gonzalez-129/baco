@@ -109,7 +109,7 @@ def buscar_por_titulo_trigrama(titulo: str, threshold: float = 0.70, cur=None):
                    similarity(titulo_normalizado, normalizar_texto(%s)) AS score
             FROM articulos
             WHERE titulo_normalizado %% normalizar_texto(%s)
-            ORDER BY score DESC, id ASC
+            ORDER BY score DESC, id 
             LIMIT 10; \
             """
     cur.execute(

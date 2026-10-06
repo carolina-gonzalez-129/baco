@@ -36,3 +36,8 @@ ENV/
 # Archivos del sistema operativo
 .DS_Store
 Thumbs.db
+
+# IDEs y editores
+.idea/
+*.iml
+.vscode/
