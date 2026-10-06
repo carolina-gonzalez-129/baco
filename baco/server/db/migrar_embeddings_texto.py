@@ -118,7 +118,7 @@ def obtener_articulos_pendientes(conn, force: bool = False, limit: int | None = 
             conn.commit()
 
         query = """
-            SELECT id, texto 
+            SELECT id, texto_sin_headers 
             FROM articulos 
             WHERE id NOT IN (SELECT articulo_id FROM migracion_embeddings_texto)
             ORDER BY id 

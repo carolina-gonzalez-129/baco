@@ -25,22 +25,22 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 2: Normalizar texto/titulo, asegurar columnas/indices (pg_trgm en titulos) y actualizar hashes
+REM Paso 2: Verificar hashes, series (base_titulo), textos sin headers y STORED en Postgres
 REM --------------------------------------------------------------------------
-echo [2/3] Normalizando y actualizando hashes (pg_trgm en titulos)...
-echo [2/3] Normalizando y actualizando hashes (pg_trgm en titulos)... >> "%LOG_FILE%"
+echo [2/3] Verificando hashes, series y textos limpios sin headers...
+echo [2/3] Verificando hashes, series y textos limpios sin headers... >> "%LOG_FILE%"
 ".venv\Scripts\python.exe" -m baco.server.db.rellenar_normalizados >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Fallo la normalizacion y calculo de hashes. Codigo: %ERRORLEVEL%
-    echo [ERROR] Fallo la normalizacion y calculo de hashes. Codigo: %ERRORLEVEL% >> "%LOG_FILE%"
+    echo [ERROR] Fallo la verificacion de hashes y normalizados. Codigo: %ERRORLEVEL%
+    echo [ERROR] Fallo la verificacion de hashes y normalizados. Codigo: %ERRORLEVEL% >> "%LOG_FILE%"
     exit /b %ERRORLEVEL%
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 3: Generar embeddings locales para pendientes (Titulo: MiniLM 384d, Texto: E5 768d)
+REM Paso 3: Generar embeddings locales pendientes (Titulo: MiniLM 384d, Texto sin headers: E5 768d)
 REM --------------------------------------------------------------------------
-echo [3/3] Generando embeddings pendientes (titulo y texto)...
-echo [3/3] Generando embeddings pendientes (titulo y texto)... >> "%LOG_FILE%"
+echo [3/3] Generando embeddings pendientes (titulo y texto sin headers)...
+echo [3/3] Generando embeddings pendientes (titulo y texto sin headers)... >> "%LOG_FILE%"
 ".venv\Scripts\python.exe" -m baco.server.db.generar_embeddings >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Fallo la generacion de embeddings. Codigo: %ERRORLEVEL%

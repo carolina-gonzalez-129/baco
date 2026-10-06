@@ -9,11 +9,9 @@ RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "artic
 
 
 DDL_SCHEMA = """
--- Extensiones requeridas
 CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- Función canónica e inmutable de normalización en PostgreSQL
 CREATE OR REPLACE FUNCTION normalizar_texto(t text)
 RETURNS text AS $$
     SELECT NULLIF(
@@ -35,8 +33,6 @@ CREATE TABLE IF NOT EXISTS categorias (
     id INT PRIMARY KEY,
     nombre VARCHAR(150)
 );
-
--- 2. Tabla de Artículos con campos generados STORED
 CREATE TABLE IF NOT EXISTS articulos (
     id INT PRIMARY KEY,
     titulo VARCHAR(500) NOT NULL,
@@ -64,21 +60,18 @@ CREATE TABLE IF NOT EXISTS articulos (
     CONSTRAINT fk_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL
 );
 
--- 3. Tabla de Tags
 CREATE TABLE IF NOT EXISTS tags (
     id INT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     slug VARCHAR(100) NOT NULL
 );
 
--- 4. Tabla intermedia Artículos <-> Tags
 CREATE TABLE IF NOT EXISTS articulo_tags (
     articulo_id INT REFERENCES articulos(id) ON DELETE CASCADE,
     tag_id INT REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (articulo_id, tag_id)
 );
 
--- Índices para búsquedas ultra rápidas
 CREATE INDEX IF NOT EXISTS idx_articulos_categoria ON articulos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_articulos_actualizado ON articulos(actualizado);
 CREATE INDEX IF NOT EXISTS idx_articulos_hash_titulo ON articulos(hash_titulo);

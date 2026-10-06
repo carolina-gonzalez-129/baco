@@ -1,19 +1,19 @@
 import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Depends  # <-- 1. Agregamos Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
-
-from baco.server.db.config import db_pool
+from baco.server.db.config import db_pool, get_conn  # <-- 2. Importamos get_conn
 from baco.server.services.buscar_duplicados import buscar_generico
-
+def get_db_cursor():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            yield cur
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # cargo el pool de conexiones
     db_pool.open()
-    yield  # aca fast api escucha peticiones
-    #cierro el pool
+    yield
     db_pool.close()
 
 
@@ -27,8 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-
 @app.get("/")
 async def first_example():
     return {"message": "Es reactiva? Si xd"}
@@ -37,33 +35,31 @@ async def first_example():
 @app.get("/buscar")
 async def buscar_por_titulo(
         titulo: str = Query(..., description="Título a buscar"),
-        limite: int = 1
+        limite: int = 1,
+        cur = Depends(get_db_cursor)
 ):
-    # MARCADOR 1: Tiempo antes de ejecutar la consulta
     t_inicio = time.perf_counter()
-
-    # Ejecuta la búsqueda usando la conexión caliente del pool
-    coincidencias = await run_in_threadpool(buscar_generico, "titulo", titulo, limite=limite)
-
-    # MARCADOR 2: Tiempo después de obtener los resultados
+    coincidencias = await run_in_threadpool(buscar_generico, "titulo", titulo, cur, limite=limite)
     t_fin = time.perf_counter()
-    latencia_ms = (t_fin - t_inicio) * 1000
+    duracion_ms = (t_fin - t_inicio) * 1000
+#DSPS ELIMINAR QIERO USAR ESTO SOLO PARA MEDIR LA LATENCIA DE CADA COSA!
+    print("\n" + "=" * 60)
+    print(f"--- TIEMPO INICIAL : 0.00 ms ---")
+    print(f"--- TIEMPO FINAL   : {duracion_ms:.2f} ms ---")
+    print(f"=== TIEMPO TOTAL   : {duracion_ms:.2f} ms ===")
+    print("=" * 60 + "\n")
 
-    # Imprime en la consola del servidor
-    print(f"[FASTAPI /buscar] Título: '{titulo}' | Tiempo total endpoint: {latencia_ms:.2f} ms")
-
-    # Retorna la respuesta con la latencia calculada
     if coincidencias:
         return {
             "encontrado": True,
             "origen": "titulo_exacto",
-            "latencia_endpoint_ms": round(latencia_ms, 2),
+            "tiempo_ms": round(duracion_ms, 2),
             "articulos": coincidencias
         }
     return {
         "encontrado": False,
         "origen": None,
-        "latencia_endpoint_ms": round(latencia_ms, 2),
+        "tiempo_ms": round(duracion_ms, 2),
         "articulos": []
     }
 
