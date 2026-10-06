@@ -109,7 +109,7 @@ def eliminar_headers_markdown_y_plantillas(texto: str) -> str:
     # Divisores de sección (* * *, ---, ___)
     texto = re.sub(r"(?m)^\s*(\*\s*\*\s*\*|-{3,}|_{3,})\s*$", " ", texto)
     # Enlaces de imágenes Markdown
-    texto = re.sub(r"!?\[image[^\]]*\]\([^\)]+\)", " ", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"!?\[image[^]]*]\([^)]+\)", " ", texto, flags=re.IGNORECASE)
     return texto
 
 
