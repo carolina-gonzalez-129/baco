@@ -95,6 +95,24 @@ def eliminar_pipes_dimensiones_discourse(texto: str) -> str:
     return re.sub(r"\|\d+(?:\.\d+)?[x×]\d+(?:\.\d+)?", " ", texto, flags=re.IGNORECASE)
 
 
+def eliminar_headers_markdown_y_plantillas(texto: str) -> str:
+    """Elimina headers Markdown, etiquetas de sección y divisores de plantilla."""
+    if not texto:
+        return ""
+    # Headers markdown (#, ##, ###)
+    texto = re.sub(r"(?m)^\s*#{1,6}\s+.*$", " ", texto)
+    # Secciones con negrita o texto plano
+    texto = re.sub(
+        r"(?mi)^\s*(\*\*)?(consulta|respuesta|soluci[oó]n|error|pasos a seguir|requiere app\s*builder|antes de empezar|modo de uso|¿?para qu[eé] sirve\??)(\*\*)?\s*:?\s*$",
+        " ", texto
+    )
+    # Divisores de sección (* * *, ---, ___)
+    texto = re.sub(r"(?m)^\s*(\*\s*\*\s*\*|-{3,}|_{3,})\s*$", " ", texto)
+    # Enlaces de imágenes Markdown
+    texto = re.sub(r"!?\[image[^\]]*\]\([^\)]+\)", " ", texto, flags=re.IGNORECASE)
+    return texto
+
+
 def colapsar_espacios(texto: str) -> str:
     """Colapsa espacios en blanco repetidos (espacios, saltos de línea, tabs) en un solo espacio."""
     return re.sub(r"\s+", " ", texto).strip()
@@ -103,6 +121,7 @@ def colapsar_espacios(texto: str) -> str:
 # Lista ordenada de funciones de limpieza suave.
 FUNCIONES_LIMPIEZA_SUAVE: list[Callable[[str], str]] = [
     limpiar_html_bs4,
+    eliminar_headers_markdown_y_plantillas,
     eliminar_lineas_image,
     eliminar_dimensiones_peso_discourse,
     eliminar_pipes_dimensiones_discourse,

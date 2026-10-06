@@ -9,7 +9,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# Configuración de base de datos
+
 from baco.server.db.config import get_conn
 
 from baco.server.services.embeddings import (
@@ -84,7 +84,7 @@ def obtener_articulos_pendientes(conn):
     """
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT id, titulo, texto, hash_titulo, hash_texto, embedding_titulo, embedding_texto 
+            SELECT id, titulo, texto_sin_headers, hash_titulo, hash_texto, embedding_titulo, embedding_texto 
             FROM articulos 
             WHERE (embedding_titulo IS NULL AND hash_titulo IS NOT NULL)
                OR (embedding_texto IS NULL AND hash_texto IS NOT NULL)
