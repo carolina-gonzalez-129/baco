@@ -27,16 +27,7 @@ MAX_SEQ_LENGTH_TEXTO = 512
 
 BATCH_SIZE = 8
 
-"""
-NOTA SOBRE LIMITACIÓN DE LONGITUD DE TOKENS:
-1. Para el título: 'paraphrase-multilingual-MiniLM-L12-v2' cuenta con una ventana
-   máxima de 128 tokens por defecto, suficiente para cualquier título de artículo.
-2. Para el texto: 'intfloat/multilingual-e5-base' opera con una ventana máxima de
-   512 tokens (aprox. 350-400 palabras en español). Para pasajes técnicos que superen
-   dicho umbral, el tokenizer trunca los tokens excedentes preservando el contexto
-   inicial descriptivo del caso.
-   Antes de la generación, medimos e informamos cuántos artículos exceden esta ventana.
-"""
+
 
 
 def validar_contra_meta(conn, columna: str, model, expected_model_name: str, expected_dim: int):

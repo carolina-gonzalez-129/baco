@@ -28,7 +28,6 @@ RETURNS text AS $$
     );
 $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
--- 1. Tabla de Categorías
 CREATE TABLE IF NOT EXISTS categorias (
     id INT PRIMARY KEY,
     nombre VARCHAR(150)
@@ -81,7 +80,6 @@ CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
 """
 
 def asegurar_base_de_datos():
-    """Crea la base de datos 'baco_db' si no existe."""
     print(f" Verificando existencia de la base de datos '{DB_NAME}'...")
     with get_conn(dbname="postgres", autocommit=True) as conn:
         with conn.cursor() as cur:
@@ -94,7 +92,6 @@ def asegurar_base_de_datos():
                 print(f"  La base de datos '{DB_NAME}' ya existe.")
 
 def asegurar_tablas():
-    """Crea las tablas e índices dentro de 'baco_db'."""
     print(f" Creando estructura de tablas en '{DB_NAME}'...")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -103,7 +100,6 @@ def asegurar_tablas():
     print(" ¡Tablas e índices listos!")
 
 def importar_articulos():
-    """Lee articulos.json e inserta categorías, tags y artículos en lotes."""
     if not RUTA_JSON.exists():
         print(f" No se encontró el archivo: {RUTA_JSON}")
         return
@@ -114,8 +110,8 @@ def importar_articulos():
 
     print(f" Cargados {len(data)} artículos en memoria. Preparando inserción...")
 
-    categorias_dict = {}  # {id: nombre}
-    tags_dict = {}        # {id: (name, slug)}
+    categorias_dict = {}
+    tags_dict = {}
     articulos_rows = []
     articulo_tags_rows = []
 
@@ -128,7 +124,7 @@ def importar_articulos():
         if cat_id:
             categorias_dict[cat_id] = f"Categoría {cat_id}"
 
-        # Procesar tags
+        #
         tags = item.get("tags") or []
         for tag in tags:
             tag_id = tag.get("id")
@@ -136,7 +132,7 @@ def importar_articulos():
                 tags_dict[tag_id] = (tag.get("name", ""), tag.get("slug", ""))
                 articulo_tags_rows.append((art_id, tag_id))
 
-        # Parsear fecha
+
         fecha_str = item.get("actualizado")
         fecha_dt = None
         if fecha_str:
@@ -147,7 +143,6 @@ def importar_articulos():
 
         tit_raw = item.get("titulo", "")
         txt_raw = item.get("texto", "")
-        # No hace falta normalizar en Python: PostgreSQL lo calcula automáticamente (STORED)
         articulos_rows.append((
             art_id,
             tit_raw,
@@ -159,7 +154,6 @@ def importar_articulos():
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # 1. Insertar Categorías
             print(f" Insertando {len(categorias_dict)} categorías...")
             cat_data = [(cid, cnom) for cid, cnom in categorias_dict.items()]
             cur.executemany("""
@@ -168,7 +162,7 @@ def importar_articulos():
                                 ON CONFLICT (id) DO NOTHING;
                             """, cat_data)
 
-            # 2. Insertar Tags
+
             print(f" Insertando {len(tags_dict)} tags...")
             tag_data = [(tid, tinfo[0], tinfo[1]) for tid, tinfo in tags_dict.items()]
             cur.executemany("""
@@ -177,7 +171,7 @@ def importar_articulos():
                                 ON CONFLICT (id) DO NOTHING;
                             """, tag_data)
 
-            # 3. Insertar Artículos (campos normalizados y hashes se calculan en PostgreSQL vía STORED)
+
             print(f" Insertando {len(articulos_rows)} artículos...")
             cur.executemany("""
                             INSERT INTO articulos (id, titulo, categoria_id, url, texto, actualizado)
@@ -189,7 +183,7 @@ def importar_articulos():
                                     actualizado = EXCLUDED.actualizado;
                             """, articulos_rows)
 
-            # 4. Insertar Relación Artículo <-> Tags
+
             print(f" Insertando {len(articulo_tags_rows)} relaciones artículo-tags...")
             cur.executemany("""
                             INSERT INTO articulo_tags (articulo_id, tag_id)
