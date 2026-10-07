@@ -3,7 +3,9 @@ from fastapi import FastAPI, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 from baco.server.db.config import db_pool, get_conn
-from baco.server.services.buscar_duplicados import buscar_por_titulo
+#VER SI PONER LOS IMPORTS EN CADA FUNCION ME REDUCE LA LATENCIA DSPS
+from baco.server.services.buscar_duplicados import buscar_por_titulo, evaluar_coincidencias
+from baco.server.services.buscar_duplicados import buscar_por_texto
 def get_db_cursor():
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -46,6 +48,47 @@ async def buscar_por_titulo_articulos(
         return {
             "encontrado": True,
             "origen": "titulo_exacto",
+            "articulos": coincidencias
+        }
+    return {
+        "encontrado": False,
+        "origen": None,
+        "articulos": []
+    }
+
+
+# BUSQUEDA X TEXTO
+@app.get("/bsqtxt")
+async def buscar_por_texto_articulos(
+        texto: str = Query(..., description="Texto a buscar"),
+        limite: int = 1,
+        cur = Depends(get_db_cursor)
+):
+    coincidencias = await run_in_threadpool(buscar_por_texto, texto, cur)
+    if coincidencias:
+        return {
+            "encontrado": True,
+            "origen": "texto_exacto",
+            "articulos": coincidencias
+        }
+    return {
+        "encontrado": False,
+        "origen": None,
+        "articulos": []
+    }
+
+@app.get("/busqueda_texto_titulo_articulos")
+async def buscar_por_texto_y_titulo_articulos(
+        texto: str = Query(..., description="Texto a buscar"),
+        titulo:str = Query(..., description="Titulo a buscar"),
+        limite: int = 5,
+        cur = Depends(get_db_cursor)
+):
+    coincidencias = await run_in_threadpool(evaluar_coincidencias,titulo,cur,True, texto)
+    if coincidencias:
+        return {
+            "encontrado": True,
+            "origen": "otro",
             "articulos": coincidencias
         }
     return {

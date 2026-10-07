@@ -1,20 +1,18 @@
-from baco.server.db.config import get_conn
+
 #ESTO SERA CON HEADERS ej consulta pasos a seguir etc
+#VER DSPS DE HACERLO OPCIONAL ASI SE REUTILIZA CUR
 
+def evaluar_nuevo_articulo_con_headers(titulo: str, cur, texto: str):
+    return evaluar_coincidencias(titulo, cur, texto, True)
 
-def evaluar_nuevo_articulo_con_headers(titulo:str,texto:str=None):
-    return evaluar_coincidencias(titulo,texto,True)
+def evaluar_nuevo_articulo_sin_headers(titulo: str, cur, texto: str):
+    return evaluar_coincidencias(titulo, cur, texto, False)
 
-def evaluar_nuevo_articulo_sin_headers(titulo:str,texto:str=None):
-    return evaluar_coincidencias(titulo,texto,False)
-
-def evaluar_coincidencias(titulo:str,texto:str,headers:bool):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if coincide_titulo := evaluar_titulo(titulo,cur):
-                return coincide_titulo
-            if texto and texto.strip():
-                return evaluar_texto(texto,headers,titulo,cur)
+def evaluar_coincidencias(titulo: str, cur, headers: bool, texto: str = None):
+    if coincide_titulo := evaluar_titulo(titulo, cur):
+        return coincide_titulo
+    if texto and texto.strip():
+        return evaluar_texto(texto, headers, titulo, cur)
     return None
 
 
