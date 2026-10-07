@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import psycopg
 from psycopg_pool import ConnectionPool
 
-
 _current_dir = Path(__file__).resolve().parent
 for p in [_current_dir, *_current_dir.parents]:
     env_file = p / ".env"

@@ -37,7 +37,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 3: Generar embeddings locales pendientes (Titulo: MiniLM 384d, Texto sin headers: E5 768d)
+REM Paso 3: Generar embeddings locales pendientes 
 REM --------------------------------------------------------------------------
 echo [3/3] Generando embeddings pendientes (titulo y texto sin headers)...
 echo [3/3] Generando embeddings pendientes (titulo y texto sin headers)... >> "%LOG_FILE%"
