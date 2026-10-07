@@ -36,31 +36,32 @@ _MODEL_TEXTO_INSTANCE: SentenceTransformer | None = None
 
 
 def get_model_titulo() -> SentenceTransformer:
-    """Retorna la instancia única (singleton) del modelo SentenceTransformer para títulos."""
+    """Retorna la instancia única (singleton) del modelo SentenceTransformer para títulos con aceleración ONNX INT8."""
     global _MODEL_TITULO_INSTANCE
     if _MODEL_TITULO_INSTANCE is None:
-        import torch
         from sentence_transformers import SentenceTransformer
 
-        logger.info(f"Cargando modelo de embeddings de título: {MODEL_TITULO_NAME}...")
-        if not torch.cuda.is_available():
-            torch.set_num_threads(min(4, torch.get_num_threads()))
-        _MODEL_TITULO_INSTANCE = SentenceTransformer(MODEL_TITULO_NAME)
+        logger.info(f"Cargando modelo de embeddings de título ONNX INT8: {MODEL_TITULO_NAME}...")
+        _MODEL_TITULO_INSTANCE = SentenceTransformer(
+            MODEL_TITULO_NAME,
+            backend="onnx",
+            model_kwargs={"file_name": "onnx/model_quint8_avx2.onnx"},
+        )
     return _MODEL_TITULO_INSTANCE
 
 
 def get_model_texto() -> SentenceTransformer:
-    """Retorna la instancia única (singleton) del modelo SentenceTransformer para texto."""
+    """Retorna la instancia única (singleton) del modelo SentenceTransformer para texto con aceleración ONNX INT8."""
     global _MODEL_TEXTO_INSTANCE
     if _MODEL_TEXTO_INSTANCE is None:
-        import torch
         from sentence_transformers import SentenceTransformer
 
-        logger.info(f"Cargando modelo de embeddings de texto: {MODEL_TEXTO_NAME}...")
-        # Optimizar uso de hilos en CPU
-        if not torch.cuda.is_available():
-            torch.set_num_threads(min(4, torch.get_num_threads()))
-        _MODEL_TEXTO_INSTANCE = SentenceTransformer(MODEL_TEXTO_NAME)
+        logger.info(f"Cargando modelo de embeddings de texto ONNX INT8: {MODEL_TEXTO_NAME}...")
+        _MODEL_TEXTO_INSTANCE = SentenceTransformer(
+            MODEL_TEXTO_NAME,
+            backend="onnx",
+            model_kwargs={"file_name": "onnx/model_qint8_avx512_vnni.onnx"},
+        )
     return _MODEL_TEXTO_INSTANCE
 
 

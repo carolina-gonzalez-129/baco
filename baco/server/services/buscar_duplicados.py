@@ -24,16 +24,17 @@ def evaluar_titulo(titulo:str,cur):
             "mensaje": "Ya existe un artículo con exactamente este título, te gustaria actualizarlo?.",
             "coincidencias": exactos_titulo
         }
-    if serie:= buscar_por_serie(titulo,cur):
+    if serie := buscar_por_serie(titulo, cur):
+        base_nombre = serie[0]["base_titulo"] if isinstance(serie[0], dict) else serie[0][3]
         return {
-            "mensaje": f"Parece una nueva edición de la serie '{serie[0]['base_titulo']}'.",
+            "mensaje": f"Parece una nueva edición de la serie '{base_nombre}'.",
             "coincidencias": serie
         }
-    if similares :=buscar_por_titulo_trigrama(titulo,0.70,cur):
-        return{
-            "mensaje": "Encontramos títulos muy parecidos, te gustaria actualizarlo?.",
-            "coincidencias": similares
-        }
+    if similares := buscar_por_titulo_trigrama(titulo, cur, threshold=0.70):
+        return {
+        "mensaje": "Encontramos títulos muy parecidos, ¿te gustaría actualizar el artículo existente?",
+        "coincidencias": similares
+    }
     return None
 
     #En ambos casos del embedding es quitando el ruido que la estructura de las plantillas podria producir
@@ -58,10 +59,10 @@ def evaluar_texto(texto:str, headers:bool,titulo,cur):
 
 #VER DE ESTE CONFIGURARLO PARA QUE RECIBA EL CUR DEL SERVIDOR APENAS SE INICIA-!
 def buscar_por_titulo(titulo: str, cur):
-    return buscar_generico("titulo", titulo, cur, 1)
+    return buscar_exacto("titulo", titulo, cur, 1)
 
 def buscar_por_texto(texto: str, cur):
-    return buscar_generico("texto", texto, cur, 1)
+    return buscar_exacto("texto", texto, cur, 1)
 
 CAMPOS_PERMITIDOS = {
     "titulo": "hash_titulo",
@@ -71,7 +72,7 @@ CAMPOS_PERMITIDOS = {
 
 #Busqueda exacta, generico es el campo ya que hay dos indices hash_titulo y hash_texto
 #Los indices son b+tree
-def buscar_generico(campo: str, valor: str, cur, limite: int = 5):
+def buscar_exacto(campo: str, valor: str, cur, limite: int = 5):
     if not valor or not valor.strip():
         return []
     columna = CAMPOS_PERMITIDOS.get(campo)
@@ -90,6 +91,8 @@ def buscar_generico(campo: str, valor: str, cur, limite: int = 5):
 
 
 def buscar_por_serie(titulo: str, cur, limite=5):
+    if not titulo or not titulo.strip():
+        return []
     query = """
             SELECT id, titulo, url, base_titulo
             FROM articulos
@@ -103,14 +106,17 @@ def buscar_por_serie(titulo: str, cur, limite=5):
 
 #pg_trgm es para determinar similitud entre textos basado en trigram matching
 #es clave usar lo del gin, no olvidar, aca creo q no lo estoy usando asiq deberia
-def buscar_por_titulo_trigrama(titulo: str, threshold: float = 0.70, cur=None):
+def buscar_por_titulo_trigrama(titulo: str, cur, threshold: float = 0.70):
+    if not titulo or not titulo.strip():
+        return []
+
     query = """
             SELECT id, titulo, url,
                    similarity(titulo_normalizado, normalizar_texto(%s)) AS score
             FROM articulos
             WHERE titulo_normalizado %% normalizar_texto(%s)
-            ORDER BY score DESC, id 
-            LIMIT 10; \
+            ORDER BY score DESC, id
+            LIMIT 10;
             """
     cur.execute(
         "SELECT set_config('pg_trgm.similarity_threshold', %s, true)",
@@ -137,45 +143,88 @@ def buscar_por_texto_sin_headers(texto: str, cur, limite: int = 1):
 def buscar_en_embeddings(texto: str, titulo: str, cur):
     if not texto or not texto.strip():
         return []
+
     from baco.server.services.embeddings import embedding_texto, embedding_titulo
+    #LO DE ABAJO ES IMPORTANTE IR CALIBRANDOLO CUANDO GENERE MIS PARES ETIQUETADOS DE DUPLICADOS/NODUPLICADOS/AMBIGUOS
     umbral = 0.80
     limite = 5
     cur.execute("SELECT limpiar_headers(%s);", (texto,))
-    texto_sin_headers = cur.fetchone()[0]
-    vector_texto = embedding_texto([texto_sin_headers])[0]
-    vector_titulo = embedding_titulo([titulo if titulo else ""])[0]
+    row = cur.fetchone()
+    texto_sin_headers = (row[0] or "") if row else ""
+    if not texto_sin_headers.strip():
+        return []
+
+    vector_texto_res = embedding_texto([texto_sin_headers])
+    vector_texto = vector_texto_res[0] if vector_texto_res else None
+    if not vector_texto:
+        return []
+
+    vector_titulo_res = embedding_titulo([titulo]) if (titulo and titulo.strip()) else None
+    vector_titulo = vector_titulo_res[0] if vector_titulo_res else None
+
     str_vec_texto = "[" + ",".join(str(f) for f in vector_texto) + "]"
-    str_vec_titulo = "[" + ",".join(str(f) for f in vector_titulo) + "]"
-    query = """
-            WITH candidatos AS (
-                (SELECT id FROM articulos
-                 ORDER BY embedding_texto <=> %s::vector
-                 LIMIT 20)
-                UNION
-                (SELECT id FROM articulos
-                 ORDER BY embedding_titulo <=> %s::vector
-                 LIMIT 20)
-            ),
-                 puntuados AS (
-                     SELECT a.id, a.titulo, a.url,
-                            round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
-                            round((1 - (a.embedding_titulo <=> %s::vector))::numeric, 3) AS sim_titulo
-                     FROM articulos a
-                              JOIN candidatos c ON a.id = c.id
-                 )
-            SELECT id, titulo, url, sim_texto, sim_titulo,
-                   round((0.7 * sim_texto + 0.3 * sim_titulo)::numeric, 3) AS score_total
-            FROM puntuados
-            WHERE (0.7 * sim_texto + 0.3 * sim_titulo) >= %s
-            ORDER BY score_total DESC
-            LIMIT %s; \
-            """
-    cur.execute(query, (
-        str_vec_texto,
-        str_vec_titulo,
-        str_vec_texto,
-        str_vec_titulo,
-        umbral,
-        limite
-    ))
+
+    if vector_titulo:
+        str_vec_titulo = "[" + ",".join(str(f) for f in vector_titulo) + "]"
+        query = """
+                WITH candidatos AS (
+                    (SELECT id FROM articulos
+                     ORDER BY embedding_texto <=> %s::vector
+                     LIMIT 20)
+                    UNION
+                    (SELECT id FROM articulos
+                     ORDER BY embedding_titulo <=> %s::vector
+                     LIMIT 20)
+                ),
+                     puntuados AS (
+                         SELECT a.id, a.titulo, a.url,
+                                round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
+                                round((1 - (a.embedding_titulo <=> %s::vector))::numeric, 3) AS sim_titulo
+                         FROM articulos a
+                                  JOIN candidatos c ON a.id = c.id
+                     )
+                SELECT id, titulo, url, sim_texto, sim_titulo,
+                       round((0.7 * sim_texto + 0.3 * sim_titulo)::numeric, 3) AS score_total
+                FROM puntuados
+                WHERE (0.7 * sim_texto + 0.3 * sim_titulo) >= %s
+                ORDER BY score_total DESC
+                LIMIT %s; \
+                """
+        cur.execute(query, (
+            str_vec_texto,
+            str_vec_titulo,
+            str_vec_texto,
+            str_vec_titulo,
+            umbral,
+            limite
+        ))
+    else:
+        query = """
+                WITH candidatos AS (
+                    SELECT id FROM articulos
+                    ORDER BY embedding_texto <=> %s::vector
+                    LIMIT 20
+                ),
+                     puntuados AS (
+                         SELECT a.id, a.titulo, a.url,
+                                round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
+                                0.0 AS sim_titulo
+                         FROM articulos a
+                                  JOIN candidatos c ON a.id = c.id
+                     )
+                SELECT id, titulo, url, sim_texto, sim_titulo,
+                       sim_texto AS score_total
+                FROM puntuados
+                WHERE sim_texto >= %s
+                ORDER BY score_total DESC
+                LIMIT %s; \
+                """
+        cur.execute(query, (
+            str_vec_texto,
+            str_vec_texto,
+            umbral,
+            limite
+        ))
     return cur.fetchall()
+
+ 

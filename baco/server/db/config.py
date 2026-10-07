@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import psycopg
 from psycopg_pool import ConnectionPool
 
-# Buscar y cargar el archivo .env desde la raíz del proyecto
+
 _current_dir = Path(__file__).resolve().parent
 for p in [_current_dir, *_current_dir.parents]:
     env_file = p / ".env"
@@ -21,7 +21,6 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME", "baco_db")
 CONN_INFO = f"host={DB_HOST} port={DB_PORT} user={DB_USER} password={DB_PASSWORD} dbname={DB_NAME}"
 
-# Pool global de conexiones (se inicia con FastAPI)
 db_pool = ConnectionPool(
     conninfo=CONN_INFO,
     min_size=2,
@@ -31,11 +30,6 @@ db_pool = ConnectionPool(
 )
 
 def get_conn(dbname: str = None, autocommit: bool = False):
-    """Retorna una conexión activa.
-
-    - Si el pool de FastAPI está abierto y la base es baco_db, toma una conexión en 0.01 ms.
-    - Si el pool no está abierto (scripts offline/CLI), conecta directo a PostgreSQL.
-    """
     target_db = dbname or DB_NAME
     if db_pool is not None and not db_pool.closed and target_db == DB_NAME:
         return db_pool.connection()

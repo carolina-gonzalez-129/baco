@@ -27,17 +27,13 @@ load_dotenv()
 
 
 def generar_slug(texto: str) -> str:
-    """Genera un slug simple para tags sin depender de normalizar.py."""
     if not texto:
         return ""
     t = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^\w\s-]", "", t).strip().lower().replace(" ", "-")
 
-
 from baco.server.db.config import DB_NAME, get_conn
 
-
-# Configuración de API Discourse
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
 DISCOURSE_URL = os.getenv("DISCOURSE_URL", "bc-dev.finneg.com").strip()
@@ -59,14 +55,12 @@ PAUSA_ENTRE_REQUESTS = 0.3
 
 
 def limpiar_texto(cooked_html: str) -> str:
-    """Extrae texto plano preservando saltos de línea."""
     soup = BeautifulSoup(cooked_html, "html.parser")
     lineas = [l.strip() for l in soup.get_text("\n").splitlines()]
     return "\n".join(l for l in lineas if l)
 
 
 def pedir(http: httpx.Client, ruta: str, params: dict = None) -> dict:
-    """Realiza una petición GET con reintentos para rate-limits (429) y errores temporales."""
     for intento in range(5):
         try:
             r = http.get(ruta, params=params)
@@ -88,7 +82,6 @@ def pedir(http: httpx.Client, ruta: str, params: dict = None) -> dict:
 
 
 def obtener_ids_existentes(conn) -> set[int]:
-    """Obtiene el conjunto de todos los IDs de artículos que ya existen en baco_db."""
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM articulos;")
         return set(row[0] for row in cur.fetchall())
@@ -96,25 +89,22 @@ def obtener_ids_existentes(conn) -> set[int]:
 
 def sincronizar_nuevos_articulos():
     print(f"=== Sincronización Incremental: Finnegans API -> {DB_NAME} ===")
-    
-    # 1. Conectar a PostgreSQL
+
     conn = get_conn()
     
     try:
         ids_existentes = obtener_ids_existentes(conn)
         print(f"1. Artículos existentes actualmente en baco_db: {len(ids_existentes)}")
 
-        # 2. Conectar a Discourse
         nuevos_insertados = 0
         pagina = 0
         consecutivos_existentes = 0
-        MAX_CONSECUTIVOS_EXISTENTES = 15  # Si vemos 15 temas que ya están en la BD, terminamos
+        MAX_CONSECUTIVOS_EXISTENTES = 15
 
         print(f"2. Consultando nuevos artículos en {BASE_URL}...")
         
         with httpx.Client(base_url=BASE_URL, headers=HEADERS, timeout=30) as http:
             while True:
-                # Pedimos los últimos temas ordenados por fecha de creación (los más nuevos primero)
                 endpoint = "/latest.json"
                 params = {"page": pagina, "order": "created"}
                 
