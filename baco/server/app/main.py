@@ -1,18 +1,21 @@
-import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, Depends  # <-- 1. Agregamos Depends
+from fastapi import FastAPI, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
-from baco.server.db.config import db_pool, get_conn  # <-- 2. Importamos get_conn
-from baco.server.services.buscar_duplicados import buscar_generico
+from baco.server.db.config import db_pool, get_conn
+from baco.server.services.buscar_duplicados import buscar_por_titulo
 def get_db_cursor():
     with get_conn() as conn:
         with conn.cursor() as cur:
             yield cur
 
+#Voy a precargar aca los modelos ONNXS para q no haya tanta latencia al ejecutar las busquedas completas
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_pool.open()
+    from baco.server.services.embeddings import get_model_titulo, get_model_texto
+    get_model_titulo()
+    get_model_texto()
     yield
     db_pool.close()
 
@@ -33,33 +36,21 @@ async def first_example():
 
 
 @app.get("/buscar")
-async def buscar_por_titulo(
+async def buscar_por_titulo_articulos(
         titulo: str = Query(..., description="Título a buscar"),
         limite: int = 1,
         cur = Depends(get_db_cursor)
 ):
-    t_inicio = time.perf_counter()
-    coincidencias = await run_in_threadpool(buscar_generico, "titulo", titulo, cur, limite=limite)
-    t_fin = time.perf_counter()
-    duracion_ms = (t_fin - t_inicio) * 1000
-#DSPS ELIMINAR QIERO USAR ESTO SOLO PARA MEDIR LA LATENCIA DE CADA COSA!
-    print("\n" + "=" * 60)
-    print(f"--- TIEMPO INICIAL : 0.00 ms ---")
-    print(f"--- TIEMPO FINAL   : {duracion_ms:.2f} ms ---")
-    print(f"=== TIEMPO TOTAL   : {duracion_ms:.2f} ms ===")
-    print("=" * 60 + "\n")
-
+    coincidencias = await run_in_threadpool(buscar_por_titulo, titulo, cur)
     if coincidencias:
         return {
             "encontrado": True,
             "origen": "titulo_exacto",
-            "tiempo_ms": round(duracion_ms, 2),
             "articulos": coincidencias
         }
     return {
         "encontrado": False,
         "origen": None,
-        "tiempo_ms": round(duracion_ms, 2),
         "articulos": []
     }
 
