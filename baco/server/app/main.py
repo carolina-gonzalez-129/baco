@@ -1,17 +1,23 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel
+from fastmcp import FastMCP
 from baco.server.db.config import db_pool, get_conn
-#VER SI PONER LOS IMPORTS EN CADA FUNCION ME REDUCE LA LATENCIA DSPS
-from baco.server.services.buscar_duplicados import buscar_por_titulo, evaluar_coincidencias
-from baco.server.services.buscar_duplicados import buscar_por_texto
+from baco.server.services.buscar_duplicados import BuscadorDuplicados
+from baco.agent import create_agent
+from baco.server.schemas.articulo import ArticuloSchema
+from baco.server.services.validar_articulo import (
+    validar_titulo_pre_duplicados,
+    validar_texto_y_estructura_post_duplicados,
+)
+
 def get_db_cursor():
     with get_conn() as conn:
         with conn.cursor() as cur:
             yield cur
 
-#Voy a precargar aca los modelos ONNXS para q no haya tanta latencia al ejecutar las busquedas completas
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_pool.open()
@@ -20,7 +26,6 @@ async def lifespan(app: FastAPI):
     get_model_texto()
     yield
     db_pool.close()
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -31,80 +36,115 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/")
-async def first_example():
-    return {"message": "Es reactiva? Si xd"}
-
-
-@app.get("/buscar")
-async def buscar_por_titulo_articulos(
-        titulo: str = Query(..., description="Título a buscar"),
-        limite: int = 1,
-        cur = Depends(get_db_cursor)
+#ES LA PRIMERA ETAPA, SE DEBE SUPERPONER CON LA OTRA Y ES BLOQUEANTE
+#1- ES PRE LO DE DUPLICADOS.
+#En teoria se supone que esto sea validar primero y deduplicar dsps, asegurarlo dsps de algun modo
+@app.get("/validar_titulo_inicial")
+def validar_titulo_inicial(
+        titulo: str = Query(..., description="Titulo del artículo")
 ):
-    coincidencias = await run_in_threadpool(buscar_por_titulo, titulo, cur)
-    if coincidencias:
+    articulo = ArticuloSchema(id=0, titulo=titulo)
+    resultado = validar_titulo_pre_duplicados(articulo)
+    if not resultado["apto_para_deduplicacion"]:
+        return {
+            "valido": False,
+            "fase": "fase_1_titulo",
+            "bloqueante": True,
+            "findings": resultado["findings"]
+        }
+
+    return {
+        "valido": True,
+        "fase": "fase_1_titulo",
+        "titulo_sanitizado": resultado["titulo_sanitizado"],
+        "findings": resultado["findings"]
+    }
+# post duplicados.
+@app.post("/validar_post_duplicados")
+def validar_post_duplicados(articulo: ArticuloSchema):
+    resultado = validar_texto_y_estructura_post_duplicados(articulo)
+    es_valido = resultado["status"] != "Pendiente"
+    return {
+        "valido": es_valido,
+        "fase": "fase_2_texto_y_estructura",
+        "status": resultado["status"],
+        "findings": resultado["findings"],
+        "resumen": {
+            "longitud_texto": resultado["longitud_texto"],
+            "tags_count": resultado["tags_count"]
+        }
+    }
+#IMPORTANTE : Solo deberia poder usarse si se paso lo anterior, si no no!
+# SI DSPS NOS DICEN Q USEMOS LA API ESTO PASA A ASYNC! y hay q usar await y ir moldeandolo
+@app.get("/buscar_duplicados")
+def buscar_duplicados(
+    titulo: str = Query(..., description="titulo"),
+    texto: str = Query(None, description="texto"),
+    limite: int = 5,
+    cur = Depends(get_db_cursor)
+):
+    buscador = BuscadorDuplicados(cur)
+    coincidencias_titulo = buscador.evaluar_titulo(titulo)
+    if coincidencias_titulo:
         return {
             "encontrado": True,
-            "origen": "titulo_exacto",
-            "articulos": coincidencias
+            "resultado": coincidencias_titulo,
+            "mensaje": "se encontro el titulo"
         }
-    return {
-        "encontrado": False,
-        "origen": None,
-        "articulos": []
-    }
-
-
-# BUSQUEDA X TEXTO
-@app.get("/bsqtxt")
-async def buscar_por_texto_articulos(
-        texto: str = Query(..., description="Texto a buscar"),
-        limite: int = 1,
-        cur = Depends(get_db_cursor)
-):
-    coincidencias = await run_in_threadpool(buscar_por_texto, texto, cur)
-    if coincidencias:
+    if not texto or not texto.strip():
+        return {
+            "encontrado": False,
+            "requiere_texto": True,
+            "mensaje": "Indicar texto"
+        }
+    coincidencias_texto = buscador.evaluar_texto(texto, True, titulo)
+    if coincidencias_texto:
         return {
             "encontrado": True,
-            "origen": "texto_exacto",
-            "articulos": coincidencias
+            "resultado": coincidencias_texto
         }
+
     return {
         "encontrado": False,
-        "origen": None,
-        "articulos": []
+        "requiere_texto": False,
+        "mensaje": "No se encontraron duplicados, ofrecer publicar!"
     }
 
-@app.get("/busqueda_texto_titulo_articulos")
-async def buscar_por_texto_y_titulo_articulos(
-        texto: str = Query(..., description="Texto a buscar"),
-        titulo:str = Query(..., description="Titulo a buscar"),
-        limite: int = 5,
-        cur = Depends(get_db_cursor)
-):
-    coincidencias = await run_in_threadpool(evaluar_coincidencias,titulo,cur,True, texto)
-    if coincidencias:
-        return {
-            "encontrado": True,
-            "origen": "otro",
-            "articulos": coincidencias
-        }
-    return {
-        "encontrado": False,
-        "origen": None,
-        "articulos": []
-    }
+class ChatRequest(BaseModel):
+    prompt: str
+# creo a baco (CONFIGURAR DSPS A OLLAMA PORQ SEGURO SI NO ME DA 503)
+#solo deberia poder crear al agente si las validaciones dieron bien, y no es duplicado
+@app.post("/chat_bac")
+def chat(request: ChatRequest) -> dict[str, str]:
+    baco_agent = create_agent()
+    response = baco_agent(request.prompt)
+    return {"response": str(response)}
+#Falta que exponga todas sus skills, aunque no se va a poder usarlas T_T
 
-##IMPORTANTE : Como el servidor va a ser usado por agentes quizas estaria bueno configurar q
-#sea un mcp server si eso compatibiliza con q pueda usarse tmb por usuairos (tiene sentido si vemos lo q nos pasaron ellos
-#osea solo difiere en como se autentica pero
+# PARA Q ELLOS DSPS PUEDAN USARLO MEDIANTE AGENTES
+mcp = FastMCP.from_fastapi(app=app, name="Baco MCP")
+mcp_app = mcp.http_app(path="/mcp")
 
-#levantar server : uvicorn baco.server.app.main:app --reload --port 8080
-#http://localhost:8080/docs
-#no desde la web con nros q mandan xq se ve fea
+
+@asynccontextmanager
+async def combined_lifespan(app_inst: FastAPI):
+    async with lifespan(app):
+        async with mcp_app.lifespan(app_inst):
+            yield
+
+
+combined_app = FastAPI(
+    title="API y MCP Server",
+    routes=[
+        *mcp_app.routes,
+        *app.routes,
+    ],
+    lifespan=combined_lifespan,
+)
+
+# levantar server : uvicorn baco.server.app.main:combined_app --reload --port 8080
+# http://localhost:8080/docs
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("baco.server.app.main:app", host="localhost", port=8080, reload=True)
+    uvicorn.run("baco.server.app.main:combined_app", host="localhost", port=8080, reload=True)

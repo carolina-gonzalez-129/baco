@@ -32,7 +32,6 @@ def get_conn(dbname: str = None, autocommit: bool = False):
     target_db = dbname or DB_NAME
     if db_pool is not None and not db_pool.closed and target_db == DB_NAME:
         return db_pool.connection()
-
     return psycopg.connect(
         host=DB_HOST,
         port=DB_PORT,
