@@ -11,6 +11,7 @@ from baco.server.services.validar_articulo import (
     validar_titulo_pre_duplicados,
     validar_texto_y_estructura_post_duplicados,
 )
+from starlette.concurrency import run_in_threadpool
 
 def get_db_cursor():
     with get_conn() as conn:
@@ -67,6 +68,52 @@ async def validar_titulo_inicial(
         "titulo_sanitizado": resultado["titulo_sanitizado"],
         "findings": resultado["findings"]
     }
+
+#IMPORTANTE : Solo deberia poder usarse si se paso lo anterior, si no no!
+
+@app.get("/buscar_duplicados")
+async def buscar_duplicados(
+    titulo: str = Query(..., description="titulo"),
+    texto: str = Query(None, description="texto"),
+    limite: int = 5,
+    buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
+):
+    coincidencias_titulo = await run_in_threadpool(
+        buscador.evaluar_titulo,
+        titulo,
+        limite=limite
+    )
+
+    if coincidencias_titulo:
+        return {
+            "encontrado": True,
+            "resultado": coincidencias_titulo,
+            "mensaje": "se encontro el titulo"
+        }
+    if not texto or not texto.strip():
+        return {
+            "encontrado": False,
+            "requiere_texto": True,
+            "mensaje": "Indicar texto"
+        }
+    coincidencias_texto = await run_in_threadpool(
+        buscador.evaluar_texto,
+        texto,
+        True,
+        titulo,
+        limite=limite
+    )
+    if coincidencias_texto:
+        return {
+            "encontrado": True,
+            "resultado": coincidencias_texto
+        }
+
+    return {
+        "encontrado": False,
+        "requiere_texto": False,
+        "mensaje": "No se encontraron duplicados, ofrecer publicar!"
+    }
 #  DSPS DE LO DE DUPLICADOS-!
 @app.post("/validar_post_duplicados")
 async def validar_post_duplicados(articulo: ArticuloSchema):
@@ -82,41 +129,6 @@ async def validar_post_duplicados(articulo: ArticuloSchema):
             "tags_count": resultado["tags_count"]
         }
     }
-#IMPORTANTE : Solo deberia poder usarse si se paso lo anterior, si no no!
-# SI DSPS NOS DICEN Q USEMOS LA API ESTO PASA A ASYNC! y hay q usar await y ir moldeandolo
-@app.get("/buscar_duplicados")
-def buscar_duplicados(
-    titulo: str = Query(..., description="titulo"),
-    texto: str = Query(None, description="texto"),
-    limite: int = 5,
-    buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
-):
-    coincidencias_titulo = buscador.evaluar_titulo(titulo, limite=limite)
-    if coincidencias_titulo:
-        return {
-            "encontrado": True,
-            "resultado": coincidencias_titulo,
-            "mensaje": "se encontro el titulo"
-        }
-    if not texto or not texto.strip():
-        return {
-            "encontrado": False,
-            "requiere_texto": True,
-            "mensaje": "Indicar texto"
-        }
-    coincidencias_texto = buscador.evaluar_texto(texto, True, titulo, limite=limite)
-    if coincidencias_texto:
-        return {
-            "encontrado": True,
-            "resultado": coincidencias_texto
-        }
-
-    return {
-        "encontrado": False,
-        "requiere_texto": False,
-        "mensaje": "No se encontraron duplicados, ofrecer publicar!"
-    }
-
 class ChatRequest(BaseModel):
     prompt: str
 # creo a baco (CONFIGURAR DSPS A OLLAMA PORQ SEGURO SI NO ME DA 503)

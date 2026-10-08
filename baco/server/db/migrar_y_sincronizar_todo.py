@@ -23,7 +23,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("migrar_y_sincronizar_todo")
 
 from baco.server.db.config import DB_NAME, get_conn
-from baco.server.db.cargar_articulos_postgres import RUTA_JSON
+from baco.server.db.cargar_articulos_postgres import RUTA_JSON, leer_articulos_json
+from baco.server.db.ingesta import upsert_articulos
 from baco.server.services.embeddings import (
     embedding_titulo,
     embedding_texto,
@@ -121,7 +122,6 @@ def sincronizar_esquema_ddl(conn):
                 CASE
                     WHEN ((texto IS NOT NULL) AND (btrim(texto) <> '')) 
                     THEN md5(normalizar_texto(limpiar_headers(texto)))
-                    ELSE NULL
                 END
             ) STORED;
         END IF;
@@ -160,63 +160,13 @@ def sincronizar_articulos_json(conn):
         return
 
     print(f"[+] Leyendo artículos desde {RUTA_JSON.name}...")
-    with open(RUTA_JSON, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    articulos = leer_articulos_json(RUTA_JSON)
 
-    print(f"[+] Artículos en JSON: {len(data)}. Sincronizando categorías y tags...")
-
-    categorias_dict = {}
-    tags_dict = {}
-
-    for item in data:
-        cat_id = item.get("category_id")
-        if cat_id and cat_id not in categorias_dict:
-            categorias_dict[cat_id] = f"Categoría {cat_id}"
-        for tag in item.get("tags", []):
-            if isinstance(tag, dict) and "name" in tag:
-                t_id = tag.get("id") or hash(tag["name"]) % 1000000
-                tags_dict[t_id] = (tag["name"], tag.get("slug") or tag["name"].lower())
-            elif isinstance(tag, str):
-                t_id = abs(hash(tag)) % 1000000
-                tags_dict[t_id] = (tag, tag.lower())
-
-    with conn.cursor() as cur:
-        # Inserción de categorías
-        cat_params = [(cid, cnom) for cid, cnom in categorias_dict.items()]
-        cur.executemany("""
-            INSERT INTO categorias (id, nombre) VALUES (%s, %s)
-            ON CONFLICT (id) DO NOTHING;
-        """, cat_params)
-
-        # Inserción de tags
-        tag_params = [(tid, name, slug) for tid, (name, slug) in tags_dict.items()]
-        cur.executemany("""
-            INSERT INTO tags (id, name, slug) VALUES (%s, %s, %s)
-            ON CONFLICT (id) DO NOTHING;
-        """, tag_params)
-        art_params = []
-        for item in data:
-            art_id = item.get("id")
-            titulo = item.get("title") or item.get("titulo") or "Sin título"
-            categoria_id = item.get("category_id")
-            url = f"https://bc-dev.finneg.com/t/{item.get('slug', 'tema')}/{art_id}"
-            texto = item.get("raw") or item.get("cooked") or item.get("texto") or ""
-            actualizado = item.get("updated_at") or item.get("created_at") or None
-            art_params.append((art_id, titulo, categoria_id, url, texto, actualizado))
-
-        cur.executemany("""
-            INSERT INTO articulos (id, titulo, categoria_id, url, texto, actualizado)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                titulo = EXCLUDED.titulo,
-                categoria_id = EXCLUDED.categoria_id,
-                url = EXCLUDED.url,
-                texto = EXCLUDED.texto,
-                actualizado = EXCLUDED.actualizado;
-        """, art_params)
+    print(f"[+] Artículos en JSON: {len(articulos)}. Sincronizando categorías, tags y artículos...")
+    resumen = upsert_articulos(conn, articulos)
 
     conn.commit()
-    print("[+] Sincronización de artículos, categorías y tags completada.")
+    print(f"[+] Sincronización de artículos, categorías y tags completada: {resumen}")
 
 def recalcular_embeddings_completos(conn):
     print("\n" + "=" * 75)
