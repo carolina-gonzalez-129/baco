@@ -8,6 +8,7 @@ Idealmente habria q volver a ejecutar esto solo cuando estemos x dar la demo, xq
 from pathlib import Path
 import json
 import os
+import sys
 import time
 
 

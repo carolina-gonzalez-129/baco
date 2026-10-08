@@ -6,6 +6,7 @@ python-dotenv
 
 
 fastapi
+fastmcp
 uvicorn
 httpx
 pydantic
