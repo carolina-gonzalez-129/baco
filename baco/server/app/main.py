@@ -18,6 +18,14 @@ def get_db_cursor():
             yield cur
 
 
+def get_buscador_duplicados():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            yield BuscadorDuplicados(cur)
+
+
+
+#HAY Q IMPLEMENTAR UN STATE MANAGER PARA Q 1) VERIFICAR SEA PRMERO 2) DEDUPLICAR 3) PERMITIR OBTENERU NA INSTANCIA DEL AGENTE!
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_pool.open()
@@ -40,7 +48,7 @@ app.add_middleware(
 #1- ES PRE LO DE DUPLICADOS.
 #En teoria se supone que esto sea validar primero y deduplicar dsps, asegurarlo dsps de algun modo
 @app.get("/validar_titulo_inicial")
-def validar_titulo_inicial(
+async def validar_titulo_inicial(
         titulo: str = Query(..., description="Titulo del artículo")
 ):
     articulo = ArticuloSchema(id=0, titulo=titulo)
@@ -59,9 +67,9 @@ def validar_titulo_inicial(
         "titulo_sanitizado": resultado["titulo_sanitizado"],
         "findings": resultado["findings"]
     }
-# post duplicados.
+#  DSPS DE LO DE DUPLICADOS-!
 @app.post("/validar_post_duplicados")
-def validar_post_duplicados(articulo: ArticuloSchema):
+async def validar_post_duplicados(articulo: ArticuloSchema):
     resultado = validar_texto_y_estructura_post_duplicados(articulo)
     es_valido = resultado["status"] != "Pendiente"
     return {
@@ -81,10 +89,9 @@ def buscar_duplicados(
     titulo: str = Query(..., description="titulo"),
     texto: str = Query(None, description="texto"),
     limite: int = 5,
-    cur = Depends(get_db_cursor)
+    buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ):
-    buscador = BuscadorDuplicados(cur)
-    coincidencias_titulo = buscador.evaluar_titulo(titulo)
+    coincidencias_titulo = buscador.evaluar_titulo(titulo, limite=limite)
     if coincidencias_titulo:
         return {
             "encontrado": True,
@@ -97,7 +104,7 @@ def buscar_duplicados(
             "requiere_texto": True,
             "mensaje": "Indicar texto"
         }
-    coincidencias_texto = buscador.evaluar_texto(texto, True, titulo)
+    coincidencias_texto = buscador.evaluar_texto(texto, True, titulo, limite=limite)
     if coincidencias_texto:
         return {
             "encontrado": True,
@@ -140,6 +147,13 @@ combined_app = FastAPI(
         *app.routes,
     ],
     lifespan=combined_lifespan,
+)
+combined_app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # levantar server : uvicorn baco.server.app.main:combined_app --reload --port 8080

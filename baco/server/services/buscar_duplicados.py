@@ -1,9 +1,5 @@
-from contextlib import contextmanager
-from baco.server.db.config import get_conn
-
-#ESTO QUIZAS HAYA QUE MODIFICARLO DSPS SI NOS CONFIRMAN Q PREFIEREN Q USEMOS LA API
-#PARA Q EN VEZ DE SER UN MODULO DE CONSULTAS A POSTGRES SEA DE CONSULTAS A LA API DE FINNEGANS DIRECTO
-
+# ESTO QUIZAS HAYA QUE MODIFICARLO DSPS SI NOS CONFIRMAN Q PREFIEREN Q USEMOS LA API
+# PARA Q EN VEZ DE SER UN MODULO DE CONSULTAS A POSTGRES SEA DE CONSULTAS A LA API DE FINNEGANS DIRECTO
 
 CAMPOS_PERMITIDOS = {
     "titulo": "hash_titulo",
@@ -11,19 +7,9 @@ CAMPOS_PERMITIDOS = {
     "texto_sin_headers": "hash_texto_sin_headers",
 }
 
-@contextmanager
-def cursor_o_nuevo(cur=None):
-    if cur is not None:
-        yield cur
-    else:
-        with get_conn() as conn:
-            with conn.cursor() as c:
-                yield c
-
-
 class BuscadorDuplicados:
-    def __init__(self, cur):
-        self.cur = cur
+    def __init__(self, db):
+        self.cur = db
 
     def evaluar_nuevo_articulo_con_headers(self, titulo: str, texto: str):
         return self.evaluar_coincidencias(titulo, headers=True, texto=texto)
@@ -38,21 +24,33 @@ class BuscadorDuplicados:
             return self.evaluar_texto(texto, headers, titulo)
         return None
 
-    def evaluar_titulo(self, titulo: str):
-        if exactos_titulo := self.buscar_por_titulo(titulo):
+    @staticmethod
+    def _extraer_url(coincidencia):
+        if not coincidencia:
+            return None
+        return coincidencia["url"] if isinstance(coincidencia, dict) else coincidencia[2]
+
+    def evaluar_titulo(self, titulo: str, limite: int = 5):
+        if exactos_titulo := self.buscar_por_titulo(titulo, limite=1):
+            link = self._extraer_url(exactos_titulo[0])
             return {
-                "mensaje": "Ya existe un artículo con exactamente este título, te gustaria actualizarlo?.",
+                "mensaje": f"Ya existe un artículo con exactamente este título ({link}), ¿te gustaría actualizarlo?",
+                "link": link,
                 "coincidencias": exactos_titulo
             }
-        if serie := self.buscar_por_serie(titulo):
+        if serie := self.buscar_por_serie(titulo, limite=limite):
             base_nombre = serie[0]["base_titulo"] if isinstance(serie[0], dict) else serie[0][3]
+            link = self._extraer_url(serie[0])
             return {
-                "mensaje": f"Parece una nueva edición de la serie '{base_nombre}'.",
+                "mensaje": f"Parece una nueva edición de la serie '{base_nombre}' ({link}).",
+                "link": link,
                 "coincidencias": serie
             }
-        if similares := self.buscar_por_titulo_trigrama(titulo, threshold=0.70):
+        if similares := self.buscar_por_titulo_trigrama(titulo, threshold=0.70, limite=limite):
+            link = self._extraer_url(similares[0])
             return {
-                "mensaje": "Encontramos títulos muy parecidos, rte gustaría actualizar el articulo existente?",
+                "mensaje": f"Encontramos títulos muy parecidos. El más similar es {link}, ¿te gustaría actualizar el artículo existente?",
+                "link": link,
                 "coincidencias": similares
             }
         return None
@@ -61,17 +59,19 @@ class BuscadorDuplicados:
     # ej las que son de soluciones en teoria siempre tendrian que tener Consulta seguido de Respiuesta pasos a seguir
     # etc, eso puede inducir a falsos positivos solo xq coincida eso, asiq por eso aunque sea con o sin headers
     # siempre se compara sin eso para los embeddings
-    def evaluar_texto(self, texto: str, headers: bool, titulo: str):
+    def evaluar_texto(self, texto: str, headers: bool, titulo: str, limite: int = 5):
         if headers:
-            exactos_texto = self.buscar_por_texto(texto)
+            exactos_texto = self.buscar_por_texto(texto, limite=1)
         else:
-            exactos_texto = self.buscar_por_texto_sin_headers(texto)
+            exactos_texto = self.buscar_por_texto_sin_headers(texto, limite=1)
         if exactos_texto:
+            link = self._extraer_url(exactos_texto[0])
             return {
-                "mensaje": "Encontramos un texto con exactamente la misma descripcion",
+                "mensaje": f"Encontramos un texto con exactamente la misma descripción ({link})",
+                "link": link,
                 "coincidencias": exactos_texto
             }
-        if similares_embeddings := self.buscar_en_embeddings(texto, titulo):
+        if similares_embeddings := self.buscar_en_embeddings(texto, titulo, limite=limite):
             return {
                 "mensaje": "Encontramos otros articulos similares que quizas te gustaria consultar :",
                 "coincidencias": similares_embeddings
@@ -118,7 +118,7 @@ class BuscadorDuplicados:
 
     # pg_trgm es para determinar similitud entre textos basado en trigram matching
     # es clave usar lo del gin, no olvidar, aca creo q no lo estoy usando asiq deberia
-    def buscar_por_titulo_trigrama(self, titulo: str, threshold: float = 0.70):
+    def buscar_por_titulo_trigrama(self, titulo: str, threshold: float = 0.70, limite: int = 10):
         if not titulo or not titulo.strip():
             return []
 
@@ -128,13 +128,13 @@ class BuscadorDuplicados:
                 FROM articulos
                 WHERE titulo_normalizado %% normalizar_texto(%s)
                 ORDER BY score DESC, id
-                LIMIT 10;
+                LIMIT %s;
                 """
         self.cur.execute(
             "SELECT set_config('pg_trgm.similarity_threshold', %s, true)",
             (str(threshold),),
         )
-        self.cur.execute(query, (titulo, titulo))
+        self.cur.execute(query, (titulo, titulo, limite))
         return self.cur.fetchall()
 
     def buscar_por_texto_sin_headers(self, texto: str, limite: int = 1):
@@ -150,14 +150,12 @@ class BuscadorDuplicados:
         self.cur.execute(query, (texto, limite))
         return self.cur.fetchall()
 
-    def buscar_en_embeddings(self, texto: str, titulo: str):
+    def buscar_en_embeddings(self, texto: str, titulo: str, umbral: float = 0.80, limite: int = 5):
         if not texto or not texto.strip():
             return []
 
         from baco.server.services.embeddings import embedding_texto, embedding_titulo
         # LO DE ABAJO ES IMPORTANTE IR CALIBRANDOLO CUANDO GENERE MIS PARES ETIQUETADOS DE DUPLICADOS/NODUPLICADOS/AMBIGUOS
-        umbral = 0.80
-        limite = 5
         self.cur.execute("SELECT limpiar_headers(%s);", (texto,))
         row = self.cur.fetchone()
         texto_sin_headers = (row[0] or "") if row else ""
