@@ -36,6 +36,13 @@ def validar_titulo_pre_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
     findings: list[dict[str, str]] = []
     titulo_raw = (articulo.titulo or "").strip()
     titulo_limpio = re.sub(r"\s+", " ", titulo_raw)
+    if titulo_raw.endswith("."):
+        findings.append(_finding(
+            severity="Requiere ajuste",
+            field="titulo",
+            description="El título no debe terminar con un punto final.",
+            action="Eliminar el punto final del título."
+        ))
     if titulo_limpio.endswith("."):
         titulo_limpio = titulo_limpio.rstrip(".").strip()
     articulo.titulo = titulo_limpio

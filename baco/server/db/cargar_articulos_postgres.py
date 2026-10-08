@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
 
 
-DDL_SCHEMA = """
+DDL_SCHEMA = r"""
 CREATE EXTENSION IF NOT EXISTS unaccent;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -32,6 +32,39 @@ CREATE TABLE IF NOT EXISTS categorias (
     id INT PRIMARY KEY,
     nombre VARCHAR(150)
 );
+
+CREATE OR REPLACE FUNCTION public.titulo_base(t text)
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+SELECT btrim(regexp_replace(
+        regexp_replace(t,
+                       '\m(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\M|\d+',
+                       '', 'g'),
+        '\s+', ' ', 'g'));
+$$;
+
+CREATE OR REPLACE FUNCTION public.limpiar_headers(t text)
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+SELECT CASE
+           WHEN t IS NULL OR t = '' THEN t
+           ELSE btrim(
+                   regexp_replace(
+                           regexp_replace(
+                                   regexp_replace(
+                                           regexp_replace(
+                                                   regexp_replace(t, '(?n)^\s*#{1,6}\s+.*$', '', 'g'),
+                                                   '(?n)^\s*(\*\*)?(consulta|respuesta|pasos a seguir|requiere app\s*builder|antes de empezar|modo de uso|¿?para qu[eé] sirve\??)(\*\*)?\s*:?\s*$',
+                                                   '', 'gi'
+                                           ),
+                                           '(?n)^\s*(\*\s*\*\s*\*|-{3,}|_{3,})\s*$', '', 'g'
+                                   ),
+                                   '!?\[image[^\]]*\]\([^\)]+\)', '', 'gi'
+                           ),
+                           '\n\s*\n+', E'\n\n', 'g'
+                   )
+                )
+           END;
+$$;
+
 CREATE TABLE IF NOT EXISTS articulos (
     id INT PRIMARY KEY,
     titulo VARCHAR(500) NOT NULL,
@@ -40,6 +73,8 @@ CREATE TABLE IF NOT EXISTS articulos (
     texto TEXT NOT NULL,
     titulo_normalizado text GENERATED ALWAYS AS (normalizar_texto(titulo)) STORED,
     texto_normalizado text GENERATED ALWAYS AS (normalizar_texto(texto)) STORED,
+    base_titulo text GENERATED ALWAYS AS (titulo_base(normalizar_texto(titulo))) STORED,
+    texto_sin_headers text GENERATED ALWAYS AS (limpiar_headers(texto)) STORED,
     hash_titulo text GENERATED ALWAYS AS (
         CASE 
             WHEN normalizar_texto(titulo) IS NOT NULL 
@@ -50,6 +85,13 @@ CREATE TABLE IF NOT EXISTS articulos (
         CASE 
             WHEN normalizar_texto(texto) IS NOT NULL 
             THEN md5(normalizar_texto(texto)) 
+        END
+    ) STORED,
+    hash_texto_sin_headers text GENERATED ALWAYS AS (
+        CASE
+            WHEN ((texto IS NOT NULL) AND (btrim(texto) <> '')) 
+            THEN md5(normalizar_texto(limpiar_headers(texto)))
+            ELSE NULL
         END
     ) STORED,
     embedding_titulo vector(384),
@@ -75,7 +117,11 @@ CREATE INDEX IF NOT EXISTS idx_articulos_categoria ON articulos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_articulos_actualizado ON articulos(actualizado);
 CREATE INDEX IF NOT EXISTS idx_articulos_hash_titulo ON articulos(hash_titulo);
 CREATE INDEX IF NOT EXISTS idx_articulos_hash_texto ON articulos(hash_texto);
+CREATE INDEX IF NOT EXISTS idx_articulos_hash_texto_sin_headers ON articulos(hash_texto_sin_headers);
+CREATE INDEX IF NOT EXISTS idx_articulos_base_titulo ON articulos(base_titulo);
 CREATE INDEX IF NOT EXISTS idx_articulos_titulo_trgm ON articulos USING gin (titulo_normalizado gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_articulos_embedding_texto ON articulos USING hnsw (embedding_texto vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_articulos_embedding_titulo ON articulos USING hnsw (embedding_titulo vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
 """
 
