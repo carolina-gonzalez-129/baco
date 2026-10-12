@@ -1,23 +1,7 @@
 import re
 from typing import Any
 from baco.server.schemas.articulo import ArticuloSchema
-
-
-## ============================================================================
-## VALIDADOR DETERMINISTA DE ESTRUCTURA DE ARTÍCULOS (LADO DEL SERVIDOR)
-## ============================================================================
-# NOTA ARQUITECTURA:
-# No aplicar todas las validaciones antes de implementar la deduplicación porque
-# muchos artículos ya publicados no las cumplen (en baco_db se verificó que el 69%
-# no tiene tag de plantilla, 17% tiene menos de 2 tags y 6,9% tiene menos de 300 caracteres).
-# Osea q si fuesemos tan estrictos al principio se perderia el 70 % de la base
-#
-# ESTRATEGIA EN 2 FASES:
-# 1) FASE 1 (Pre-Duplicados): Validación exclusiva sobre el campo TÍTULO con auto-sanitización.
-#    Permite buscar duplicados de inmediato sin abrumar al usuario con el resto del contenido.
-# 2) FASE 2 (Post-Duplicados): Validación sobre el campo TEXTO, taxonomía (categoría/tags)
-#    y reglas editoriales para asegurar la calidad del artículo nuevo o a publicar.
-## ============================================================================
+ #AGREGAR VALIDAICONES PARA Q SI O SI HAYA TAGS Y SI O SI EL SLUG NO ESTE VACIO Y SI O SI LA CATEGORIA_ID NO SEA NULL
 
 
 def _finding(severity: str, field: str, description: str, action: str) -> dict[str, str]:
@@ -28,10 +12,6 @@ def _finding(severity: str, field: str, description: str, action: str) -> dict[s
         "action": action
     }
 
-
-# ----------------------------------------------------------------------------
-# FASE 1: Validación y Sanitización Exclusiva del TÍTULO (PRE-DUPLICADOS)
-# ----------------------------------------------------------------------------
 def validar_titulo_pre_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
     findings: list[dict[str, str]] = []
     titulo_raw = (articulo.titulo or "").strip()
@@ -53,23 +33,6 @@ def validar_titulo_pre_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
             description="El artículo debe tener un título definido para poder procesarse",
             action="Asignar un título descriptivo al artículo."
         ))
-    else:
-        if re.match(r"^c[oó]mo\s+(hacer\s+para\s+)?", titulo_limpio, re.IGNORECASE):
-            findings.append(_finding(
-                severity="Requiere ajuste",
-                field="titulo",
-                description="Inicia con fórmulas redundantes como 'Cómo...' o 'Cómo hacer para...'.",
-                action="Comenzar directamente con el verbo de acción en infinitivo (ej. 'Configurar...', 'Emitir...')."
-            ))
-
-        if re.search(r"\berror\b", titulo_limpio, re.IGNORECASE):
-            if not re.search(r"""["'“].*?\berror\b.*?["'”]""", titulo_limpio, re.IGNORECASE):
-                findings.append(_finding(
-                    severity="Requiere ajuste",
-                    field="titulo",
-                    description="Usa la palabra 'Error' sin un mensaje literal citado entre comillas.",
-                    action="Conservarlo solo si forma parte del mensaje textual del sistema entre comillas."
-                ))
 
     tiene_bloqueantes = any(f["severity"] == "Bloqueante" for f in findings)
 
@@ -81,10 +44,6 @@ def validar_titulo_pre_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
         "findings": findings
     }
 
-
-# ----------------------------------------------------------------------------
-# FASE 2: Validacion de los demas campos
-# ----------------------------------------------------------------------------
 def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
     findings: list[dict[str, str]] = []
     texto_limpio = (articulo.texto or "").strip()
@@ -144,3 +103,48 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
         "findings": findings,
         "technical_accuracy_verified": False
     }
+
+
+# ----------------------------------------------------------------------------
+# FASE 3: Validación de Estilo Editorial (NO BLOQUEANTE, PRE-PUBLICACIÓN)
+#TOTAL DE ARTICULOS QUE EMPIEZAN EN "COMO" AUNQUE ES UNA PAUTA EDITORIAL NO EMPEZAR ASI:376
+#TOTAL DE ARTICULOS QUE EMPIEZAN EN "ERROR" AUNQUE ES UNA PAUTA EDITORIAL NO EMPEZAR ASI:
+
+# ----------------------------------------------------------------------------
+def validar_estilo_editorial(articulo: ArticuloSchema) -> dict[str, Any]:
+    findings: list[dict[str, str]] = []
+    titulo_raw = (articulo.titulo or "").strip()
+    titulo_limpio = re.sub(r"\s+", " ", titulo_raw).rstrip(".").strip()
+
+    if re.match(r"^c[oó]mo\s+(hacer\s+para\s+)?", titulo_limpio, re.IGNORECASE):
+        findings.append(_finding(
+            severity="Requiere ajuste",
+            field="titulo",
+            description="Inicia con fórmulas redundantes como 'Cómo...' o 'Cómo hacer para...'.",
+            action="Comenzar directamente con el verbo de acción en infinitivo (ej. 'Configurar...', 'Emitir...')."
+        ))
+
+    if re.search(r"\berror\b", titulo_limpio, re.IGNORECASE):
+        if not re.search(r"""["'“].*?\berror\b.*?["'”]""", titulo_limpio, re.IGNORECASE):
+            findings.append(_finding(
+                severity="Requiere ajuste",
+                field="titulo",
+                description="Usa la palabra 'Error' sin un mensaje literal citado entre comillas.",
+                action="Conservarlo solo si forma parte del mensaje textual del sistema entre comillas."
+            ))
+
+    tiene_bloqueantes = any(f["severity"] == "Bloqueante" for f in findings)
+
+    return {
+        "id": articulo.id,
+        "fase": "fase_3_estilo_editorial",
+        "status": "Requiere ajustes de estilo" if findings else "Cumple pautas de estilo",
+        "valido": not tiene_bloqueantes,
+        "bloqueante": tiene_bloqueantes,
+        "titulo": articulo.titulo,
+        "findings": findings
+    }
+
+
+validar_estilo = validar_estilo_editorial
+

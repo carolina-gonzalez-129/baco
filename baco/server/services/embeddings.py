@@ -25,13 +25,11 @@ MODEL_TITULO_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 DIM_TITULO = 384
 _MODEL_TITULO_INSTANCE: SentenceTransformer | None = None
 
-# Configuración del modelo oficial para embeddings de texto
 MODEL_TEXTO_NAME = "intfloat/multilingual-e5-base"
 DIM_TEXTO = 768
 PREFIJO_E5_TEXTO = "query: "
 MAX_CARACTERES_TEXTO = 1000
 
-# Instancia singleton del modelo para evitar recargas costosas
 _MODEL_TEXTO_INSTANCE: SentenceTransformer | None = None
 
 

@@ -1,5 +1,5 @@
-# ESTO QUIZAS HAYA QUE MODIFICARLO DSPS SI NOS CONFIRMAN Q PREFIEREN Q USEMOS LA API
-# PARA Q EN VEZ DE SER UN MODULO DE CONSULTAS A POSTGRES SEA DE CONSULTAS A LA API DE FINNEGANS DIRECTO
+from typing import Optional, List, Dict, Any, Union
+from baco.server.services.reglas_semanticas import son_semanticas_divergentes
 
 CAMPOS_PERMITIDOS = {
     "titulo": "hash_titulo",
@@ -61,9 +61,22 @@ class BuscadorDuplicados:
     # siempre se compara sin eso para los embeddings
     def evaluar_texto(self, texto: str, headers: bool, titulo: str, limite: int = 5):
         if headers:
-            exactos_texto = self.buscar_por_texto(texto, limite=1)
+            exactos_texto = self.buscar_por_texto(texto, limite=limite)
         else:
-            exactos_texto = self.buscar_por_texto_sin_headers(texto, limite=1)
+            exactos_texto = self.buscar_por_texto_sin_headers(texto, limite=limite)
+
+        if exactos_texto and titulo:
+            exactos_texto = [
+                f for f in exactos_texto
+                if not son_semanticas_divergentes(
+                    cand_normalizado=f["titulo"] if isinstance(f, dict) else (f[1] if len(f) > 1 else ""),
+                    cons_normalizada=titulo,
+                    cand_raw=f["titulo"] if isinstance(f, dict) else (f[1] if len(f) > 1 else ""),
+                    cons_raw=titulo,
+                    cons_texto=texto
+                )
+            ]
+
         if exactos_texto:
             link = self._extraer_url(exactos_texto[0])
             return {
@@ -124,6 +137,8 @@ class BuscadorDuplicados:
 
         query = """
                 SELECT id, titulo, url,
+                       titulo_normalizado,
+                       normalizar_texto(%s) AS consulta_normalizada,
                        similarity(titulo_normalizado, normalizar_texto(%s)) AS score
                 FROM articulos
                 WHERE titulo_normalizado %% normalizar_texto(%s)
@@ -134,8 +149,20 @@ class BuscadorDuplicados:
             "SELECT set_config('pg_trgm.similarity_threshold', %s, true)",
             (str(threshold),),
         )
-        self.cur.execute(query, (titulo, titulo, limite))
-        return self.cur.fetchall()
+        self.cur.execute(query, (titulo, titulo, titulo, limite * 2))
+        filas = self.cur.fetchall()
+        
+        filtrados = []
+        for f in filas:
+            cand_raw = f["titulo"] if isinstance(f, dict) else (f[1] if len(f) > 1 else "")
+            cand_norm = f["titulo_normalizado"] if isinstance(f, dict) else (f[3] if len(f) > 4 else cand_raw)
+            cons_norm = f["consulta_normalizada"] if isinstance(f, dict) else (f[4] if len(f) > 4 else titulo)
+
+            if not son_semanticas_divergentes(cand_norm, cons_norm, cand_raw, titulo):
+                filtrados.append(f)
+            if len(filtrados) >= limite:
+                break
+        return filtrados
 
     def buscar_por_texto_sin_headers(self, texto: str, limite: int = 1):
         if not texto or not texto.strip():
@@ -149,6 +176,8 @@ class BuscadorDuplicados:
                 """
         self.cur.execute(query, (texto, limite))
         return self.cur.fetchall()
+
+    ##FALTA INCORRPORAR MAS REGLAS DE EXCLUSIÓN!!!
 
     def buscar_en_embeddings(self, texto: str, titulo: str, umbral: float = 0.80, limite: int = 5):
         if not texto or not texto.strip():
@@ -185,26 +214,28 @@ class BuscadorDuplicados:
                          LIMIT 20)
                     ),
                          puntuados AS (
-                             SELECT a.id, a.titulo, a.url,
+                             SELECT a.id, a.titulo, a.url, a.titulo_normalizado,
+                                    normalizar_texto(%s) AS consulta_normalizada,
                                     round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
                                     round((1 - (a.embedding_titulo <=> %s::vector))::numeric, 3) AS sim_titulo
                              FROM articulos a
                                       JOIN candidatos c ON a.id = c.id
                          )
-                    SELECT id, titulo, url, sim_texto, sim_titulo,
-                           round((0.7 * sim_texto + 0.3 * sim_titulo)::numeric, 3) AS score_total
+                    SELECT id, titulo, url, titulo_normalizado, consulta_normalizada, sim_texto, sim_titulo,
+                           round((0.8 * sim_texto + 0.2 * sim_titulo)::numeric, 3) AS score_total
                     FROM puntuados
-                    WHERE (0.7 * sim_texto + 0.3 * sim_titulo) >= %s
+                    WHERE (0.8 * sim_texto + 0.2 * sim_titulo) >= %s
                     ORDER BY score_total DESC
                     LIMIT %s;
                     """
             self.cur.execute(query, (
                 str_vec_texto,
                 str_vec_titulo,
+                titulo,
                 str_vec_texto,
                 str_vec_titulo,
                 umbral,
-                limite
+                limite * 3
             ))
         else:
             query = """
@@ -214,13 +245,14 @@ class BuscadorDuplicados:
                         LIMIT 20
                     ),
                          puntuados AS (
-                             SELECT a.id, a.titulo, a.url,
+                             SELECT a.id, a.titulo, a.url, a.titulo_normalizado,
+                                    normalizar_texto(%s) AS consulta_normalizada,
                                     round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
                                     0.0 AS sim_titulo
                              FROM articulos a
                                       JOIN candidatos c ON a.id = c.id
                          )
-                    SELECT id, titulo, url, sim_texto, sim_titulo,
+                    SELECT id, titulo, url, titulo_normalizado, consulta_normalizada, sim_texto, sim_titulo,
                            sim_texto AS score_total
                     FROM puntuados
                     WHERE sim_texto >= %s
@@ -229,8 +261,23 @@ class BuscadorDuplicados:
                     """
             self.cur.execute(query, (
                 str_vec_texto,
+                titulo,
                 str_vec_texto,
                 umbral,
-                limite
+                limite * 3
             ))
-        return self.cur.fetchall()
+        filas = self.cur.fetchall()
+        if not titulo or not titulo.strip():
+            return filas[:limite]
+
+        filtrados = []
+        for fila in filas:
+            cand_raw = fila["titulo"] if isinstance(fila, dict) else (fila[1] if len(fila) > 1 else "")
+            cand_norm = fila["titulo_normalizado"] if isinstance(fila, dict) else (fila[3] if len(fila) > 4 else cand_raw)
+            cons_norm = fila["consulta_normalizada"] if isinstance(fila, dict) else (fila[4] if len(fila) > 4 else titulo)
+
+            if not son_semanticas_divergentes(cand_norm, cons_norm, cand_raw, titulo, cons_texto=texto):
+                filtrados.append(fila)
+            if len(filtrados) >= limite:
+                break
+        return filtrados

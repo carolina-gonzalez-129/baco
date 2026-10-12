@@ -3,6 +3,7 @@ from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.services.validar_articulo import (
     validar_titulo_pre_duplicados,
     validar_texto_y_estructura_post_duplicados,
+    validar_estilo_editorial,
 )
 
 
@@ -37,29 +38,12 @@ def test_titulo_vacio_o_sin_titulo_es_bloqueante():
         assert any(f["severity"] == "Bloqueante" for f in res["findings"])
 
 
-def test_titulo_inicia_con_como_requiere_ajuste():
+def test_titulo_con_como_o_error_no_bloquea_en_fase_1():
+    """Fase 1 pre-duplicados solo valida existencia y punto final, no reglas de estilo."""
     articulo = ArticuloSchema(id=4, titulo="Cómo hacer para cancelar un recibo de cobranza")
     res = validar_titulo_pre_duplicados(articulo)
-    assert res["apto_para_deduplicacion"] is True  # No es bloqueante, pero requiere ajuste
-    assert any(
-        f["severity"] == "Requiere ajuste" and "Cómo" in f["description"]
-        for f in res["findings"]
-    )
-
-
-def test_titulo_con_error_sin_comillas_requiere_ajuste():
-    articulo = ArticuloSchema(id=5, titulo="Corregir error de validación en asiento")
-    res = validar_titulo_pre_duplicados(articulo)
-    assert any(
-        f["severity"] == "Requiere ajuste" and "Error" in f["description"]
-        for f in res["findings"]
-    )
-
-
-def test_titulo_con_error_entre_comillas_es_valido():
-    articulo = ArticuloSchema(id=6, titulo='Resolver mensaje: "Error de conexión con AFIP"')
-    res = validar_titulo_pre_duplicados(articulo)
-    assert not any("sin un mensaje literal" in f["description"] for f in res["findings"])
+    assert res["apto_para_deduplicacion"] is True
+    assert len(res["findings"]) == 0
 
 
 # ==============================================================================
@@ -169,3 +153,46 @@ def test_falta_tag_de_plantilla_es_bloqueante():
         f["severity"] == "Bloqueante" and "plantilla" in f["description"].lower()
         for f in res["findings"]
     )
+
+
+# ==============================================================================
+# TESTS FASE 3: validar_estilo_editorial (NO BLOQUEANTE)
+# ==============================================================================
+
+def test_estilo_titulo_inicia_con_como_requiere_ajuste():
+    articulo = ArticuloSchema(id=20, titulo="Cómo hacer para cancelar un recibo de cobranza")
+    res = validar_estilo_editorial(articulo)
+    assert res["valido"] is True
+    assert res["bloqueante"] is False
+    assert any(
+        f["severity"] == "Requiere ajuste" and "Cómo" in f["description"]
+        for f in res["findings"]
+    )
+
+
+def test_estilo_titulo_con_error_sin_comillas_requiere_ajuste():
+    articulo = ArticuloSchema(id=21, titulo="Corregir error de validación en asiento")
+    res = validar_estilo_editorial(articulo)
+    assert res["valido"] is True
+    assert res["bloqueante"] is False
+    assert any(
+        f["severity"] == "Requiere ajuste" and "Error" in f["description"]
+        for f in res["findings"]
+    )
+
+
+def test_estilo_titulo_con_error_entre_comillas_es_valido():
+    articulo = ArticuloSchema(id=22, titulo='Resolver mensaje: "Error de conexión con AFIP"')
+    res = validar_estilo_editorial(articulo)
+    assert res["valido"] is True
+    assert res["bloqueante"] is False
+    assert not any("sin un mensaje literal" in f["description"] for f in res["findings"])
+
+
+def test_estilo_cumple_completamente():
+    articulo = ArticuloSchema(id=23, titulo="Configurar parámetros de ventas en AFIP")
+    res = validar_estilo_editorial(articulo)
+    assert res["valido"] is True
+    assert res["bloqueante"] is False
+    assert len(res["findings"]) == 0
+
