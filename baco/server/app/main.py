@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, Depends
+from strands import tool
+from fastapi import FastAPI, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastmcp import FastMCP
@@ -10,6 +11,7 @@ from baco.server.schemas.articulo import ArticuloSchema
 from baco.server.services.validar_articulo import (
     validar_titulo_pre_duplicados,
     validar_texto_y_estructura_post_duplicados,
+    validar_estilo_editorial,
 )
 from starlette.concurrency import run_in_threadpool
 
@@ -24,15 +26,26 @@ def get_buscador_duplicados():
         with conn.cursor() as cur:
             yield BuscadorDuplicados(cur)
 
+"""
+FALTA
+1) IMPLEMENTAR UN MANEJADOR DE ESTADOS PARA Q POR EJ BUSCAR_DUPLICADOS SE PUEDA USAR SI Y SOLO SI SE PASO VALIDACION 1,
+    TIENE Q CUBRIR TODO PORQ USAR SKILLS ES CARO ASIQ DEBE PERMITIR SOLO SI LO ANTERIOR FUE SATISFECHO
+2) DEFINIR SI DESDE ACA TENGO Q DECLARAR A LAS SKILLS COMO TOOLS PARA Q LAS CONSUMAN OTROS AGENTES CON MCP.TOOL
+Y COMO SERVIDOR NORMAL CON 
 
+"""
 
 #HAY Q IMPLEMENTAR UN STATE MANAGER PARA Q 1) VERIFICAR SEA PRMERO 2) DEDUPLICAR 3) PERMITIR OBTENERU NA INSTANCIA DEL AGENTE!
+#ALGO MINIMO DE PERSISTENCIA PARA Q NO SE PIERDA EL HILO
+#FALTA AGREGAR ALGO PARA Q SE CIERREN SI O SI LAS CONEXIONES A LA DB DESDE BUSCAR_DUPLICADOS CUANDO TERMINA!
+#CREO UNA INSTANCIA DE BACO AL INICIAR EL SERVIDOR
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_pool.open()
     from baco.server.services.embeddings import get_model_titulo, get_model_texto
     get_model_titulo()
     get_model_texto()
+    app.state.baco_agent = create_agent()
     yield
     db_pool.close()
 
@@ -45,7 +58,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-#ES LA PRIMERA ETAPA, SE DEBE SUPERPONER CON LA OTRA Y ES BLOQUEANTE
+## ESTO  QUIZAS PARA Q LE PEGUE A LA PARTE Q DICE ESCRIBE UN TITULO O PEGA UN ENLACE AQUI, NO VALIDA NADA
+@app.get("/titulo_exacto")
+async def titulo_exacto(
+    titulo: str = Query(..., description="titulo"),
+    buscador : BuscadorDuplicados = Depends(get_buscador_duplicados)
+):
+    hay_titulo_exacto = buscador.buscar_por_titulo(titulo)
+    if hay_titulo_exacto:
+        url = hay_titulo_exacto[0][2]
+    return {
+        "url": url,
+        "mensaje": f"Ya hay un título exactamente igual ({url}), te gustaria consultarlo?"
+    }
+
 #1- ES PRE LO DE DUPLICADOS.
 #En teoria se supone que esto sea validar primero y deduplicar dsps, asegurarlo dsps de algun modo
 @app.get("/validar_titulo_inicial")
@@ -69,13 +95,14 @@ async def validar_titulo_inicial(
         "findings": resultado["findings"]
     }
 
-#IMPORTANTE : Solo deberia poder usarse si se paso lo anterior, si no no!
+
+#IMPORTANTE : Solo deberia poder usarse si se paso lo anterior, si no no! O definir con ellos!
 
 @app.get("/buscar_duplicados")
 async def buscar_duplicados(
     titulo: str = Query(..., description="titulo"),
     texto: str = Query(None, description="texto"),
-    limite: int = 5,
+    limite: int = 3,
     buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ):
     coincidencias_titulo = await run_in_threadpool(
@@ -129,28 +156,90 @@ async def validar_post_duplicados(articulo: ArticuloSchema):
             "tags_count": resultado["tags_count"]
         }
     }
+#ME DA UNA INSTANCIA DE BACO, PERO SIN LOS MODULOS DEL SERVIDOR! QUIZAS DEBERIA EN CHAT AHI INCORPORAR TODO
+def get_baco_agent(request: Request):
+    return request.app.state.baco_agent
+
+# FASE 3: validacion de estilo, deberia ser bloqueante quizas para publicar pero es dsps de haber recibido todo
+@app.get("/validar_estilo")
+async def validar_estilo(articulo: ArticuloSchema):
+    resultado = validar_estilo_editorial(articulo)
+    return resultado
+
+#AGREGO LO DE LAS SKILLS PARA HACERLAS ACCESIBLES
+#IMPORTANTE : LA PLANTILLA QUIZAS HAY Q AGREGAR LO DE Q SEA 1 MAS OSEA LO DE VIDEO
+##FALRTA LA SKILL DE DUPLICADOS PERO QUIZAS SE PUIEDE ELIMINAR!
+##ACA USAR LO DEL SCHEMA CON EL SLUG
+#SE USA RECIEN DSPS DE HABER PASADO T ODO LO DE BUSCAR_DUPLICADOS SI O SI
+#SI TENGO Q AGREGAR EL COMO SE HACE TMB IRIA UN CAMBIO ACA!
+@app.post("/aplicar_plantilla")
+async def aplicar_plantilla(articulo:ArticuloSchema,
+    baco = Depends(get_baco_agent)
+    ):
+    slugs = {
+        (t.slug or t.name).lower().strip()
+        for t in (articulo.tags or [])
+    }
+    tipo = "soluciones" if ("soluciones" in slugs or "solucion" in slugs) else "instructivo"
+    prompt = (
+        f"Activa la skill 'plantillas' (formato '{tipo}') "
+        f"para estructurar y normalizar el siguiente borrador.\n"
+        f"Título: {articulo.titulo}\n"
+        f"Texto:\n{articulo.texto}"
+    )
+    respuesta = baco(prompt)
+    return {"texto_con_plantilla": str(respuesta)}
+
+##LA SKILL DE VALIDATOR
+##QUIZAS DSPS DE ESTO RESETEO DE MEMORIA DSPS DE ENVIARLO A OTRO LUGAR DONDE PUEDAN SER
+##AUDITADOS POR UN MODERADOR!
+#VER Q QUIZAS FALTAN MAS CAMPOS, RECHEQUEAR DSPS
+@app.post("/auditar_calidad")
+async def auditar_calidad(articulo: ArticuloSchema,
+                          baco = Depends(get_baco_agent)
+    ):
+    prompt = (
+    f"Activa la skill 'validator') "
+    f"para estructurar y normalizar el siguiente borrador.\n"
+    f"Título: {articulo.titulo}\n"
+    f"Texto:\n{articulo.texto}"
+)
+
 class ChatRequest(BaseModel):
     prompt: str
-# creo a baco (CONFIGURAR DSPS A OLLAMA PORQ SEGURO SI NO ME DA 503)
-#solo deberia poder crear al agente si las validaciones dieron bien, y no es duplicado
-@app.post("/chat_bac")
-def chat(request: ChatRequest) -> dict[str, str]:
-    baco_agent = create_agent()
-    response = baco_agent(request.prompt)
+    ##ACA VER DE INTEGRARLE LAS COSAS DEL SERVIDOR Y ALGO PARA Q DSPS LAS SKILLS USEN ESO!
+#VER SI QUIEREN Q SEAN ASYNC O SI NO CAMBIAR A DEF NORMAL
+#AGREGAR COMO TOOLS T ODO LO DEMAS Y CONSULTR CON EMILIANO, menos las skills
+##DEBERIA REGISTRAR TODAS Si ellos lo quieren asi y la explicacion si o si como en validar_articulo preduplicados
+@app.post("/chat_baco")
+def chat(
+        request: ChatRequest,
+        baco = Depends(get_baco_agent)
+) -> dict[str, str]:
+
+    @tool
+    async def validar_articulo_pre_duplicados(titulo:str):
+        """Valida si el titulo inicial del artículo cumple las reglas pre-duplicados."""
+        return await validar_titulo_inicial(titulo=titulo)
+    baco.tool_registry.registry[validar_articulo_pre_duplicados.tool_name] = validar_articulo_pre_duplicados
+    response = baco(request.prompt)
     return {"response": str(response)}
-#Falta que exponga todas sus skills, aunque no se va a poder usarlas T_T
+
 
 # PARA Q ELLOS DSPS PUEDAN USARLO MEDIANTE AGENTES
 mcp = FastMCP.from_fastapi(app=app, name="Baco MCP")
 mcp_app = mcp.http_app(path="/mcp")
-
+#POR DEFECTO CON FastMCP.from_fastapi(app=app) todos los endpoints estan disponibles
+#ver si no si quieren q sea solo baco de modificarlo para q sea solo baco como modulo que abarque t odo
 
 @asynccontextmanager
 async def combined_lifespan(app_inst: FastAPI):
-    async with lifespan(app):
+    async with lifespan(app_inst):
         async with mcp_app.lifespan(app_inst):
             yield
 
+
+#VER Q CREO Q DE ACA SE PUEDE CONFIGURAR LO DE Q SOLO ESTEN ACCESIBLES CIERTOS ENDPOINTS Y NO TODOS!
 
 combined_app = FastAPI(
     title="API y MCP Server",
@@ -171,6 +260,5 @@ combined_app.add_middleware(
 # levantar server : uvicorn baco.server.app.main:combined_app --reload --port 8080
 # http://localhost:8080/docs
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("baco.server.app.main:combined_app", host="localhost", port=8080, reload=True)
+
+

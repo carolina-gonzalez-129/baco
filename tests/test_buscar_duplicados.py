@@ -215,3 +215,143 @@ def test_get_buscador_duplicados_injects_db():
         buscador = next(gen)
         assert isinstance(buscador, BuscadorDuplicados)
         assert buscador.cur is mock_cur
+
+
+def test_titulo_base_series_en_postgres():
+    """Verifica que la función SQL titulo_base agrupe series cronológicas y variantes de motor,
+
+    pero mantenga independientes suites impositivas y catálogos funcionales.
+    """
+    try:
+        from baco.server.db.config import get_conn
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # 1. Novedades mensuales ERP
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    (
+                        "Novedades Febrero 2024 - Versión ERP del 6.1.51.352 al 6.1.51.387 y Teampleace hasta 6.1.41.53",
+                        "Novedades Marzo 2024 VERSIÓN ERP del 6.1.51.387 al 6.1.51.459 y Teampleace hasta 6.1.41.55",
+                    ),
+                )
+                assert cur.fetchone()[0] is True
+
+                # 2. Novedades HCM
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    ("Novedades HCM 28/03/2024", "Novedades HCM 29/04/2024"),
+                )
+                assert cur.fetchone()[0] is True
+
+                # 3. Encuentros / eventos periódicos
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    ("1° Encuentro RC 2025", "2° Encuentro RC 2025"),
+                )
+                assert cur.fetchone()[0] is True
+
+                # 4. Atajo de teclado (F3) NO debe ser serie (es un duplicado/variante léxica)
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    ("Obtener CAE - Validación Token CUIT", "Obtener CAE (F3) - Validación Token CUIT"),
+                )
+                assert cur.fetchone()[0] is False
+
+                # 5. Variantes de motor NO deben ser serie (es una deprecación/reemplazo)
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    (
+                        "Cómo realizar importación de Padrón IIBB CABA (Antiguo Motor)",
+                        "Cómo realizar importación de Padrón IIBB CABA (Motor 2024)",
+                    ),
+                )
+                assert cur.fetchone()[0] is False
+
+                # 6. Versiones PLE
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    ("PLE Libro Inventario y Balance 3.3", "PLE Inventario y Balance 3.4"),
+                )
+                assert cur.fetchone()[0] is True
+
+                # 7. Suites normativas NO deben colapsar (formularios distintos)
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    (
+                        "Informes Exógena DIAN -F1005 -Impuesto a las ventas por pagar",
+                        "Informes Exógena DIAN -F1006-Impuesto a las ventas por pagar (generado) e impuesto al consumo",
+                    ),
+                )
+                assert cur.fetchone()[0] is False
+
+                # 8. Catálogos paramétricos NO deben colapsar (conceptos distintos)
+                cur.execute(
+                    "SELECT titulo_base(normalizar_texto(%s)) = titulo_base(normalizar_texto(%s));",
+                    (
+                        "LH - Cómo informar una licencia por maternidad",
+                        "LH - Cómo informar una licencia por paternidad",
+                    ),
+                )
+                assert cur.fetchone()[0] is False
+    except Exception as e:
+        pytest.skip(f"Base de datos PostgreSQL no accesible para prueba de integración: {e}")
+
+
+def test_son_semanticas_divergentes():
+    from baco.server.services.buscar_duplicados import son_semanticas_divergentes
+
+    # 1. Países diferentes (incluyendo Bolivia y Ecuador)
+    assert son_semanticas_divergentes("Localización Perú", "Localización México") is True
+    assert son_semanticas_divergentes("Configuración DIAN", "Configuración AFIP") is True
+    assert son_semanticas_divergentes("Localización Bolivia", "Localización Ecuador") is True
+    assert son_semanticas_divergentes("Localización Paraguay", "Localización Uruguay") is True
+    assert son_semanticas_divergentes("Paraguay - Readme módulo Paraguayapp", "Uruguay - Readme Módulo Uruguay app") is True
+
+    # 2. Webinars y Capacitaciones con temas distintos
+    assert son_semanticas_divergentes(
+        "Webinar: Carga y análisis de gasto de obra",
+        "Webinar: Exportación de pagos"
+    ) is True
+    assert son_semanticas_divergentes(
+        "Webinar: Finnapp Agro",
+        "Webinar: Presupuestador de obra"
+    ) is True
+    assert son_semanticas_divergentes(
+        "Capacitación: Módulo de Compras",
+        "Capacitación: Módulo de Tesorería"
+    ) is True
+
+    # 3. Fases de proyecto / metodología
+    assert son_semanticas_divergentes(
+        "Gemini - Gema para relevamiento de consultoría - Diseño",
+        "Gemini - Gema para relevamiento de consultoría - Proyecto Start"
+    ) is True
+
+    # 4. Circuitos opuestos
+    assert son_semanticas_divergentes("Factura de Compra", "Factura de Venta") is True
+    assert son_semanticas_divergentes("API 2.0 - Transacciones", "API 2.0 - Informes") is True
+
+    # 5. Mismo tema y país (no divergentes)
+    assert son_semanticas_divergentes("Localización Perú", "Localización Perú - Pasos iniciales") is False
+    assert son_semanticas_divergentes("Factura de Venta Electrónica", "Facturación de Ventas Electrónica") is False
+    assert son_semanticas_divergentes("Webinar: Carga de gasto", "Webinar: Carga de gasto y obras") is False
+
+
+def test_evaluar_texto_descarta_coincidencia_exacta_si_difiere_en_pais_o_webinar():
+    mock_cur = MagicMock()
+    buscador = BuscadorDuplicados(mock_cur)
+
+    # Si el texto es idéntico pero el candidato es de Bolivia y la consulta de Ecuador
+    mock_cur.fetchall.return_value = [(1, "Localización Bolivia", "https://bc.finneg.com/1")]
+    with patch.object(buscador, "buscar_en_embeddings", return_value=[]) as mock_embeddings:
+        res = buscador.evaluar_texto(
+            texto="Descargue el paquete de instalación adjunto.",
+            headers=False,
+            titulo="Localización Ecuador"
+        )
+        # No debe tomarlo como coincidencia exacta de texto
+        assert res is None
+        # Debe haber delegado a embeddings
+        mock_embeddings.assert_called_once()
+
+

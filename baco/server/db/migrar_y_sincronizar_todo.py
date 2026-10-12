@@ -64,12 +64,32 @@ def sincronizar_esquema_ddl(conn):
     $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
     CREATE OR REPLACE FUNCTION public.titulo_base(t text)
-    RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
-    SELECT btrim(regexp_replace(
-            regexp_replace(t,
-                           '\\m(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\M|\\d+',
-                           '', 'g'),
-            '\\s+', ' ', 'g'));
+    RETURNS text LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
+    DECLARE
+        s text;
+    BEGIN
+        IF t IS NULL OR trim(t) = '' THEN
+            RETURN t;
+        END IF;
+        s := lower(t);
+        s := regexp_replace(s, '\\m\\d{1,2}\\s+\\d{1,2}\\s+\\d{2,4}\\M', '', 'g');
+        s := regexp_replace(s, '\\m(enero|febrero|marzo|abril|mayo|junio|julio|agosto|agostos|septiembre|setiembre|octubre|noviembre|diciembre)\\M', '', 'g');
+        s := regexp_replace(s, '\\m20\\d{2}\\M', '', 'g');
+        s := regexp_replace(s, '\\m\\d+\\s*(encuentro|jornada|evento|reunion|edicion)\\M', '\\1', 'g');
+        IF s ~ '\\mnovedades\\M' THEN
+            s := regexp_replace(s, '\\m(del|desde)\\M.*', '', 'g');
+            s := regexp_replace(s, '\\m(teamplace|teampleace)\\M.*', '', 'g');
+            s := regexp_replace(s, '\\mversion\\s+erp\\M.*', 'version erp', 'g');
+            s := regexp_replace(s, '\\mversion\\s+agrolive\\M.*', 'version agrolive', 'g');
+            s := regexp_replace(s, '\\m\\d+\\M', '', 'g');
+        END IF;
+        IF s ~ '\\mple\\M' AND (s ~ '\\minventario\\M' OR s ~ '\\mbalance\\M') THEN
+            s := regexp_replace(s, '\\mple\\s+libro\\M', 'ple', 'g');
+            s := regexp_replace(s, '\\m\\d+\\M', '', 'g');
+        END IF;
+        s := btrim(regexp_replace(s, '\\s+', ' ', 'g'));
+        RETURN NULLIF(s, '');
+    END;
     $$;
 
     CREATE OR REPLACE FUNCTION public.limpiar_headers(t text)
