@@ -213,12 +213,12 @@ def test_evaluar_coincidencias_evalua_texto_si_titulo_no_coincide():
 # ==============================================================================
 
 def test_get_buscador_duplicados_injects_db():
-    from baco.server.app.main import get_buscador_duplicados
+    from baco.server.app.api import get_buscador_duplicados
     mock_cur = MagicMock()
     mock_conn = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
-    with patch("baco.server.app.main.get_conn") as mock_get_conn:
+    with patch("baco.server.app.api.get_conn") as mock_get_conn:
         mock_get_conn.return_value.__enter__.return_value = mock_conn
         gen = get_buscador_duplicados()
         buscador = next(gen)
