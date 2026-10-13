@@ -1,49 +1,8 @@
 import pytest
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.services.validar_articulo import (
-    validar_titulo_pre_duplicados,
     validar_texto_y_estructura_post_duplicados,
-    validar_estilo_editorial,
 )
-
-
-# ==============================================================================
-# TESTS FASE 1: validar_titulo_pre_duplicados
-# ==============================================================================
-
-def test_titulo_valido():
-    articulo = ArticuloSchema(id=1, titulo="Configurar facturación electrónica en AFIP")
-    res = validar_titulo_pre_duplicados(articulo)
-    assert res["apto_para_deduplicacion"] is True
-    assert res["titulo_sanitizado"] == "Configurar facturación electrónica en AFIP"
-    assert len(res["findings"]) == 0
-
-
-def test_titulo_termina_con_punto_agrega_finding_y_sanitiza():
-    """Un artículo NUNCA puede terminar con un punto. Debe registrarse el finding y eliminarse el punto."""
-    articulo = ArticuloSchema(id=2, titulo="Emitir factura de crédito electrónica.")
-    res = validar_titulo_pre_duplicados(articulo)
-    assert res["titulo_sanitizado"] == "Emitir factura de crédito electrónica"
-    assert any(
-        f["field"] == "titulo" and "punto final" in f["description"].lower()
-        for f in res["findings"]
-    )
-
-
-def test_titulo_vacio_o_sin_titulo_es_bloqueante():
-    for caso in ["", "   ", "Sin título", "sin título"]:
-        articulo = ArticuloSchema(id=3, titulo=caso)
-        res = validar_titulo_pre_duplicados(articulo)
-        assert res["apto_para_deduplicacion"] is False
-        assert any(f["severity"] == "Bloqueante" for f in res["findings"])
-
-
-def test_titulo_con_como_o_error_no_bloquea_en_fase_1():
-    """Fase 1 pre-duplicados solo valida existencia y punto final, no reglas de estilo."""
-    articulo = ArticuloSchema(id=4, titulo="Cómo hacer para cancelar un recibo de cobranza")
-    res = validar_titulo_pre_duplicados(articulo)
-    assert res["apto_para_deduplicacion"] is True
-    assert len(res["findings"]) == 0
 
 
 # ==============================================================================
@@ -155,44 +114,5 @@ def test_falta_tag_de_plantilla_es_bloqueante():
     )
 
 
-# ==============================================================================
-# TESTS FASE 3: validar_estilo_editorial (NO BLOQUEANTE)
-# ==============================================================================
 
-def test_estilo_titulo_inicia_con_como_requiere_ajuste():
-    articulo = ArticuloSchema(id=20, titulo="Cómo hacer para cancelar un recibo de cobranza")
-    res = validar_estilo_editorial(articulo)
-    assert res["valido"] is True
-    assert res["bloqueante"] is False
-    assert any(
-        f["severity"] == "Requiere ajuste" and "Cómo" in f["description"]
-        for f in res["findings"]
-    )
-
-
-def test_estilo_titulo_con_error_sin_comillas_requiere_ajuste():
-    articulo = ArticuloSchema(id=21, titulo="Corregir error de validación en asiento")
-    res = validar_estilo_editorial(articulo)
-    assert res["valido"] is True
-    assert res["bloqueante"] is False
-    assert any(
-        f["severity"] == "Requiere ajuste" and "Error" in f["description"]
-        for f in res["findings"]
-    )
-
-
-def test_estilo_titulo_con_error_entre_comillas_es_valido():
-    articulo = ArticuloSchema(id=22, titulo='Resolver mensaje: "Error de conexión con AFIP"')
-    res = validar_estilo_editorial(articulo)
-    assert res["valido"] is True
-    assert res["bloqueante"] is False
-    assert not any("sin un mensaje literal" in f["description"] for f in res["findings"])
-
-
-def test_estilo_cumple_completamente():
-    articulo = ArticuloSchema(id=23, titulo="Configurar parámetros de ventas en AFIP")
-    res = validar_estilo_editorial(articulo)
-    assert res["valido"] is True
-    assert res["bloqueante"] is False
-    assert len(res["findings"]) == 0
 

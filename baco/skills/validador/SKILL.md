@@ -22,8 +22,9 @@ Evaluar el texto para evitar filtración de información confidencial hacia la b
 ### 2. Calidad Semántica del Título
 Más allá de la presencia sintáctica del título, auditar su valor comunicativo:
 * **Acción y Contexto:** Verificar que describa con precisión el proceso o pantalla dentro del ERP Finnegans (ej. *"Configurar alícuotas de retención en comprobantes de venta"* en lugar de *"Retenciones"*).
-* **Verbos en Infinitivo:** Asegurar que los instructivos comiencen con verbos en infinitivo (*"Generar", "Conciliar", "Emitir"*).
-* **Claridad en Errores:** En artículos de solución, constatar que el título refleje el síntoma concreto que el usuario experimenta en el sistema.
+* **Verbos en Infinitivo vs. Fórmulas Redundantes:** Asegurar que los instructivos comiencen directamente con verbos en infinitivo (*"Generar", "Conciliar", "Emitir"*). Marcar como hallazgo y corregir títulos que inicien con fórmulas como *"Cómo..."*, *"Cómo hacer para..."* o *"Pasos para..."*.
+* **Uso Restringido de "Error":** Emplear la palabra *"Error"* única y exclusivamente si es parte literal del mensaje devuelto por el sistema (entre comillas o tras dos puntos, ej. *Aviso: "Error de conexión"*). En cualquier otro caso, sustituir por la acción correctiva concreta.
+* **Claridad en Soluciones:** En artículos de solución, constatar que el título refleje el síntoma o causa concreta que el usuario experimenta en el sistema.
 
 ### 3. Coherencia Conceptual (Categoría y Módulo ERP)
 * Contrastar el texto técnico con la categoría asignada.

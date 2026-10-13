@@ -21,6 +21,7 @@ La primera parte nombra la acción; el subtítulo incorpora el mensaje textual q
 ## Criterios de calidad
 
 - Ser específico e incluir el problema en el título.
+- Iniciar directamente con verbos en infinitivo; **no usar fórmulas redundantes** como “Cómo...”, “Cómo hacer para...” o “Pasos para...”.
 - Evitar repetir palabras.
 - Evitar palabras redundantes, como “instructivo” o una palabra que ya está indicada por la categoría.
 - No redactar el título como una narración extensa del caso; nombrar la acción y el problema directamente.
@@ -29,7 +30,7 @@ La primera parte nombra la acción; el subtítulo incorpora el mensaje textual q
 
 - `Guardar una cobranza - Aviso: “Falta especificar un workflow”`
 - `Crear chequera nueva - Mensaje: “Error de código duplicado: Otra entidad con el mismo código ha sido ingresada anteriormente”`
-- `DAI Builder: Cómo crear campos adicionales en maestros`
+- `DAI Builder - Crear campos adicionales en maestros`
 
 ## Títulos de documentación general
 

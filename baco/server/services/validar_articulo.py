@@ -1,8 +1,6 @@
 import re
 from typing import Any
 from baco.server.schemas.articulo import ArticuloSchema
- #AGREGAR VALIDAICONES PARA Q SI O SI HAYA TAGS Y SI O SI EL SLUG NO ESTE VACIO Y SI O SI LA CATEGORIA_ID NO SEA NULL
-
 
 def _finding(severity: str, field: str, description: str, action: str) -> dict[str, str]:
     return {
@@ -10,38 +8,6 @@ def _finding(severity: str, field: str, description: str, action: str) -> dict[s
         "field": field,
         "description": description,
         "action": action
-    }
-
-def validar_titulo_pre_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
-    findings: list[dict[str, str]] = []
-    titulo_raw = (articulo.titulo or "").strip()
-    titulo_limpio = re.sub(r"\s+", " ", titulo_raw)
-    if titulo_raw.endswith("."):
-        findings.append(_finding(
-            severity="Requiere ajuste",
-            field="titulo",
-            description="El título no debe terminar con un punto final.",
-            action="Eliminar el punto final del título."
-        ))
-    if titulo_limpio.endswith("."):
-        titulo_limpio = titulo_limpio.rstrip(".").strip()
-    articulo.titulo = titulo_limpio
-    if not titulo_limpio or titulo_limpio.lower() == "sin título":
-        findings.append(_finding(
-            severity="Bloqueante",
-            field="titulo",
-            description="El artículo debe tener un título definido para poder procesarse",
-            action="Asignar un título descriptivo al artículo."
-        ))
-
-    tiene_bloqueantes = any(f["severity"] == "Bloqueante" for f in findings)
-
-    return {
-        "id": articulo.id,
-        "fase": "fase_1_titulo",
-        "apto_para_deduplicacion": not tiene_bloqueantes,
-        "titulo_sanitizado": articulo.titulo,
-        "findings": findings
     }
 
 def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
@@ -105,46 +71,5 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     }
 
 
-# ----------------------------------------------------------------------------
-# FASE 3: Validación de Estilo Editorial (NO BLOQUEANTE, PRE-PUBLICACIÓN)
-#TOTAL DE ARTICULOS QUE EMPIEZAN EN "COMO" AUNQUE ES UNA PAUTA EDITORIAL NO EMPEZAR ASI:376
-#TOTAL DE ARTICULOS QUE EMPIEZAN EN "ERROR" AUNQUE ES UNA PAUTA EDITORIAL NO EMPEZAR ASI:
 
-# ----------------------------------------------------------------------------
-def validar_estilo_editorial(articulo: ArticuloSchema) -> dict[str, Any]:
-    findings: list[dict[str, str]] = []
-    titulo_raw = (articulo.titulo or "").strip()
-    titulo_limpio = re.sub(r"\s+", " ", titulo_raw).rstrip(".").strip()
-
-    if re.match(r"^c[oó]mo\s+(hacer\s+para\s+)?", titulo_limpio, re.IGNORECASE):
-        findings.append(_finding(
-            severity="Requiere ajuste",
-            field="titulo",
-            description="Inicia con fórmulas redundantes como 'Cómo...' o 'Cómo hacer para...'.",
-            action="Comenzar directamente con el verbo de acción en infinitivo (ej. 'Configurar...', 'Emitir...')."
-        ))
-
-    if re.search(r"\berror\b", titulo_limpio, re.IGNORECASE):
-        if not re.search(r"""["'“].*?\berror\b.*?["'”]""", titulo_limpio, re.IGNORECASE):
-            findings.append(_finding(
-                severity="Requiere ajuste",
-                field="titulo",
-                description="Usa la palabra 'Error' sin un mensaje literal citado entre comillas.",
-                action="Conservarlo solo si forma parte del mensaje textual del sistema entre comillas."
-            ))
-
-    tiene_bloqueantes = any(f["severity"] == "Bloqueante" for f in findings)
-
-    return {
-        "id": articulo.id,
-        "fase": "fase_3_estilo_editorial",
-        "status": "Requiere ajustes de estilo" if findings else "Cumple pautas de estilo",
-        "valido": not tiene_bloqueantes,
-        "bloqueante": tiene_bloqueantes,
-        "titulo": articulo.titulo,
-        "findings": findings
-    }
-
-
-validar_estilo = validar_estilo_editorial
 

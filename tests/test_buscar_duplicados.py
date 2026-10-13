@@ -166,12 +166,21 @@ def test_evaluar_texto_exacto_y_embeddings():
         assert res is not None
         assert res["link"] == "https://bc.finneg.com/40"
 
-    # Coincidencia por embeddings
+    # Coincidencia por embeddings (franja media 0.90-0.92: revisar / similares)
     with patch.object(buscador, "buscar_por_texto", return_value=[]), \
          patch.object(buscador, "buscar_en_embeddings", return_value=[(50, "Similar 50", "https://bc.finneg.com/50", 0.85, 0.9, 0.88)]):
         res = buscador.evaluar_texto("Texto similar", headers=True, titulo="Titulo")
         assert res is not None
+        assert res["link"] == "https://bc.finneg.com/50"
         assert "similares" in res["mensaje"]
+
+    # Coincidencia por embeddings (franja alta >= 0.92: casi seguro duplicado)
+    with patch.object(buscador, "buscar_por_texto", return_value=[]), \
+         patch.object(buscador, "buscar_en_embeddings", return_value=[(51, "Duplicado Semántico", "https://bc.finneg.com/51", 0.95, 0.85, 0.93)]):
+        res_alto = buscador.evaluar_texto("Texto casi idéntico", headers=True, titulo="Titulo")
+        assert res_alto is not None
+        assert res_alto["link"] == "https://bc.finneg.com/51"
+        assert "prácticamente lo mismo" in res_alto["mensaje"]
 
 
 # ==============================================================================
@@ -185,7 +194,7 @@ def test_evaluar_coincidencias_prioriza_titulo():
     with patch.object(buscador, "evaluar_titulo", return_value={"mensaje": "Título duplicado", "coincidencias": []}), \
          patch.object(buscador, "evaluar_texto") as mock_eval_texto:
         res = buscador.evaluar_coincidencias("Título", headers=True, texto="Texto")
-        assert res == {"mensaje": "Título duplicado", "coincidencias": []}
+        assert res == {"encontrado": True, "mensaje": "Título duplicado", "coincidencias": []}
         mock_eval_texto.assert_not_called()
 
 
@@ -196,7 +205,7 @@ def test_evaluar_coincidencias_evalua_texto_si_titulo_no_coincide():
     with patch.object(buscador, "evaluar_titulo", return_value=None), \
          patch.object(buscador, "evaluar_texto", return_value={"mensaje": "Texto duplicado", "coincidencias": []}):
         res = buscador.evaluar_coincidencias("Título Libre", headers=True, texto="Texto Duplicado")
-        assert res == {"mensaje": "Texto duplicado", "coincidencias": []}
+        assert res == {"encontrado": True, "mensaje": "Texto duplicado", "coincidencias": []}
 
 
 # ==============================================================================
@@ -300,12 +309,18 @@ def test_titulo_base_series_en_postgres():
 def test_son_semanticas_divergentes():
     from baco.server.services.buscar_duplicados import son_semanticas_divergentes
 
-    # 1. Países diferentes (incluyendo Bolivia y Ecuador)
+    # 1. Países diferentes (incluyendo Bolivia y Ecuador, y detección en cand_texto)
     assert son_semanticas_divergentes("Localización Perú", "Localización México") is True
     assert son_semanticas_divergentes("Configuración DIAN", "Configuración AFIP") is True
     assert son_semanticas_divergentes("Localización Bolivia", "Localización Ecuador") is True
     assert son_semanticas_divergentes("Localización Paraguay", "Localización Uruguay") is True
     assert son_semanticas_divergentes("Paraguay - Readme módulo Paraguayapp", "Uruguay - Readme Módulo Uruguay app") is True
+    assert son_semanticas_divergentes(
+        "Configuración de retenciones",
+        "Configuración de retenciones",
+        cand_texto="aplica segun normativa sunat peru",
+        cons_texto="aplica segun normativa afip argentina"
+    ) is True
 
     # 2. Webinars y Capacitaciones con temas distintos
     assert son_semanticas_divergentes(
@@ -327,11 +342,29 @@ def test_son_semanticas_divergentes():
         "Gemini - Gema para relevamiento de consultoría - Proyecto Start"
     ) is True
 
-    # 4. Circuitos opuestos
+    # 4. Circuitos opuestos (incluyendo origen/destino, retenciones/percepciones, alta/baja, importar/exportar)
     assert son_semanticas_divergentes("Factura de Compra", "Factura de Venta") is True
     assert son_semanticas_divergentes("API 2.0 - Transacciones", "API 2.0 - Informes") is True
+    assert son_semanticas_divergentes(
+        "Error al obtener CPE debe indicar el deposito de destino",
+        "Error al obtener CPE debe indicar el deposito de origen"
+    ) is True
+    assert son_semanticas_divergentes(
+        "Como configurar Retenciones IIBB CABA",
+        "Configuracion Percepcion IIBB CABA"
+    ) is True
 
-    # 5. Mismo tema y país (no divergentes)
+    # 5. Diferencia numérica de nivel/versión en títulos casi idénticos
+    assert son_semanticas_divergentes(
+        "servidor dedicado en aws administrado por finnegans propuesta comercial nivel 1",
+        "servidor dedicado en aws administrado por finnegans propuesta comercial nivel 2"
+    ) is True
+    assert son_semanticas_divergentes(
+        "xml como agregar informe en una transaccion version dynamic form 1",
+        "xml como agregar informe en una transaccion version dynamic form 2"
+    ) is True
+
+    # 6. Mismo tema y país (no divergentes)
     assert son_semanticas_divergentes("Localización Perú", "Localización Perú - Pasos iniciales") is False
     assert son_semanticas_divergentes("Factura de Venta Electrónica", "Facturación de Ventas Electrónica") is False
     assert son_semanticas_divergentes("Webinar: Carga de gasto", "Webinar: Carga de gasto y obras") is False
