@@ -1,6 +1,3 @@
-#Agente BACO —  inicial, falta skill de detectar duplicados.
-from json import tool
-
 from strands import Agent
 from strands.models.gemini import GeminiModel
 from strands.vended_plugins.skills import AgentSkills
@@ -17,9 +14,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SKILLS_DIR = BASE_DIR / "skills"
 
 PROFILE = os.getenv("PROFILE")
-
-
-
 
 
 # ============================================================
@@ -107,17 +101,10 @@ Determiná la intención del usuario o del servidor y activá la skill adecuada 
     2. Respetar estrictamente la anatomía de la plantilla requerida.
     3. Devolver exclusivamente el cuerpo Markdown final listo para publicar, sin introducciones ni despedidas conversacionales.
 
-• SKILL: "duplicados"
-  - Cuándo: El servidor detecta candidatos con similitud en zona de ambigüedad o se pide comparar dos o más artículos para desambiguar.
-  - Reglas clave:
-    1. Priorizar la intención operativa y el impacto en el negocio por sobre la coincidencia léxica.
-    2. Distinguir con rigor: duplicados reales vs. variantes por jurisdicción/país (ej. ARBA vs. AGIP) vs. flujos opuestos (compras vs. ventas).
-    3. Devolver siempre dictamen estructurado: Diagnóstico, Nivel de Confianza, Análisis de Divergencia, Riesgo Operativo y Opciones sugeridas para el usuario.
-
 • SKILL: "validador"
   - Cuándo: Se solicita auditar semántica y editorialmente un artículo antes de su publicación.
   - Reglas clave:
-    1. Auditar valor comunicativo del título (que comience con verbo en infinitivo y sea conciso).
+    1. Auditar valor comunicativo del título (que comience con verbo en infinitivo, sin redundancias como "Cómo..." y uso restringido de "Error").
     2. Verificar coherencia causa-efecto (que la solución propuesta realmente resuelva el síntoma planteado) y coherencia con la categoría/tags.
     3. Identificar cualquier dato sensible o marcador pendiente (`[Indicar...]`) para recomendar su resolución.
 </enrutamiento_de_skills>
@@ -129,10 +116,10 @@ Profesional, claro, conciso y técnico. Usá español rioplatense neutro o está
 
 from strands.models.ollama import OllamaModel
 
-# Create an Ollama model instance
+#  CAMBIO A OLLAMA PARA PROBAR T_T
 ollama_model = OllamaModel(
-    host="http://localhost:11434",  # Ollama server address
-    model_id="llama3.1"               # Specify which model to use
+    host="http://localhost:11434",
+    model_id="llama3.1"
 )
 
 ##CAMBIO PARA Q PUEDA CARGAR LISTA DE TOOLS DINAMICAMENTE, Q SE LAS INYECTE EL SERVIDOR
@@ -145,8 +132,4 @@ def create_agent(tools: list = None):
         plugins=[skills],
     )
 
-
-if __name__ == "__main__":
-    agent = create_agent()
-    agent("Por que es tan frecuente el error 503 usando una api key gratuita?")
 

@@ -21,7 +21,8 @@ Antes de publicar, comprobar que la información sea apta para los lectores prev
 
 El título debe describir la acción y el área o contexto. Usar verbos en infinitivo. Agregar un subtítulo con palabras clave o el nombre o número del problema, separado con un guion o dos puntos. Ser específico, incluir el problema y evitar repeticiones o palabras redundantes.
 
-Usar “Error” solo cuando esa palabra forme parte del mensaje textual del sistema. Para más detalles y ejemplos, consultar [Cómo escribir buenos títulos](como_escribir_buenos_titulos.md).
+- **Evitar fórmulas interrogativas o redundantes:** No iniciar títulos con “Cómo…”, “Cómo hacer para…” ni construcciones similares; comenzar directamente con la acción en infinitivo (ej. *“Configurar facturación electrónica…”*, no *“Cómo configurar…”*).
+- **Tratamiento de la palabra “Error”:** Usar “Error” única y exclusivamente cuando forme parte textual del mensaje o código devuelto por el sistema (citado textualmente entre comillas o tras dos puntos). Evitar el término en títulos genéricos de instructivos o soluciones. Para más detalles y ejemplos, consultar [Cómo escribir buenos títulos](como_escribir_buenos_titulos.md).
 
 ## Categoría y etiquetas
 
