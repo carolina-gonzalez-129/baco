@@ -135,6 +135,8 @@ ollama_model = OllamaModel(
     model_id="llama3.1"               # Specify which model to use
 )
 
+##CAMBIO PARA Q PUEDA CARGAR LISTA DE TOOLS DINAMICAMENTE, Q SE LAS INYECTE EL SERVIDOR
+##SE VOLVIO A CAMBIAR A LO DE OLLAMA PARA PROBAR
 def create_agent(tools: list = None):
     return Agent(
         model=ollama_model,
