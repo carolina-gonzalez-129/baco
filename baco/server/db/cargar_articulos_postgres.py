@@ -21,9 +21,9 @@ RETURNS text AS $$
             regexp_replace(
                 regexp_replace(
                     lower(public.unaccent('public.unaccent', coalesce(t, ''))),
-                    '[^\\w\\s]|_', ' ', 'g'
+                    '[^\w\s]|_', ' ', 'g'
                 ),
-                '\\s+', ' ', 'g'
+                '\s+', ' ', 'g'
             )
         ),
         ''
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS articulo_tags (
     PRIMARY KEY (articulo_id, tag_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_articulos_caperotegoria ON articulos(categoria_id);
+CREATE INDEX IF NOT EXISTS idx_articulos_categoria ON articulos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_articulos_actualizado ON articulos(actualizado);
 CREATE INDEX IF NOT EXISTS idx_articulos_hash_titulo ON articulos(hash_titulo);
 CREATE INDEX IF NOT EXISTS idx_articulos_hash_texto ON articulos(hash_texto);
