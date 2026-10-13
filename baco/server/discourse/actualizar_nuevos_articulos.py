@@ -6,7 +6,7 @@ Modos:
     ordenado por creación y corta cuando encuentra MAX_CONSECUTIVOS_EXISTENTES artículos seguidos
     que ya están en la base.
   - Completo (--completo): recorre TODOS los temas y vuelve a descargar cada uno. Detecta
-    artículos EDITADOS (Discourse no "bumpea" un tema al editar el primer post, así que no hay
+    artículos EDITADOS  (Discourse no "bumpea" un tema al editar el primer post, así que no hay
     otra forma confiable de detectarlos) y reporta los que están en la base pero ya no en Discourse.
     Recomendado: correrlo una vez por semana.
 
