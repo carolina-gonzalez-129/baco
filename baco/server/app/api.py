@@ -5,7 +5,7 @@ from baco.server.db.config import get_conn
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.schemas.articulo import ArticuloSchema
 from baco.server.services.validar_articulo import validar_texto_y_estructura_post_duplicados
-from baco.server.app.mcp_server import get_baco_agent
+from baco.agent import create_agent
 
 router = APIRouter(tags=["API REST"])
 
@@ -70,7 +70,7 @@ class ChatRequest(BaseModel):
 @router.post("/chat_baco")
 def chat(
         request: ChatRequest,
-        baco = Depends(get_baco_agent)
+        baco = Depends(create_agent)
 ) -> dict[str, str]:
     response = baco(request.prompt)
     return {"response": str(response)}
