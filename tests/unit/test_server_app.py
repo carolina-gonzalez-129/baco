@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from baco.server.app.main import app
-from baco.server.app.api import get_buscador_duplicados
+from baco.server.app.api import get_buscador_duplicados, get_baco_agent
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 
 
@@ -117,27 +117,38 @@ def test_mcp_server_expone_solo_una_tool():
     assert len(nombres_tools) == 1
 
 
-def test_mcp_server_buscar_duplicados_tool(mock_buscador):
-    """Verifica que la tool interna buscar_duplicados_tool invoque evaluar_coincidencias."""
-    from baco.server.app.mcp_server import buscar_duplicados_tool
+def test_mcp_server_consultar_agente_delega_y_serializa_respuesta():
+    from baco.server.app.mcp_server import consultar_agente_baco
 
-    mock_buscador.evaluar_coincidencias.return_value = {"encontrado": False}
-    with patch("baco.server.app.api.get_buscador_duplicados") as mock_dep:
-        def fake_gen():
-            yield mock_buscador
-        mock_dep.side_effect = fake_gen
+    agente = MagicMock(return_value=123)
+    with patch("baco.server.app.mcp_server.create_agent", return_value=agente):
+        resultado = consultar_agente_baco("validar este artículo")
 
-        res = buscar_duplicados_tool(titulo="Test Serie", limite=2)
-        assert res == {"encontrado": False}
+    agente.assert_called_once_with("validar este artículo")
+    assert resultado == "123"
 
 
-def test_mcp_server_validar_post_duplicados_tool():
-    """Verifica la tool interna de validacion de estructura para el agente."""
-    from baco.server.app.mcp_server import validar_post_duplicados_tool
+def test_chat_baco_delega_al_agente_inyectado(client):
+    agente = MagicMock(return_value="respuesta del agente")
+    app.dependency_overrides[get_baco_agent] = lambda: agente
+    try:
+        resp = client.post("/chat_baco", json={"prompt": "hola"})
+    finally:
+        app.dependency_overrides.pop(get_baco_agent, None)
 
-    res = validar_post_duplicados_tool(titulo="Prueba", texto="Texto corto", tags=["soluciones"])
-    assert res["status"] == "Pendiente"
-    assert any("muy breve" in f["description"] for f in res["findings"])
+    assert resp.status_code == 200
+    assert resp.json() == {"response": "respuesta del agente"}
+    agente.assert_called_once_with("hola")
+
+
+def test_chat_baco_rechaza_prompt_ausente(client):
+    app.dependency_overrides[get_baco_agent] = lambda: MagicMock()
+    try:
+        resp = client.post("/chat_baco", json={})
+    finally:
+        app.dependency_overrides.pop(get_baco_agent, None)
+
+    assert resp.status_code == 422
 
 
 # ==============================================================================

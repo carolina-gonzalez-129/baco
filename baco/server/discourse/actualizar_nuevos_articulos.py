@@ -4,18 +4,16 @@ Pipeline de sincronización para baco_db desde la API de Finnegans (Discourse).
 Modos:
   - Incremental (por defecto): descarga ÚNICAMENTE los artículos nuevos. Recorre /latest.json
     ordenado por creación y corta cuando encuentra MAX_CONSECUTIVOS_EXISTENTES artículos seguidos
-    que ya están en la base.
-  - Completo (--completo): recorre TODOS los temas y vuelve a descargar cada uno. Detecta
-    artículos EDITADOS  (Discourse no "bumpea" un tema al editar el primer post, así que no hay
-    otra forma confiable de detectarlos) y reporta los que están en la base pero ya no en Discourse.
-    Recomendado: correrlo una vez por semana.
+    que ya están en la base. Si un artículo es nuevo, calcula sus embeddings de inmediato.
+    (Para detectar y sincronizar artículos editados, ver baco.server.discourse.actualizar_articulos_editados).
+  - Completo (--completo): recorre TODOS los temas y vuelve a descargar cada uno. Reconcilia
+    artículos y reporta los que están en la base pero ya no en Discourse.
 
-En ambos modos la escritura pasa por baco.server.db.ingesta.upsert_articulos, que actualiza
-todos los campos, invalida embeddings si cambió el contenido y sincroniza los tags.
+En ambos modos la escritura pasa por baco.server.db.ingesta.upsert_articulos.
 
 Ubicación: baco/server/discourse/actualizar_nuevos_articulos.py
 Uso:
-    python -m baco.server.discourse.actualizar_nuevos_articulos            # incremental
+    python -m baco.server.discourse.actualizar_nuevos_articulos            # solo artículos nuevos
     python -m baco.server.discourse.actualizar_nuevos_articulos --completo # reconciliación total
 """
 
@@ -32,6 +30,8 @@ import os
 import time
 
 import httpx
+from datetime import datetime
+from typing import Any
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,8 +41,10 @@ from baco.server.db.ingesta import (
     ResumenIngesta,
     discourse_base_url,
     normalizar_articulo,
+    parsear_fecha,
     upsert_articulos,
 )
+from baco.server.services.embeddings import embedding_titulo, embedding_texto
 
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
@@ -96,6 +98,48 @@ def obtener_ids_existentes(conn) -> set[int]:
         return set(row[0] for row in cur.fetchall())
 
 
+def actualizar_embeddings_articulo(conn, art_id: int, titulo: str, texto: str) -> bool:
+    """Calcula y persiste en PostgreSQL los embeddings de título y/o texto si están en NULL."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT embedding_titulo IS NULL, embedding_texto IS NULL FROM articulos WHERE id = %s;",
+            (art_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        necesita_tit, necesita_txt = row
+
+    if not necesita_tit and not necesita_txt:
+        return False
+
+    v_tit = embedding_titulo(titulo) if (necesita_tit and titulo and titulo.strip()) else None
+    v_txt = embedding_texto(texto) if (necesita_txt and texto and texto.strip()) else None
+
+    str_tit = ("[" + ",".join(str(f) for f in v_tit) + "]") if v_tit else None
+    str_txt = ("[" + ",".join(str(f) for f in v_txt) + "]") if v_txt else None
+
+    with conn.cursor() as cur:
+        if str_tit and str_txt:
+            cur.execute(
+                "UPDATE articulos SET embedding_titulo = %s, embedding_texto = %s WHERE id = %s;",
+                (str_tit, str_txt, art_id)
+            )
+        elif str_tit:
+            cur.execute(
+                "UPDATE articulos SET embedding_titulo = %s WHERE id = %s;",
+                (str_tit, art_id)
+            )
+        elif str_txt:
+            cur.execute(
+                "UPDATE articulos SET embedding_texto = %s WHERE id = %s;",
+                (str_txt, art_id)
+            )
+    conn.commit()
+    print(f"      🧠 [EMBEDDINGS] Actualizados para ID {art_id} (título: {bool(str_tit)}, texto: {bool(str_txt)})")
+    return True
+
+
 def listar_temas(http: httpx.Client):
     """Itera todos los temas públicos de /latest.json ordenados por fecha de creación."""
     pagina = 0
@@ -147,8 +191,8 @@ def descargar_articulo(http: httpx.Client, tema: dict) -> dict | None:
     return normalizar_articulo(item, base_url=BASE_URL)
 
 
-def sincronizar_articulos(completo: bool = False) -> int:
-    modo = "COMPLETA" if completo else "Incremental"
+def sincronizar_articulos(completo: bool = False, purgar: bool = False) -> int:
+    modo = "COMPLETA" if completo else "Incremental (Nuevos)"
     print(f"=== Sincronización {modo}: Finnegans API -> {DB_NAME} ===")
 
     conn = get_conn()
@@ -159,7 +203,7 @@ def sincronizar_articulos(completo: bool = False) -> int:
     try:
         ids_existentes = obtener_ids_existentes(conn)
         print(f"1. Artículos existentes actualmente en baco_db: {len(ids_existentes)}")
-        print(f"2. Consultando artículos en {BASE_URL}...")
+        print(f"2. Consultando nuevos artículos en {BASE_URL}...")
 
         consecutivos_existentes = 0
         with httpx.Client(base_url=BASE_URL, headers=HEADERS, timeout=30) as http:
@@ -187,8 +231,10 @@ def sincronizar_articulos(completo: bool = False) -> int:
 
                     if parcial.insertados:
                         print(f"   🆕 [NUEVO] ID {tema_id}: {articulo['titulo'][:60]}")
+                        actualizar_embeddings_articulo(conn, tema_id, articulo["titulo"], articulo["texto"])
                     elif parcial.actualizados:
                         print(f"   ✏️  [ACTUALIZADO] ID {tema_id}: {articulo['titulo'][:60]}")
+                        actualizar_embeddings_articulo(conn, tema_id, articulo["titulo"], articulo["texto"])
                 except ErrorAPIDiscourse:
                     conn.rollback()
                     raise
@@ -207,9 +253,18 @@ def sincronizar_articulos(completo: bool = False) -> int:
         if completo:
             huerfanos = sorted(ids_existentes - vistos)
             if huerfanos:
-                # No se borran automáticamente: la decisión queda en manos de una persona
                 print(f"⚠️ {len(huerfanos)} artículos están en la base pero ya no en Discourse "
                       f"(borrados u ocultos). IDs: {huerfanos[:50]}{' ...' if len(huerfanos) > 50 else ''}")
+                if purgar:
+                    if errores:
+                        print(f"⛔ Se canceló la purga automática porque hubo {len(errores)} temas con error de red/API. "
+                              f"Se debe garantizar 0 errores para evitar borrar artículos válidos.")
+                    else:
+                        print(f"🗑️ [PURGA] Eliminando físicamente {len(huerfanos)} artículos huérfanos de PostgreSQL...")
+                        with conn.cursor() as cur:
+                            cur.execute("DELETE FROM articulos WHERE id = ANY(%s);", (huerfanos,))
+                        conn.commit()
+                        print(f"   ✓ {len(huerfanos)} artículos huérfanos eliminados exitosamente de PostgreSQL.")
 
         if errores:
             print(f"⚠️ {len(errores)} temas no se pudieron procesar: {[i for i, _ in errores][:50]}")
@@ -229,9 +284,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sincroniza artículos de Discourse con baco_db.")
     parser.add_argument("--completo", action="store_true",
                         help="Recorre y re-descarga todos los temas (detecta ediciones y borrados).")
+    parser.add_argument("--purgar", action="store_true",
+                        help="Elimina físicamente de la base los artículos huérfanos que ya no existen en Discourse.")
     args = parser.parse_args()
     try:
-        sys.exit(sincronizar_articulos(completo=args.completo))
+        sys.exit(sincronizar_articulos(completo=args.completo, purgar=args.purgar))
     except ErrorAPIDiscourse as e:
         print(f"❌ {e}")
         sys.exit(2)

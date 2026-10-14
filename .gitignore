@@ -32,6 +32,8 @@ ENV/
 **/data/
 *.tmp
 *.log
+.last_success_*
+*_backup.json
 
 # Archivos del sistema operativo
 .DS_Store
