@@ -1,11 +1,11 @@
-#Queda por definir si tengo q usar tools o q
+
 from fastmcp import FastMCP
 from baco.agent import create_agent
 
 mcp = FastMCP(name="baco-mcp")
-
-def get_baco_agent():
-    return create_agent()
+##CONSULTA CON FINNEGANS SI QUIEREN QUE APLIQUEMOS EL AGENTE COMO UN T ODO CON SUS SKILLS
+# O QUIEREN ACA TMB TENER LAS DOS TOOLS INCORPORADAS AL AGENTE
+#O TENER 2 TOOLS PARA LLAMAR A LO Q HACEN LOS SERVICIOS
 
 @mcp.tool()
 def consultar_agente_baco(prompt: str) -> str:

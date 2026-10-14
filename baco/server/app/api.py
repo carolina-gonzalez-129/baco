@@ -14,6 +14,11 @@ def get_buscador_duplicados():
         with conn.cursor() as cur:
             yield BuscadorDuplicados(cur)
 
+
+def get_baco_agent():
+    return create_agent()
+
+
 @router.get("/titulo_exacto")
 async def titulo_exacto(
         titulo: str = Query(..., description="titulo"),
@@ -70,7 +75,7 @@ class ChatRequest(BaseModel):
 @router.post("/chat_baco")
 def chat(
         request: ChatRequest,
-        baco = Depends(create_agent)
+        baco = Depends(get_baco_agent)
 ) -> dict[str, str]:
     response = baco(request.prompt)
     return {"response": str(response)}

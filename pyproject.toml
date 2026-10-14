@@ -31,3 +31,8 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["baco*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that exercise external services or real ML models",
+]
