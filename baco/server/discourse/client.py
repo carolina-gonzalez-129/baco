@@ -5,7 +5,13 @@ load_dotenv()
 api_key = os.environ.get("DISCOURSE_API_KEY", "")
 api_username = os.environ.get("DISCOURSE_API_USERNAME", "system")
 
-BASE = "https://bc-dev.finneg.com"
+from baco.server.db.ingesta import discourse_base_url
+
+def __getattr__(name: str) -> str:
+    if name == "BASE":
+        return discourse_base_url()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 headers = {
     "Api-Key": api_key,
     "Api-Username": api_username,
