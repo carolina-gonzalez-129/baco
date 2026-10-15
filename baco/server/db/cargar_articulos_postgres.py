@@ -144,7 +144,11 @@ CREATE INDEX IF NOT EXISTS idx_articulos_titulo_trgm ON articulos USING gin (tit
 CREATE INDEX IF NOT EXISTS idx_articulos_embedding_texto ON articulos USING hnsw (embedding_texto vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_articulos_embedding_titulo ON articulos USING hnsw (embedding_titulo vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
-""" + (Path(__file__).resolve().parent / "migraciones" / "008_embeddings_meta.sql").read_text(encoding="utf-8")
+""" + (
+    (Path(__file__).resolve().parent / "migraciones" / "008_embeddings_meta.sql").read_text(encoding="utf-8")
+    + "\n"
+    + (Path(__file__).resolve().parent / "migraciones" / "009_trigger_invalidar_embeddings.sql").read_text(encoding="utf-8")
+)
 
 def asegurar_base_de_datos():
     print(f" Verificando existencia de la base de datos '{DB_NAME}'...")

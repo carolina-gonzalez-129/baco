@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import psycopg
 from psycopg_pool import ConnectionPool
 
-logger = logging.getLogger(__name__)  # <--- Siempre definido a nivel módulo
+logger = logging.getLogger(__name__)
 
 _current_dir = Path(__file__).resolve().parent
 for p in [_current_dir, *_current_dir.parents]:
@@ -24,10 +24,12 @@ DB_NAME = os.getenv("DB_NAME", "baco_db")
 CONN_INFO = f"host={DB_HOST} port={DB_PORT} user={DB_USER} password={DB_PASSWORD} dbname={DB_NAME}"
 
 # quizas preguntar a emiliano si quiere q sean mas, x defecto sino son 100 conexiones
+#postgres sugiere q el nro optimo es CPU cores * 2 + effective spindle count
+##el nro optimo deberiamos definirlo con ellos, y modificar acá.
 db_pool = ConnectionPool(
     conninfo=CONN_INFO,
     min_size=2,
-    max_size=10,
+    max_size=20,
     open=False,
     check=ConnectionPool.check_connection
 )

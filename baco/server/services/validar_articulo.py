@@ -15,11 +15,11 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     texto_limpio = (articulo.texto or "").strip()
     articulo.texto = texto_limpio
     longitud_texto = len(texto_limpio)
-    if longitud_texto < 300:
+    if longitud_texto < 150:
         findings.append(_finding(
             severity="Bloqueante",
             field="texto",
-            description=f"El texto es muy breve ({longitud_texto} caracteres). Se requieren al menos 300 caracteres.",
+            description=f"El texto es muy breve ({longitud_texto} caracteres). Se requieren al menos 150 caracteres.",
             action="Detallar mejor el problema, pasos a seguir o contexto técnico."
         ))
     elif re.search(r"\[Indicar[^]]*]", texto_limpio, re.IGNORECASE):
