@@ -102,7 +102,7 @@ def eliminar_headers_markdown_y_plantillas(texto: str) -> str:
     texto = re.sub(r"(?m)^\s*#{1,6}\s+.*$", " ", texto)
     # Secciones con negrita o texto plano
     texto = re.sub(
-        r"(?mi)^\s*(\*\*)?(consulta|respuesta|soluci[oó]n|error|pasos a seguir|requiere app\s*builder|antes de empezar|modo de uso|¿?para qu[eé] sirve\??)(\*\*)?\s*:?\s*$",
+        r"(?mi)^\s*(\*\*)?(consulta|respuesta|pasos a seguir|requiere app\s*builder|antes de empezar|modo de uso|¿?para qu[eé] sirve\??)(\*\*)?\s*:?\s*$",
         " ", texto
     )
     # Divisores de sección (* * *, ---, ___)
@@ -119,8 +119,8 @@ def colapsar_espacios(texto: str) -> str:
 
 # Lista ordenada de funciones de limpieza suave.
 FUNCIONES_LIMPIEZA_SUAVE: list[Callable[[str], str]] = [
-    limpiar_html_bs4,
     eliminar_headers_markdown_y_plantillas,
+    limpiar_html_bs4,
     eliminar_lineas_image,
     eliminar_dimensiones_peso_discourse,
     eliminar_pipes_dimensiones_discourse,

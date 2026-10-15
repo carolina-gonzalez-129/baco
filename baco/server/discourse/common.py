@@ -60,19 +60,22 @@ def actualizar_embeddings_articulo(conn, art_id: int, titulo: str, texto: str) -
     """Calcula y persiste en PostgreSQL los embeddings de título y/o texto si están en NULL."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT embedding_titulo IS NULL, embedding_texto IS NULL FROM articulos WHERE id = %s;",
+            "SELECT embedding_titulo IS NULL, embedding_texto IS NULL, texto_sin_headers FROM articulos WHERE id = %s;",
             (art_id,)
         )
         row = cur.fetchone()
         if not row:
             return False
-        necesita_tit, necesita_txt = row
+        necesita_tit = bool(row[0])
+        necesita_txt = bool(row[1])
+        db_texto_sin_headers = row[2] if len(row) > 2 else None
 
     if not necesita_tit and not necesita_txt:
         return False
 
+    texto_para_embedding = db_texto_sin_headers if db_texto_sin_headers is not None else texto
     v_tit = embedding_titulo(titulo) if (necesita_tit and titulo and titulo.strip()) else None
-    v_txt = embedding_texto(texto) if (necesita_txt and texto and texto.strip()) else None
+    v_txt = embedding_texto(texto_para_embedding) if (necesita_txt and texto_para_embedding and texto_para_embedding.strip()) else None
 
     str_tit = ("[" + ",".join(str(f) for f in v_tit) + "]") if v_tit else None
     str_txt = ("[" + ",".join(str(f) for f in v_txt) + "]") if v_txt else None
