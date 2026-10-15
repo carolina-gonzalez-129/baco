@@ -9,6 +9,11 @@ from baco.agent import create_agent
 
 router = APIRouter(tags=["API REST"])
 
+#el servidor abre el pool de conexiones, config.py me permite obtenerlas pero buscador de duplicados
+#no usa directamente la conexion a la db sino k usa un cursor q es como un puntero
+#p hacer las busquedas
+#dsps podria evaluar si van a querer tener esto en mas lugares si no puedo ponerlo en main.py, aunque me da cosa
+
 def get_buscador_duplicados():
     with get_conn() as conn:
         with conn.cursor() as cur:

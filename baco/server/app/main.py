@@ -8,7 +8,7 @@ from baco.server.app.mcp_server import mcp_http_app
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db_pool.open()
+    db_pool.open(wait=True)
     from baco.server.services.embeddings import get_model_titulo, get_model_texto
     get_model_titulo()
     get_model_texto()
