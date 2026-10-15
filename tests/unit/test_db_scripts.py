@@ -247,3 +247,29 @@ def test_verificar_estado_hashes_y_normalizados_consulta_todos_los_contadores():
         normalizados.verificar_estado_hashes_y_normalizados()
 
     assert cur.execute.call_count == 8
+
+
+def test_migracion_008_embeddings_meta_seed_coincide_con_constantes():
+    from pathlib import Path
+    from baco.server.services.embeddings import (
+        MODEL_TITULO_NAME,
+        DIM_TITULO,
+        MODEL_TEXTO_NAME,
+        DIM_TEXTO,
+    )
+
+    sql_path = Path(__file__).resolve().parents[2] / "baco" / "server" / "db" / "migraciones" / "008_embeddings_meta.sql"
+    assert sql_path.exists(), f"El archivo {sql_path} debe existir."
+
+    sql_content = sql_path.read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS embeddings_meta" in sql_content
+    assert "('titulo', 'paraphrase-multilingual-MiniLM-L12-v2', 384)" in sql_content or \
+           f"('titulo', '{MODEL_TITULO_NAME}', {DIM_TITULO})" in sql_content
+    assert "('texto', 'intfloat/multilingual-e5-base', 768)" in sql_content or \
+           f"('texto', '{MODEL_TEXTO_NAME}', {DIM_TEXTO})" in sql_content
+
+    # Verificación estricta de presencia de cada constante exacta en el script
+    assert MODEL_TITULO_NAME in sql_content
+    assert str(DIM_TITULO) in sql_content
+    assert MODEL_TEXTO_NAME in sql_content
+    assert str(DIM_TEXTO) in sql_content
