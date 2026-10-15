@@ -156,7 +156,11 @@ def sincronizar_esquema_ddl(conn):
     CREATE INDEX IF NOT EXISTS idx_articulos_titulo_trgm ON articulos USING gin (titulo_normalizado gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS idx_articulos_embedding_texto ON articulos USING hnsw (embedding_texto vector_cosine_ops);
     CREATE INDEX IF NOT EXISTS idx_articulos_embedding_titulo ON articulos USING hnsw (embedding_titulo vector_cosine_ops);
-    """ + "\n" + (Path(__file__).resolve().parent / "migraciones" / "008_embeddings_meta.sql").read_text(encoding="utf-8")
+    """ + "\n" + (
+        (Path(__file__).resolve().parent / "migraciones" / "008_embeddings_meta.sql").read_text(encoding="utf-8")
+        + "\n"
+        + (Path(__file__).resolve().parent / "migraciones" / "009_trigger_invalidar_embeddings.sql").read_text(encoding="utf-8")
+    )
 
     with conn.cursor() as cur:
         cur.execute(ddl_script)
