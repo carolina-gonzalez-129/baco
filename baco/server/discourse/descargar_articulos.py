@@ -15,7 +15,7 @@ import time
 import httpx
 from bs4 import BeautifulSoup
 
-from baco.server.discourse.client import BASE, headers
+from baco.server.discourse.client import base_url, headers
 
 # Carpeta data en la raíz del proyecto
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -99,7 +99,8 @@ def main():
         print(f"Retomando: ya hay {len(articulos)} artículos guardados.")
 
     nuevos = 0
-    with httpx.Client(base_url=BASE, headers=headers, timeout=30) as http:
+    url_base = base_url()
+    with httpx.Client(base_url=url_base, headers=headers, timeout=30) as http:
         for n, tema in enumerate(listar_temas(http), start=1):
             if limite and n > limite:
                 break
@@ -131,7 +132,7 @@ def main():
                     "titulo": tema.get("title", ""),
                     "categoria_id": tema.get("category_id"),
                     "tags": tema.get("tags", []),
-                    "url": f"{BASE}/t/{tema.get('slug', 'topic')}/{tema_id}",
+                    "url": f"{url_base}/t/{tema.get('slug', 'topic')}/{tema_id}",
                     "texto": texto,
                     "actualizado": post.get("updated_at") or tema.get("bumped_at"),
                 }
