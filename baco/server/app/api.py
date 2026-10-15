@@ -24,7 +24,7 @@ async def titulo_exacto(
         titulo: str = Query(..., description="titulo"),
         buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ):
-    hay_titulo_exacto = buscador.buscar_por_titulo(titulo)
+    hay_titulo_exacto = await run_in_threadpool(buscador.buscar_por_titulo, titulo)
     if hay_titulo_exacto:
         url = hay_titulo_exacto[0][2]
         return {

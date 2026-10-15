@@ -1,14 +1,14 @@
-# Entornos y secretos
+
 .env
 .env.*
 
-# Cache y bytecode de Python
+
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# Cache de testing, coverage y linters
+
 .pytest_cache/
 .coverage
 .coverage.*
@@ -16,30 +16,24 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Empaquetado y distribución
+
 *.egg-info/
 build/
 dist/
 eggs/
 *.egg
 
-# Entornos virtuales
+
 .venv/
 venv/
 ENV/
 
-# Datos, temporales y logs
+
 **/data/
 *.tmp
 *.log
 .last_success_*
 *_backup.json
 
-# Archivos del sistema operativo
-.DS_Store
-Thumbs.db
 
-# IDEs y editores
-.idea/
-*.iml
-.vscode/
+docs
