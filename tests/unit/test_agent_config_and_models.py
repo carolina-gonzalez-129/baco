@@ -55,6 +55,20 @@ def test_discourse_base_url_lanza_error_si_no_esta_definida(monkeypatch):
         discourse_base_url()
 
 
+def test_httpx_client_con_discourse_base_url_contiene_host():
+    import httpx
+    from baco.server.db.ingesta import discourse_base_url
+    from baco.server.discourse.client import base_url
+
+    url_base = discourse_base_url()
+    assert url_base == base_url()
+
+    with httpx.Client(base_url=url_base) as http_client:
+        req = http_client.build_request("GET", "/latest.json")
+        assert str(req.url).startswith(url_base)
+        assert req.url.host == "bc-dev.finneg.com"
+
+
 def test_schemas_articulo_y_tag_aplican_defaults():
     tag = Tag(name="ventas")
     articulo = ArticuloSchema(id=1)
