@@ -44,52 +44,24 @@ from baco.server.db.ingesta import (
 )
 from baco.server.services.embeddings import embedding_titulo, embedding_texto
 
+from baco.server.discourse.common import (
+    ErrorAPIDiscourse,
+    HEADERS,
+    MAX_INTENTOS,
+    PAUSA_ENTRE_REQUESTS,
+    actualizar_embeddings_articulo,
+    descargar_articulo,
+    pedir,
+)
+
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
+
 
 def __getattr__(name: str) -> str:
     if name == "BASE_URL":
         return discourse_base_url()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-HEADERS = {
-    "Api-Key": DISCOURSE_API_KEY,
-    "Api-Username": DISCOURSE_API_USERNAME,
-    "Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept": "application/json",
-}
-
-PAUSA_ENTRE_REQUESTS = 0.3
-MAX_INTENTOS = 5
-
-
-class ErrorAPIDiscourse(RuntimeError):
-    pass
-
-
-def pedir(http: httpx.Client, ruta: str, params: dict = None) -> dict:
-    """GET con reintentos para 429 (rate limits) y 5xx."""
-    ultimo_error = None
-    for intento in range(MAX_INTENTOS):
-        try:
-            r = http.get(ruta, params=params)
-            if r.status_code == 429:
-                espera = int(r.headers.get("Retry-After", 10))
-                print(f"   Rate limit alcanzado. Esperando {espera}s...")
-                ultimo_error = "429 Too Many Requests"
-                time.sleep(espera)
-                continue
-            if r.status_code in (502, 503, 504):
-                ultimo_error = f"HTTP {r.status_code}"
-                time.sleep(2 * (intento + 1))
-                continue
-            r.raise_for_status()
-            return r.json()
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            ultimo_error = e
-            time.sleep(2 * (intento + 1))
-    raise ErrorAPIDiscourse(f"Error persistente en {ruta} tras {MAX_INTENTOS} intentos: {ultimo_error}")
 
 
 def obtener_articulos_existentes(conn) -> dict[int, datetime | None]:
@@ -97,76 +69,6 @@ def obtener_articulos_existentes(conn) -> dict[int, datetime | None]:
     with conn.cursor() as cur:
         cur.execute("SELECT id, actualizado FROM articulos;")
         return {row[0]: row[1] for row in cur.fetchall()}
-
-
-def actualizar_embeddings_articulo(conn, art_id: int, titulo: str, texto: str) -> bool:
-    """Calcula y persiste los embeddings de título y/o texto si quedaron en NULL tras la edición."""
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT embedding_titulo IS NULL, embedding_texto IS NULL FROM articulos WHERE id = %s;",
-            (art_id,)
-        )
-        row = cur.fetchone()
-        if not row:
-            return False
-        necesita_tit, necesita_txt = row
-
-    if not necesita_tit and not necesita_txt:
-        return False
-
-    v_tit = embedding_titulo(titulo) if (necesita_tit and titulo and titulo.strip()) else None
-    v_txt = embedding_texto(texto) if (necesita_txt and texto and texto.strip()) else None
-
-    str_tit = ("[" + ",".join(str(f) for f in v_tit) + "]") if v_tit else None
-    str_txt = ("[" + ",".join(str(f) for f in v_txt) + "]") if v_txt else None
-
-    with conn.cursor() as cur:
-        if str_tit and str_txt:
-            cur.execute(
-                "UPDATE articulos SET embedding_titulo = %s, embedding_texto = %s WHERE id = %s;",
-                (str_tit, str_txt, art_id)
-            )
-        elif str_tit:
-            cur.execute(
-                "UPDATE articulos SET embedding_titulo = %s WHERE id = %s;",
-                (str_tit, art_id)
-            )
-        elif str_txt:
-            cur.execute(
-                "UPDATE articulos SET embedding_texto = %s WHERE id = %s;",
-                (str_txt, art_id)
-            )
-    conn.commit()
-    print(f"       [EMBEDDINGS] Recalculados para ID {art_id} (título: {bool(str_tit)}, texto: {bool(str_txt)})")
-    return True
-
-
-def descargar_articulo(http: httpx.Client, tema_id: int, tema_parcial: dict = None) -> dict | None:
-    """Descarga el detalle completo de un tema en Discourse y lo devuelve normalizado."""
-    detalle = pedir(http, f"/t/{tema_id}.json")
-    posts = detalle.get("post_stream", {}).get("posts", [])
-    if not posts:
-        return None
-    primer_post = posts[0]
-
-    tags = detalle.get("tags")
-    tags_listado = (tema_parcial or {}).get("tags")
-    if not (tags and isinstance(tags[0], dict)) and tags_listado and isinstance(tags_listado[0], dict):
-        tags = tags_listado
-    if tags is None:
-        tags = tags_listado or []
-
-    item = {
-        "id": tema_id,
-        "title": detalle.get("title") or (tema_parcial or {}).get("title"),
-        "category_id": detalle.get("category_id", (tema_parcial or {}).get("category_id")),
-        "slug": detalle.get("slug") or (tema_parcial or {}).get("slug"),
-        "tags": tags,
-        "raw": primer_post.get("raw"),
-        "cooked": primer_post.get("cooked"),
-        "updated_at": primer_post.get("updated_at") or detalle.get("bumped_at"),
-    }
-    return normalizar_articulo(item, base_url=discourse_base_url())
 
 
 def sincronizar_articulos_editados(max_paginas: int = 3) -> int:

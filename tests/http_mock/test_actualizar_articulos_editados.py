@@ -57,7 +57,7 @@ def test_descargar_articulo_detalle():
         },
     }
 
-    with patch("baco.server.discourse.actualizar_articulos_editados.pedir", return_value=detalle_fake):
+    with patch("baco.server.discourse.common.pedir", return_value=detalle_fake):
         art = descargar_articulo(http, tema_id=42)
 
     assert art is not None
@@ -71,8 +71,8 @@ def test_descargar_articulo_detalle():
 # 3. Recálculo selectivo de embeddings para editados
 # ==============================================================================
 
-@patch("baco.server.discourse.actualizar_articulos_editados.embedding_titulo")
-@patch("baco.server.discourse.actualizar_articulos_editados.embedding_texto")
+@patch("baco.server.discourse.common.embedding_titulo")
+@patch("baco.server.discourse.common.embedding_texto")
 def test_actualizar_embeddings_solo_recalcula_el_campo_modificado(mock_emb_txt, mock_emb_tit):
     cur = MagicMock()
     # Solo el texto fue invalidado a NULL
