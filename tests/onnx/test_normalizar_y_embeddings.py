@@ -190,3 +190,51 @@ def test_medicion_articulos_truncados():
 
     truncados = medir_articulos_truncados(articulos, mock_tokenizer, max_seq_length=512)
     assert truncados == 1
+
+
+def test_limpiar_suave_headers_markdown_con_tags_html():
+    from baco.server.services.embeddings import limpiar_suave
+
+    texto_con_html_y_headers = "Consulta:\n¿Cómo configurar factura electrónica?\nRespuesta:\nPara configurar siga estos pasos...<br>"
+    resultado = limpiar_suave(texto_con_html_y_headers)
+
+    assert "Consulta:" not in resultado
+    assert "Respuesta:" not in resultado
+    assert "¿Cómo configurar factura electrónica?" in resultado
+    assert "Para configurar siga estos pasos..." in resultado
+
+
+def test_paridad_limpiar_suave_crudo_vs_texto_sin_headers():
+    from baco.server.services.embeddings import limpiar_suave
+    import re
+
+    # Simular la lógica de limpiar_headers en SQL (Postgres (?n) es multiline newline-sensitive)
+    def mock_limpiar_headers(t: str) -> str:
+        if not t:
+            return t
+        t = re.sub(r"^\s*#{1,6}\s+.*$", "", t, flags=re.MULTILINE)
+        t = re.sub(
+            r"^\s*(\*\*)?(consulta|respuesta|pasos a seguir|requiere app\s*builder|antes de empezar|modo de uso|¿?para qu[eé] sirve\??)(\*\*)?\s*:?\s*$",
+            "",
+            t,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        t = re.sub(r"^\s*(\*\s*\*\s*\*|-{3,}|_{3,})\s*$", "", t, flags=re.MULTILINE)
+        t = re.sub(r"!?\[image[^\]]*\]\([^\)]+\)", "", t, flags=re.IGNORECASE)
+        t = re.sub(r"\n\s*\n+", "\n\n", t)
+        return t.strip()
+
+    ejemplos = [
+        "Consulta:\n¿Cómo configurar?\nRespuesta:\nPasos a seguir...<br>",
+        "## Encabezado\nTexto explicativo\nAntes de empezar:\nRequisitos previos.<p>Detalle</p>",
+        "Modo de uso:\nAbrir ventana.<br>\n**Respuesta**:\nListo.",
+    ]
+
+    for ejemplo in ejemplos:
+        limpio_directo = limpiar_suave(ejemplo)
+        sin_headers_sql = mock_limpiar_headers(ejemplo)
+        limpio_desde_sin_headers = limpiar_suave(sin_headers_sql)
+
+        assert limpio_directo == limpio_desde_sin_headers, (
+            f"Discrepancia:\nCrudo -> '{limpio_directo}'\nSin headers -> '{limpio_desde_sin_headers}'"
+        )
