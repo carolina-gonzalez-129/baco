@@ -57,7 +57,7 @@ def test_descargar_articulo_normaliza_correctamente():
         },
     }
 
-    with patch("baco.server.discourse.actualizar_nuevos_articulos.pedir", return_value=detalle_fake):
+    with patch("baco.server.discourse.common.pedir", return_value=detalle_fake):
         art = descargar_articulo(http, tema)
 
     assert art is not None
@@ -70,7 +70,7 @@ def test_descargar_articulo_normaliza_correctamente():
 def test_descargar_articulo_sin_posts_retorna_none():
     http = MagicMock()
     tema = {"id": 999}
-    with patch("baco.server.discourse.actualizar_nuevos_articulos.pedir", return_value={"post_stream": {"posts": []}}):
+    with patch("baco.server.discourse.common.pedir", return_value={"post_stream": {"posts": []}}):
         art = descargar_articulo(http, tema)
     assert art is None
 
@@ -79,8 +79,8 @@ def test_descargar_articulo_sin_posts_retorna_none():
 # 3. Recálculo selectivo de Embeddings (Solo el campo necesario)
 # ==============================================================================
 
-@patch("baco.server.discourse.actualizar_nuevos_articulos.embedding_titulo")
-@patch("baco.server.discourse.actualizar_nuevos_articulos.embedding_texto")
+@patch("baco.server.discourse.common.embedding_titulo")
+@patch("baco.server.discourse.common.embedding_texto")
 def test_actualizar_embeddings_solo_titulo_si_texto_no_es_null(mock_emb_txt, mock_emb_tit):
     cur = MagicMock()
     # embedding_titulo es NULL (True), embedding_texto NO es NULL (False)
@@ -104,8 +104,8 @@ def test_actualizar_embeddings_solo_titulo_si_texto_no_es_null(mock_emb_txt, moc
     conn.commit.assert_called_once()
 
 
-@patch("baco.server.discourse.actualizar_nuevos_articulos.embedding_titulo")
-@patch("baco.server.discourse.actualizar_nuevos_articulos.embedding_texto")
+@patch("baco.server.discourse.common.embedding_titulo")
+@patch("baco.server.discourse.common.embedding_texto")
 def test_actualizar_embeddings_solo_texto_si_titulo_no_es_null(mock_emb_txt, mock_emb_tit):
     cur = MagicMock()
     # embedding_titulo NO es NULL (False), embedding_texto es NULL (True)
@@ -127,8 +127,8 @@ def test_actualizar_embeddings_solo_texto_si_titulo_no_es_null(mock_emb_txt, moc
     conn.commit.assert_called_once()
 
 
-@patch("baco.server.discourse.actualizar_nuevos_articulos.embedding_titulo")
-@patch("baco.server.discourse.actualizar_nuevos_articulos.embedding_texto")
+@patch("baco.server.discourse.common.embedding_titulo")
+@patch("baco.server.discourse.common.embedding_texto")
 def test_actualizar_embeddings_omite_si_ninguno_es_null(mock_emb_txt, mock_emb_tit):
     cur = MagicMock()
     # Ninguno es NULL
