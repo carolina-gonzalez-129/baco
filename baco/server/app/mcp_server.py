@@ -6,13 +6,14 @@ mcp = FastMCP(name="baco-mcp")
 ##CONSULTA CON FINNEGANS SI QUIEREN QUE APLIQUEMOS EL AGENTE COMO UN T ODO CON SUS SKILLS
 # O QUIEREN ACA TMB TENER LAS DOS TOOLS INCORPORADAS AL AGENTE
 #O TENER 2 TOOLS PARA LLAMAR A LO Q HACEN LOS SERVICIOS
+##EMILIANO DIJO PREFERIR DOS TOOLS ATOMICAS Y NO A BACO COMO AGENTE POR LO DE AGENT AS TOOLS ACA
+# , SERIAN IGUALES Q LAS DEL ENDPOINT REST PERO CON SCHEMA Y BIEN HECHAS PARA
+#AHORRAR TOKENS, NO AGOTAR LA VENTANA DE CONTEXTO, ETC
 
 @mcp.tool()
-def consultar_agente_baco(prompt: str) -> str:
-    """Co-editor experto BACO: audita pautas editoriales, normaliza estilo a verbos en infinitivo
-    y estructura artículos técnicos bajo las plantillas oficiales de Finnegans (Instructivo / Soluciones)."""
-    baco = create_agent()
-    respuesta = baco(prompt)
-    return str(respuesta)
+def buscar_duplicados():
+
+@mcp.tool()
+def validar_formato():
 
 mcp_http_app = mcp.http_app(path="/mcp")
