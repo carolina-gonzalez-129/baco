@@ -46,7 +46,11 @@ from baco.server.services.embeddings import embedding_titulo, embedding_texto
 
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
-BASE_URL = discourse_base_url()
+
+def __getattr__(name: str) -> str:
+    if name == "BASE_URL":
+        return discourse_base_url()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 HEADERS = {
     "Api-Key": DISCOURSE_API_KEY,
@@ -162,7 +166,7 @@ def descargar_articulo(http: httpx.Client, tema_id: int, tema_parcial: dict = No
         "cooked": primer_post.get("cooked"),
         "updated_at": primer_post.get("updated_at") or detalle.get("bumped_at"),
     }
-    return normalizar_articulo(item, base_url=BASE_URL)
+    return normalizar_articulo(item, base_url=discourse_base_url())
 
 
 def sincronizar_articulos_editados(max_paginas: int = 3) -> int:
@@ -173,13 +177,14 @@ def sincronizar_articulos_editados(max_paginas: int = 3) -> int:
     editados_procesados: set[int] = set()
     eliminados_procesados: set[int] = set()
 
+    base_url = discourse_base_url()
     try:
         articulos_existentes = obtener_articulos_existentes(conn)
         print(f"1. Artículos existentes en base de datos: {len(articulos_existentes)}")
-        print(f"2. Auditando stream de actividad reciente en {BASE_URL} (/posts.json, máx {max_paginas} páginas)...")
+        print(f"2. Auditando stream de actividad reciente en {base_url} (/posts.json, máx {max_paginas} páginas)...")
 
         ultimo_post_id = None
-        with httpx.Client(base_url=BASE_URL, headers=HEADERS, timeout=30) as http:
+        with httpx.Client(base_url=base_url, headers=HEADERS, timeout=30) as http:
             for num_pagina in range(1, max_paginas + 1):
                 params = {"before": ultimo_post_id} if ultimo_post_id else None
                 datos = pedir(http, "/posts.json", params=params)

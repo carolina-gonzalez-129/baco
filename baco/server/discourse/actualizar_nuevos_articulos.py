@@ -48,7 +48,11 @@ from baco.server.services.embeddings import embedding_titulo, embedding_texto
 
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
-BASE_URL = discourse_base_url()
+
+def __getattr__(name: str) -> str:
+    if name == "BASE_URL":
+        return discourse_base_url()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 HEADERS = {
     "Api-Key": DISCOURSE_API_KEY,
@@ -188,7 +192,7 @@ def descargar_articulo(http: httpx.Client, tema: dict) -> dict | None:
         "cooked": primer_post.get("cooked"),
         "updated_at": primer_post.get("updated_at") or tema.get("bumped_at"),
     }
-    return normalizar_articulo(item, base_url=BASE_URL)
+    return normalizar_articulo(item, base_url=discourse_base_url())
 
 
 def sincronizar_articulos(completo: bool = False, purgar: bool = False) -> int:
@@ -200,13 +204,14 @@ def sincronizar_articulos(completo: bool = False, purgar: bool = False) -> int:
     errores: list[tuple[int, str]] = []
     vistos: set[int] = set()
 
+    base_url = discourse_base_url()
     try:
         ids_existentes = obtener_ids_existentes(conn)
         print(f"1. Artículos existentes actualmente en baco_db: {len(ids_existentes)}")
-        print(f"2. Consultando nuevos artículos en {BASE_URL}...")
+        print(f"2. Consultando nuevos artículos en {base_url}...")
 
         consecutivos_existentes = 0
-        with httpx.Client(base_url=BASE_URL, headers=HEADERS, timeout=30) as http:
+        with httpx.Client(base_url=base_url, headers=HEADERS, timeout=30) as http:
             for tema in listar_temas(http):
                 tema_id = tema["id"]
                 vistos.add(tema_id)

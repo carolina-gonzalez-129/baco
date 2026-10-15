@@ -33,7 +33,13 @@ logger = logging.getLogger(__name__)
 
 def discourse_base_url() -> str:
     """URL base de Discourse tomada de DISCOURSE_URL (con o sin esquema)."""
-    url = os.getenv("DISCOURSE_URL", "bc-dev.finneg.com").strip().rstrip("/")
+    raw = os.getenv("DISCOURSE_URL")
+    if not raw or not raw.strip():
+        raise ValueError(
+            "La variable de entorno DISCOURSE_URL no está configurada o está vacía. "
+            "Defina DISCOURSE_URL en su archivo .env o en el entorno de ejecución."
+        )
+    url = raw.strip().rstrip("/")
     return url if url.startswith("http") else f"https://{url}"
 
 
