@@ -7,24 +7,25 @@ description: Audita y perfecciona artículos de la Base de Conocimiento Finnegan
 
 Usa esta skill para auditar cualitativamente, corregir o enriquecer el contenido de un artículo destinado a la Base de Conocimiento. 
 
-> **División de Responsabilidades:** La integridad estructural básica (existencia de título, asignación de categoría, cantidad mínima de tags y longitud mínima de caracteres) es validada determinísticamente por el servidor (`validar_articulo.py`). Esta skill interviene en el **análisis semántico profundo, la coherencia de negocio, la privacidad y la excelencia editorial**.
+> **División de Responsabilidades:** La integridad estructural básica (existencia de título, asignación de categoría, cantidad mínima de tags y longitud mínima de caracteres), así como la sanitización determinista previa (detección de CUITs, direcciones de correo, tickets internos explícitos, URLs de prueba privadas y sintaxis inicial de títulos con "Cómo..." o "Error") son garantizadas previamente por el servidor (`validar_articulo.py`). Esta skill interviene en el **análisis semántico profundo, la coherencia de negocio, la detección de entidades no estructuradas y la excelencia editorial**.
 
 ---
 
 ## Ejes de Auditoría Semántica
 
-### 1. Publicación Segura y Privacidad (Detección de Datos Sensibles)
+### 1. Publicación Segura y Privacidad (Entidades y Datos No Estructurados)
+*(Nota: CUITs, correos electrónicos, URLs internas de prueba y códigos de tickets explícitos ya son filtrados por la capa determinista).*
 Evaluar el texto para evitar filtración de información confidencial hacia la base pública:
-* **Entidades y PII:** Identificar nombres de empresas o clientes reales, CUITs reales, nombres de personas o direcciones de correo corporativas específicas, recomendando su reemplazo por datos ficticios y genéricos (ej. *"Empresa Ejemplo S.A."*).
-* **Credenciales y URLs internas:** Detectar contraseñas, tokens de API, cadenas de conexión o URLs de entornos de prueba privados.
-* **Menciones a tickets o incidentes:** Señalar referencias internas a tickets de soporte (*"Ticket #12345"* o *"bug interno"*), transformándolos en explicaciones genéricas orientadas al usuario final.
+* **Entidades y nombres propios reales:** Identificar nombres de empresas clientes específicas o personas reales que no responden a patrones sintácticos fijos (ej. *"Molinos Río Verde"*, *"Juan Pérez"*), recomendando su reemplazo por datos ficticios y genéricos (ej. *"Empresa Ejemplo S.A."*).
+* **Credenciales contextuales:** Detectar contraseñas, tokens no declarados o parámetros de conexión no detectados por filtros estándar.
+* **Internismos contextuales:** Señalar referencias internas a incidentes de desarrollo, parches de base de datos o fallas internas que no posean un código de ticket explícito, transformándolos en explicaciones genéricas orientadas al usuario final.
 
 ### 2. Calidad Semántica del Título
-Más allá de la presencia sintáctica del título, auditar su valor comunicativo:
-* **Acción y Contexto:** Verificar que describa con precisión el proceso o pantalla dentro del ERP Finnegans (ej. *"Configurar alícuotas de retención en comprobantes de venta"* en lugar de *"Retenciones"*).
-* **Verbos en Infinitivo vs. Fórmulas Redundantes:** Asegurar que los instructivos comiencen directamente con verbos en infinitivo (*"Generar", "Conciliar", "Emitir"*). Marcar como hallazgo y corregir títulos que inicien con fórmulas como *"Cómo..."*, *"Cómo hacer para..."* o *"Pasos para..."*.
-* **Uso Restringido de "Error":** Emplear la palabra *"Error"* única y exclusivamente si es parte literal del mensaje devuelto por el sistema (entre comillas o tras dos puntos, ej. *Aviso: "Error de conexión"*). En cualquier otro caso, sustituir por la acción correctiva concreta.
-* **Claridad en Soluciones:** En artículos de solución, constatar que el título refleje el síntoma o causa concreta que el usuario experimenta en el sistema.
+*(Nota: Las fórmulas iniciales como "Cómo..." o "Pasos para..." y el control sintáctico de la palabra "Error" sin comillas ya son observados por la capa determinista).*
+Auditar el valor comunicativo y pertinencia del título:
+* **Acción y Contexto:** Verificar que describa con precisión el proceso o pantalla dentro del ERP Finnegans (ej. *"Configurar alícuotas de retención en comprobantes de venta"* en lugar de títulos vagos como *"Retenciones"*).
+* **Relevancia en Soluciones:** Constatar que el título refleje con claridad el síntoma o causa concreta que el usuario experimenta en el sistema.
+* **Relevancia en Instructivos:** Asegurar que sintetice de forma directa la operación o funcionalidad a aprender.
 
 ### 3. Coherencia Conceptual (Categoría y Módulo ERP)
 * Contrastar el texto técnico con la categoría asignada.

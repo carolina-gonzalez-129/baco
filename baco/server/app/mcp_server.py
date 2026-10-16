@@ -10,10 +10,10 @@ mcp = FastMCP(name="baco-mcp")
 # , SERIAN IGUALES Q LAS DEL ENDPOINT REST PERO CON SCHEMA Y BIEN HECHAS PARA
 #AHORRAR TOKENS, NO AGOTAR LA VENTANA DE CONTEXTO, ETC
 
-@mcp.tool()
-def buscar_duplicados():
+##@mcp.tool()
+## def buscar_duplicados():
 
-@mcp.tool()
-def validar_formato():
+##@mcp.tool()
+##def validar_formato():
 
 mcp_http_app = mcp.http_app(path="/mcp")

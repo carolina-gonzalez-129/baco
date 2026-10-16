@@ -14,6 +14,11 @@ router = APIRouter(tags=["API REST"])
 #p hacer las busquedas
 #dsps podria evaluar si van a querer tener esto en mas lugares si no puedo ponerlo en main.py, aunque me da cosa
 
+#VER DE IMPLEMENTAR LO DEL BORRADOR ENTRE LOS METODOS Y
+#GESTIONAR LO DEL CONTEXT INYECTION A BACO
+#LO MISMO DEBERIA HACERLO PARA LAS MCP TOOLS ?
+#GESTIONAR Q CUMPLA BIEN LO DE LA VENTANA DE CONTEXTO
+#GESTIONAR
 def get_buscador_duplicados():
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -23,7 +28,9 @@ def get_buscador_duplicados():
 def get_baco_agent():
     return create_agent()
 
-
+#VER LO DE Q SE COMPARTAN COMO UN BORRADOR
+#ESTO DEBE PEGARLE A LA PARTE DE ARRIBA DEL TITULO Y DURAR POCOS SEGUNDOS
+#ES SOLO COMO UNA PRE ALERTA
 @router.get("/titulo_exacto")
 async def titulo_exacto(
         titulo: str = Query(..., description="titulo"),
@@ -40,6 +47,8 @@ async def titulo_exacto(
         "url": None
     }
 
+##MEJORAR
+##Y HACER Q HAYA CONTINUIDAD PARA Q T O DO OPERE SOBRE EL MISMO BORRADOR
 
 @router.get("/buscar_duplicados")
 async def buscar_duplicados(
@@ -56,9 +65,9 @@ async def buscar_duplicados(
         limite
     )
 
-
-@router.post("/validar_post_duplicados")
-async def validar_post_duplicados(articulo: ArticuloSchema):
+###PROBAR MEJOR ESTE ENDPOINT
+@router.post("/validar_formato")
+async def validar_formato(articulo: ArticuloSchema):
     resultado = validar_texto_y_estructura_post_duplicados(articulo)
     es_valido = resultado["status"] != "Pendiente"
     return {
@@ -76,6 +85,7 @@ async def validar_post_duplicados(articulo: ArticuloSchema):
 class ChatRequest(BaseModel):
     prompt: str
 
+#SOLAMENTE INYECTARLE UN BORRADOR SANITIZADO, NO T O DO EL RESULTADO DE LO ANTERIOR
 
 @router.post("/chat_baco")
 def chat(
