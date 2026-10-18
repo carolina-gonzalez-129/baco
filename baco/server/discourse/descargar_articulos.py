@@ -148,7 +148,6 @@ def main():
                 continue
 
     guardar(articulos)
-    print(f"\n✅ ¡Listo! {len(articulos)} artículos guardados en {SALIDA}")
 
 
 if __name__ == "__main__":

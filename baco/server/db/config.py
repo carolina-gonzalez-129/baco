@@ -23,9 +23,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME", "baco_db")
 CONN_INFO = f"host={DB_HOST} port={DB_PORT} user={DB_USER} password={DB_PASSWORD} dbname={DB_NAME}"
 
-# quizas preguntar a emiliano si quiere q sean mas, x defecto sino son 100 conexiones
-#postgres sugiere q el nro optimo es CPU cores * 2 + effective spindle count
-##el nro optimo deberiamos definirlo con ellos, y modificar acá.
+
 db_pool = ConnectionPool(
     conninfo=CONN_INFO,
     min_size=2,
@@ -33,15 +31,13 @@ db_pool = ConnectionPool(
     open=False,
     check=ConnectionPool.check_connection
 )
-# el me permite obtenerlas y el servidor abre el pool para que pueda tomarlas (tmb lo cierra)
-# PERO NO ES PARA TODAS PORQ MUCHOS SCRIPTS USAN CONEXIONES SIN SER PROVISTAS X EL SERVIDOR!!
 
 def get_conn(dbname: str = None, autocommit: bool = False):
     target_db = dbname or DB_NAME
     if not autocommit and target_db == DB_NAME:
         if db_pool is not None and not db_pool.closed:
             return db_pool.connection()
-        logger.warning("Pool cerrado: usando conexión directa a %s", target_db)
+
     return psycopg.connect(
         host=DB_HOST,
         port=DB_PORT,

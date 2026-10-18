@@ -1,14 +1,3 @@
-"""
-Módulo de servicios de embeddings para BACO.
-
-PUNTO DE ENTRADA ÚNICO OFICIAL para generar embeddings de TÍTULO y de TEXTO en BACO,
-tanto para los artículos indexados en la base de datos (PostgreSQL / baco_db)
-como para los artículos entrantes en la búsqueda de duplicados.
-
-Configuración de Modelos:
-- TÍTULO: 'paraphrase-multilingual-MiniLM-L12-v2' (Dimensión: 384)
-- TEXTO:  'intfloat/multilingual-e5-base' (Dimensión: 768, prefijo: 'query: ')
-"""
 from __future__ import annotations
 
 import logging
@@ -62,10 +51,6 @@ def get_model_texto() -> SentenceTransformer:
         )
     return _MODEL_TEXTO_INSTANCE
 
-
-# ===========================================================================
-# 1. Pipeline de funciones de limpieza suave (extensible)
-# ===========================================================================
 
 def limpiar_html_bs4(texto: str) -> str:
     """Extrae texto plano eliminando etiquetas HTML con BeautifulSoup si existen."""
@@ -146,10 +131,6 @@ def limpiar_suave(texto: str | None) -> str:
     return resultado
 
 
-# ===========================================================================
-# 2. Función de truncado inteligente
-# ===========================================================================
-
 def truncar_1000(texto: str | None, limite: int = MAX_CARACTERES_TEXTO) -> str:
     """Corta el texto a 1000 caracteres como máximo (o el límite indicado).
 
@@ -170,10 +151,6 @@ def truncar_1000(texto: str | None, limite: int = MAX_CARACTERES_TEXTO) -> str:
 
     return candidato.rstrip()
 
-
-# ===========================================================================
-# 3. Punto de entrada único: embedding_titulo
-# ===========================================================================
 
 def embedding_titulo(
         titulo_original: str | Sequence[str] | None,
@@ -201,7 +178,6 @@ def embedding_titulo(
 
     sentence_model = model or get_model_titulo()
 
-    # Caso 1: Un solo título (artículo entrante o unitario)
     if isinstance(titulo_original, str):
         titulo_limpio = colapsar_espacios(titulo_original)
         if not titulo_limpio:
@@ -214,7 +190,7 @@ def embedding_titulo(
         )
         return vector.tolist()
 
-    # Caso 2: Procesamiento por lote (batch)
+
     titulos_a_codificar: list[str] = []
     indices_a_codificar: list[int] = []
 

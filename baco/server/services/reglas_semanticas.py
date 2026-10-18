@@ -6,7 +6,6 @@ diapositiva difiere
 circuitos opuestos ej cobros vs pagos o compras vs ventas
 webinars de temas distintos
 fases de proyecto distitno
-DSPS EVALUAR IGUAL SI NIO ESTOY PERDIENDO ARTICULOS!
 
 """
 

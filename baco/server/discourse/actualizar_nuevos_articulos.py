@@ -18,7 +18,11 @@ Uso:
 """
 
 import argparse
+import json
+import os
+from pathlib import Path
 import sys
+import time
 
 # Asegurar codificación utf-8 en terminal de Windows
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -26,8 +30,6 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-import os
-import time
 
 import httpx
 from datetime import datetime
@@ -35,6 +37,8 @@ from typing import Any
 from dotenv import load_dotenv
 
 load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 from baco.server.db.config import DB_NAME, get_conn
 from baco.server.db.ingesta import (
@@ -46,21 +50,23 @@ from baco.server.db.ingesta import (
 )
 from baco.server.services.embeddings import embedding_titulo, embedding_texto
 
-DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 from baco.server.discourse.common import (
     ErrorAPIDiscourse,
     HEADERS,
     MAX_INTENTOS,
     PAUSA_ENTRE_REQUESTS,
+    RecursoNoDisponible,
     actualizar_embeddings_articulo,
     descargar_articulo,
     pedir,
+    validar_credenciales_discourse,
 )
 
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
 
 MAX_CONSECUTIVOS_EXISTENTES = 15
+MAX_HUERFANOS_PERMITIDOS = 50
 
 
 def __getattr__(name: str) -> str:
@@ -95,7 +101,59 @@ def listar_temas(http: httpx.Client):
         pagina += 1
 
 
-def sincronizar_articulos(completo: bool = False, purgar: bool = False) -> int:
+def respaldar_articulos_purgados(conn, ids: list[int]) -> Path:
+    """Exporta los artículos que van a ser purgados a un archivo JSON de respaldo."""
+    backup_dir = Path(os.environ.get("DATA_DIR", PROJECT_ROOT / "data")) / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = backup_dir / f"articulos_purgados_{timestamp}.json"
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, titulo, categoria_id, url, texto, actualizado FROM articulos WHERE id = ANY(%s);",
+            (ids,)
+        )
+        filas = cur.fetchall()
+
+    articulos_backup = [
+        {
+            "id": r[0],
+            "titulo": r[1],
+            "categoria_id": r[2],
+            "url": r[3],
+            "texto": r[4],
+            "actualizado": r[5].isoformat() if r[5] else None,
+        }
+        for r in filas
+    ]
+    backup_file.write_text(json.dumps(articulos_backup, ensure_ascii=False, indent=2), encoding="utf-8")
+    return backup_file
+
+
+def confirmar_huerfano(http: httpx.Client, tema_id: int) -> bool:
+    """Consulta directamente /t/{id}.json para verificar si el tema realmente no existe.
+
+    Retorna True solo si Discourse responde 404/410 (RecursoNoDisponible) o si el tema
+    está explícitamente borrado/despublicado.
+    Retorna False si el tema sigue activo (por ejemplo, en categoría privada o paginación no alcanzada).
+    """
+    try:
+        detalle = pedir(http, f"/t/{tema_id}.json")
+        posts = detalle.get("post_stream", {}).get("posts", [])
+        if not posts:
+            return True
+        primer_post = posts[0]
+        es_borrado = bool(primer_post.get("deleted_at")) or not primer_post.get("visible", True) or bool(primer_post.get("user_deleted"))
+        return es_borrado
+    except RecursoNoDisponible:
+        return True
+    except Exception as e:
+        print(f"      ⚠️ No se pudo confirmar estado del tema {tema_id} en Discourse: {e}")
+        return False
+
+
+def sincronizar_articulos(completo: bool = False, purgar: bool = False, forzar_purga: bool = False) -> int:
+    validar_credenciales_discourse()
     modo = "COMPLETA" if completo else "Incremental (Nuevos)"
     print(f"=== Sincronización {modo}: Finnegans API -> {DB_NAME} ===")
 
@@ -150,26 +208,47 @@ def sincronizar_articulos(completo: bool = False, purgar: bool = False) -> int:
                 finally:
                     time.sleep(PAUSA_ENTRE_REQUESTS)
 
+            if completo:
+                candidatos_huerfanos = sorted(ids_existentes - vistos)
+                if candidatos_huerfanos:
+                    print(f"⚠️ {len(candidatos_huerfanos)} artículos están en la base pero ya no en Discourse "
+                          f"(borrados u ocultos). IDs: {candidatos_huerfanos[:50]}{' ...' if len(candidatos_huerfanos) > 50 else ''}")
+                    if purgar:
+                        if errores:
+                            print(f"⛔ Se canceló la purga automática porque hubo {len(errores)} temas con error de red/API. "
+                                  f"Se debe garantizar 0 errores para evitar borrar artículos válidos.")
+                        elif len(candidatos_huerfanos) > MAX_HUERFANOS_PERMITIDOS and not forzar_purga:
+                            print(f"⛔ [CIRCUIT BREAKER] Se detectaron {len(candidatos_huerfanos)} artículos huérfanos potenciales, lo cual supera el límite de seguridad de {MAX_HUERFANOS_PERMITIDOS}. "
+                                  f"La purga fue cancelada para prevenir pérdida masiva accidental de datos. "
+                                  f"Use --forzar-purga si realmente desea verificarlos y eliminarlos.")
+                        else:
+                            print(f"🔍 [AUDITORÍA DE PURGA] Verificando individualmente {len(candidatos_huerfanos)} candidatos con /t/{{id}}.json...")
+                            huerfanos_confirmados: list[int] = []
+                            for hid in candidatos_huerfanos:
+                                if confirmar_huerfano(http, hid):
+                                    huerfanos_confirmados.append(hid)
+                                else:
+                                    print(f"   🛡️ ID {hid} no apareció en /latest.json pero sigue activo en Discourse. Conservado en PostgreSQL.")
+                                time.sleep(PAUSA_ENTRE_REQUESTS)
+
+                            if not huerfanos_confirmados:
+                                print("✨ No se confirmaron artículos huérfanos reales. Ningún artículo fue eliminado de PostgreSQL.")
+                            else:
+                                backup_file = respaldar_articulos_purgados(conn, huerfanos_confirmados)
+                                print(f"💾 [BACKUP] Respaldo de {len(huerfanos_confirmados)} artículos guardado en: {backup_file}")
+                                print(f"🗑️ [PURGA] Eliminando físicamente {len(huerfanos_confirmados)} artículos confirmados de PostgreSQL...")
+                                with conn.cursor() as cur:
+                                    cur.execute("DELETE FROM articulos WHERE id = ANY(%s);", (huerfanos_confirmados,))
+                                conn.commit()
+                                print(f"   ✓ {len(huerfanos_confirmados)} artículos huérfanos eliminados exitosamente de PostgreSQL.")
+                    else:
+                        print(f"ℹ️ Modo sin purga: los {len(candidatos_huerfanos)} artículos no coincidentes se conservan intactos en la base. IDs: {candidatos_huerfanos[:30]}")
+
+
         print("\n=== RESUMEN DE LA SINCRONIZACIÓN ===")
         print(f"   {resumen}")
         if resumen.insertados == 0 and resumen.actualizados == 0:
             print(f"✨ No hubo cambios. Tu base '{DB_NAME}' ya estaba al día.")
-
-        if completo:
-            huerfanos = sorted(ids_existentes - vistos)
-            if huerfanos:
-                print(f"⚠️ {len(huerfanos)} artículos están en la base pero ya no en Discourse "
-                      f"(borrados u ocultos). IDs: {huerfanos[:50]}{' ...' if len(huerfanos) > 50 else ''}")
-                if purgar:
-                    if errores:
-                        print(f"⛔ Se canceló la purga automática porque hubo {len(errores)} temas con error de red/API. "
-                              f"Se debe garantizar 0 errores para evitar borrar artículos válidos.")
-                    else:
-                        print(f"🗑️ [PURGA] Eliminando físicamente {len(huerfanos)} artículos huérfanos de PostgreSQL...")
-                        with conn.cursor() as cur:
-                            cur.execute("DELETE FROM articulos WHERE id = ANY(%s);", (huerfanos,))
-                        conn.commit()
-                        print(f"   ✓ {len(huerfanos)} artículos huérfanos eliminados exitosamente de PostgreSQL.")
 
         if errores:
             print(f"⚠️ {len(errores)} temas no se pudieron procesar: {[i for i, _ in errores][:50]}")
@@ -190,10 +269,12 @@ if __name__ == "__main__":
     parser.add_argument("--completo", action="store_true",
                         help="Recorre y re-descarga todos los temas (detecta ediciones y borrados).")
     parser.add_argument("--purgar", action="store_true",
-                        help="Elimina físicamente de la base los artículos huérfanos que ya no existen en Discourse.")
+                        help="Elimina físicamente de la base los artículos huérfanos confirmados que ya no existen en Discourse.")
+    parser.add_argument("--forzar-purga", action="store_true",
+                        help="Omite el límite de seguridad del circuit breaker para purgar huérfanos confirmados.")
     args = parser.parse_args()
     try:
-        sys.exit(sincronizar_articulos(completo=args.completo, purgar=args.purgar))
+        sys.exit(sincronizar_articulos(completo=args.completo, purgar=args.purgar, forzar_purga=args.forzar_purga))
     except ErrorAPIDiscourse as e:
         print(f"❌ {e}")
         sys.exit(2)
@@ -203,3 +284,4 @@ if __name__ == "__main__":
         traceback.print_exc()
         print(f"❌ Error inesperado en la sincronización: {e}")
         sys.exit(3)
+

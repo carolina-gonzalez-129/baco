@@ -13,7 +13,7 @@ Usa esta skill para procesar, limpiar y reestructurar semánticamente textos en 
 
 ## Directrices de Transformación Lingüística
 
-1. **Comprensión Semántica:** Analiza el texto fuente para identificar el propósito operativo real (aprender a usar una función vs. diagnosticar y corregir un error).
+1. **Aplicación Estricta de la Plantilla Indicada:** BACO no infiere la plantilla a partir del contexto; procesa y estructura el texto según la plantilla requerida de manera explícita (**Instructivo** o **Soluciones**).
 2. **Normalización Verbal:** 
    * Redacta todos los pasos y acciones en **modo infinitivo** (ej. *"Ingresar a...", "Seleccionar el comprobante...", "Hacer clic en Guardar"*), eliminando el uso de imperativos o segunda persona (*"ingresá", "debés seleccionar"*).
 3. **Fidelidad Factual (Cero Alucinación):** 
