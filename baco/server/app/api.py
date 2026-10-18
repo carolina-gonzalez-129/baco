@@ -1,96 +1,33 @@
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
-from starlette.concurrency import run_in_threadpool
-from baco.server.db.config import get_conn
+from fastapi import APIRouter, Depends
+from baco.server.schemas.chat import ChatRequest, ChatResponse
+from baco.server.schemas.chat_orquestado import ChatOrquestadorRequest, ChatOrquestadorResponse
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.schemas.articulo import ArticuloSchema
-from baco.server.services.validar_articulo import validar_texto_y_estructura_post_duplicados
-from baco.agent import create_agent
+from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
+from baco.server.app.orquestador import manejar_turno
 
 router = APIRouter(tags=["API REST"])
 
-#el servidor abre el pool de conexiones, config.py me permite obtenerlas pero buscador de duplicados
-#no usa directamente la conexion a la db sino k usa un cursor q es como un puntero
-#p hacer las busquedas
-#dsps podria evaluar si van a querer tener esto en mas lugares si no puedo ponerlo en main.py, aunque me da cosa
-
-#VER DE IMPLEMENTAR LO DEL BORRADOR ENTRE LOS METODOS Y
-#GESTIONAR LO DEL CONTEXT INYECTION A BACO
-#LO MISMO DEBERIA HACERLO PARA LAS MCP TOOLS ?
-#GESTIONAR Q CUMPLA BIEN LO DE LA VENTANA DE CONTEXTO
-#GESTIONAR
-def get_buscador_duplicados():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            yield BuscadorDuplicados(cur)
-
-
-def get_baco_agent():
-    return create_agent()
-
-#VER LO DE Q SE COMPARTAN COMO UN BORRADOR
-#ESTO DEBE PEGARLE A LA PARTE DE ARRIBA DEL TITULO Y DURAR POCOS SEGUNDOS
-#ES SOLO COMO UNA PRE ALERTA
-@router.get("/titulo_exacto")
-async def titulo_exacto(
-        titulo: str = Query(..., description="titulo"),
+@router.post(
+    "/chat",
+    response_model=ChatOrquestadorResponse,
+    summary="Endpoint unificado de chat simulando al agente baco"
+)
+async def chat_orquestado(
+        request: ChatOrquestadorRequest,
         buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
-):
-    hay_titulo_exacto = await run_in_threadpool(buscador.buscar_por_titulo, titulo)
-    if hay_titulo_exacto:
-        url = hay_titulo_exacto[0][2]
-        return {
-            "url": url,
-            "mensaje": f"Ya hay un titulo exactamente igual ({url}), te gustaria consultarlo?"
-        }
-    return {
-        "url": None
-    }
+) -> ChatOrquestadorResponse:
+    return await manejar_turno(request, buscador)
 
-##MEJORAR
-##Y HACER Q HAYA CONTINUIDAD PARA Q T O DO OPERE SOBRE EL MISMO BORRADOR
-
-@router.get("/buscar_duplicados")
-async def buscar_duplicados(
-        titulo: str = Query(..., description="titulo"),
-        texto: str = Query(None, description="texto"),
-        limite: int = 3,
-        buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
-):
-    return await run_in_threadpool(
-        buscador.evaluar_coincidencias,
-        titulo,
-        True,
-        texto,
-        limite
-    )
-
-###PROBAR MEJOR ESTE ENDPOINT
-@router.post("/validar_formato")
-async def validar_formato(articulo: ArticuloSchema):
-    resultado = validar_texto_y_estructura_post_duplicados(articulo)
-    es_valido = resultado["status"] != "Pendiente"
-    return {
-        "valido": es_valido,
-        "fase": "fase_2_texto_y_estructura",
-        "status": resultado["status"],
-        "findings": resultado["findings"],
-        "resumen": {
-            "longitud_texto": resultado["longitud_texto"],
-            "tags_count": resultado["tags_count"]
-        }
-    }
-
-
-class ChatRequest(BaseModel):
-    prompt: str
-
-#SOLAMENTE INYECTARLE UN BORRADOR SANITIZADO, NO T O DO EL RESULTADO DE LO ANTERIOR
-
-@router.post("/chat_baco")
+##FALTA HACER Q SE INYECTE EL CONTEXTO SANITIZADO!
+@router.post(
+    "/chat_baco",
+    response_model=ChatResponse,
+    summary="Consulta al agente de conocimiento BACO"
+)
 def chat(
         request: ChatRequest,
-        baco = Depends(get_baco_agent)
-) -> dict[str, str]:
-    response = baco(request.prompt)
+        baco=Depends(get_baco_agent)
+) -> ChatResponse:
+    mensaje = request.construir_prompt_sanitizado()
+    response = baco(mensaje)
     return {"response": str(response)}
