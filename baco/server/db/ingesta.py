@@ -1,10 +1,10 @@
 """
 Punto de entrada ÚNICO para ingestar artículos en baco_db.
 
-Lo usan los tres caminos de ingesta para que todos se comporten igual:
-  - cargar_articulos_postgres.py   (carga desde data/articulos.json)
-  - migrar_y_sincronizar_todo.py   (migración maestra desde el JSON)
-  - discourse/actualizar_nuevos_articulos.py (sincronización desde la API de Discourse)
+Lo usan las vías de ingesta para que todos se comporten igual:
+  - reconstruir_db.py                      (reconstrucción total desde data/articulos.json)
+  - discourse/actualizar_nuevos_articulos.py (sincronización incremental/completa desde Discourse)
+  - discourse/actualizar_articulos_editados.py (sincronización de ediciones y auditoría)
 
 Garantías:
   1. Acepta tanto el formato del JSON propio (titulo, categoria_id, texto, url, actualizado)

@@ -10,11 +10,115 @@ def _finding(severity: str, field: str, description: str, action: str) -> dict[s
         "action": action
     }
 
-# regex para q no manden datos sensibles o links raros
-RE_CUIT = re.compile(r"\b\d{2}-?\d{8}-?\d\b")
-RE_EMAIL = re.compile(r"\b[\w\.-]+@[\w\.-]+\.\w+\b")
+RE_CUIT = re.compile(r"\b(?:20|23|24|27|30|33|34)-?\d{8}-?\d\b")
+RE_EMAIL = re.compile(r"\b[\w\.-]+@([\w\.-]+\.\w+)\b")
 RE_TICKETS = re.compile(r"\b(ticket|incidente|caso|jira|tarea)\s*#?\d+\b", re.IGNORECASE)
-RE_URL_INTERNA = re.compile(r"https?://[^\s]*(?:dev|stage|qa|local|\.test|192\.168|10\.|172\.)[^\s]*", re.IGNORECASE)
+RE_URL = re.compile(r"https?://([^\s/:?#]+)", re.IGNORECASE)
+
+CUITS_EJEMPLO = {"20123456789", "30000000000"}
+DOMINIOS_EMAIL_EJEMPLO = {"ejemplo.com", "ejemplo.org", "ejemplo.com.ar", "example.com", "example.org"}
+
+ETIQUETAS_HOST_INTERNO = {"dev", "stage", "staging", "qa", "test", "local", "localhost", "internal", "interno"}
+
+SUFIJOS_HOST_INTERNO = (".test", ".local", ".internal", ".localhost")
+RE_IP_PRIVADA = re.compile(r"^(?:10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|127\.\d+\.\d+\.\d+)$")
+
+
+def _hay_cuit_real(contenido: str) -> bool:
+    for m in RE_CUIT.finditer(contenido):
+        digitos = re.sub(r"\D", "", m.group(0))
+        if digitos in CUITS_EJEMPLO:
+            continue
+        if re.fullmatch(r"\d{2}0{8}\d", digitos):  # cuerpo todo en ceros: claramente ficticio
+            continue
+        return True
+    return False
+
+
+def _hay_email_real(contenido: str) -> bool:
+    for m in RE_EMAIL.finditer(contenido):
+        dominio = m.group(1).lower()
+        if dominio in DOMINIOS_EMAIL_EJEMPLO:
+            continue
+        return True
+    return False
+
+
+def _es_host_interno(host: str) -> bool:
+    host = host.lower().rstrip(".")
+    if RE_IP_PRIVADA.match(host) or host.endswith(SUFIJOS_HOST_INTERNO):
+        return True
+    return bool(set(re.split(r"[.\-]", host)) & ETIQUETAS_HOST_INTERNO)
+
+
+def _hay_url_interna(contenido: str) -> bool:
+    return any(_es_host_interno(m.group(1)) for m in RE_URL.finditer(contenido))
+
+
+def _sanitizar_cuits(contenido: str) -> tuple[str, int]:
+    reemplazos = 0
+    def _sub_cuit(match):
+        nonlocal reemplazos
+        digitos = re.sub(r"\D", "", match.group(0))
+        if digitos in CUITS_EJEMPLO or re.fullmatch(r"\d{2}0{8}\d", digitos):
+            return match.group(0)
+        reemplazos += 1
+        return "20-12345678-9"
+    return RE_CUIT.sub(_sub_cuit, contenido), reemplazos
+
+
+def _sanitizar_emails(contenido: str) -> tuple[str, int]:
+    reemplazos = 0
+    def _sub_email(match):
+        nonlocal reemplazos
+        dominio = match.group(1).lower()
+        if dominio in DOMINIOS_EMAIL_EJEMPLO:
+            return match.group(0)
+        reemplazos += 1
+        return "usuario@ejemplo.com"
+    return RE_EMAIL.sub(_sub_email, contenido), reemplazos
+
+
+RE_URL_COMPLETA = re.compile(r"https?://([^\s/:?#]+)(?:[^\s.,;)]*)", re.IGNORECASE)
+
+
+def _sanitizar_urls_internas(contenido: str) -> tuple[str, int]:
+    reemplazos = 0
+    def _sub_url(match):
+        nonlocal reemplazos
+        if _es_host_interno(match.group(1)):
+            reemplazos += 1
+            return "https://ejemplo.finneg.com"
+        return match.group(0)
+    return RE_URL_COMPLETA.sub(_sub_url, contenido), reemplazos
+
+
+def _limpiar_texto_sensible(contenido: str) -> tuple[str, int]:
+    paso_cuits, c = _sanitizar_cuits(contenido)
+    paso_emails, e = _sanitizar_emails(paso_cuits)
+    paso_urls, u = _sanitizar_urls_internas(paso_emails)
+    return paso_urls, (c + e + u)
+
+##ESTO DEBERIA INVOCARSE DSPS DE CHAT ORQUESTADO PARA Q SE INYECTE A BACO!
+def sanitizar_borrador(texto: str = "", titulo: str = "") -> dict[str, Any]:
+    texto_limpio = (texto or "").strip()
+    titulo_limpio = (titulo or "").strip()
+
+    texto_sanitizado, r_texto = _limpiar_texto_sensible(texto_limpio)
+    titulo_sanitizado, r_titulo = _limpiar_texto_sensible(titulo_limpio)
+
+    if RE_TITULO_REDUNDANTE.search(titulo_sanitizado):
+        titulo_sanitizado = RE_TITULO_REDUNDANTE.sub("", titulo_sanitizado).strip()
+        if titulo_sanitizado and titulo_sanitizado[0].islower():
+            titulo_sanitizado = titulo_sanitizado[0].upper() + titulo_sanitizado[1:]
+
+    return {
+        "texto_sanitizado": texto_sanitizado,
+        "titulo_sanitizado": titulo_sanitizado,
+        "reemplazos_total": r_texto + r_titulo
+    }
+
+
 
 # cosas para validar el titulo
 RE_TITULO_REDUNDANTE = re.compile(r"^\s*(?:cómo|como|pasos para|como hacer para)\b", re.IGNORECASE)
@@ -33,15 +137,15 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     # chequeo cuits, mails o tickets para q no queden en la base publica
     contenido_completo = f"{titulo_limpio} {texto_limpio}"
 
-    if RE_CUIT.search(contenido_completo):
+    if _hay_cuit_real(contenido_completo):
         findings.append(_finding(
             severity="Bloqueante",
             field="texto",
             description="Se detectaron CUITs reales o números de identificación tributaria en el contenido.",
-            action="Reemplazar por CUITs genéricos o ficticios (ej. '30-00000000-0') antes de publicar."
+            action="Reemplazar por CUITs genéricos o ficticios (ej. '20-12345678-9' o '30-00000000-0') antes de publicar."
         ))
 
-    if RE_EMAIL.search(contenido_completo):
+    if _hay_email_real(contenido_completo):
         findings.append(_finding(
             severity="Bloqueante",
             field="texto",
@@ -57,7 +161,7 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
             action="Describir el problema en términos funcionales orientados al usuario final sin códigos de ticket."
         ))
 
-    if RE_URL_INTERNA.search(contenido_completo):
+    if _hay_url_interna(contenido_completo):
         findings.append(_finding(
             severity="Bloqueante",
             field="texto",
@@ -65,15 +169,8 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
             action="Remover o reemplazar por URLs genéricas o de documentación oficial."
         ))
 
-    # me fijo si no pusieron titulo o si arranca con como hacer
-    if not titulo_limpio:
-        findings.append(_finding(
-            severity="Bloqueante",
-            field="titulo",
-            description="El artículo no posee título.",
-            action="Definir un título descriptivo para el artículo."
-        ))
-    else:
+    # si pusieron titulo chequeo q no arranque con como hacer y q no tenga error sin comillas
+    if titulo_limpio:
         if RE_TITULO_REDUNDANTE.search(titulo_limpio):
             findings.append(_finding(
                 severity="Requiere ajuste",
@@ -149,11 +246,17 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     else:
         status = "Listo"
 
+
+
+    datos_sanitizados = sanitizar_borrador(texto=texto_limpio, titulo=titulo_limpio)
+
     return {
         "id": articulo.id,
         "fase": "fase_2_texto_y_estructura",
         "status": status,
         "titulo": articulo.titulo,
+        "titulo_sanitizado": datos_sanitizados["titulo_sanitizado"],
+        "texto_sanitizado": datos_sanitizados["texto_sanitizado"],
         "categoria_id": articulo.categoria_id,
         "tags_count": len(tags),
         "longitud_texto": longitud_texto,

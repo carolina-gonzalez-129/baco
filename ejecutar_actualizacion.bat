@@ -1,7 +1,7 @@
 @echo off
 REM ==============================================================================
 REM RUTINA DE ACTUALIZACIÓN AUTOMÁTICA DE ARTÍCULOS - BACO
-REM Orden: 1. Nuevos -> 2. Editados -> 3. Normalizar/Hashes -> 4. Embeddings
+REM Orden: 1. Nuevos -> 2. Editados -> 3. Embeddings pendientes
 REM Uso:
 REM   actualizar.bat (o ejecutar_actualizacion.bat)          -> incremental: nuevos y editados (diario)
 REM   actualizar.bat completo                               -> re-descarga total (semanal)
@@ -49,8 +49,8 @@ REM --------------------------------------------------------------------------
 REM Paso 1: Sincronizar articulos nuevos desde Discourse
 REM   Codigo 0 = OK | 1 = algunos temas fallaron (se continua) | 2+ = error grave
 REM --------------------------------------------------------------------------
-echo [1/4] Sincronizando articulos nuevos desde Discourse...
-echo [1/4] Sincronizando articulos nuevos desde Discourse... >> "%LOG_FILE%"
+echo [1/3] Sincronizando articulos nuevos desde Discourse...
+echo [1/3] Sincronizando articulos nuevos desde Discourse... >> "%LOG_FILE%"
 ".venv\Scripts\python.exe" -m baco.server.discourse.actualizar_nuevos_articulos %SYNC_ARGS% >> "%LOG_FILE%" 2>&1
 set "SYNC_RC=%ERRORLEVEL%"
 if %SYNC_RC% geq 2 (
@@ -66,8 +66,8 @@ if %SYNC_RC% equ 1 (
 REM --------------------------------------------------------------------------
 REM Paso 2: Sincronizar articulos editados desde Discourse (/posts.json)
 REM --------------------------------------------------------------------------
-echo [2/4] Sincronizando articulos editados desde Discourse...
-echo [2/4] Sincronizando articulos editados desde Discourse... >> "%LOG_FILE%"
+echo [2/3] Sincronizando articulos editados desde Discourse...
+echo [2/3] Sincronizando articulos editados desde Discourse... >> "%LOG_FILE%"
 ".venv\Scripts\python.exe" -m baco.server.discourse.actualizar_articulos_editados >> "%LOG_FILE%" 2>&1
 set "EDIT_RC=%ERRORLEVEL%"
 if %EDIT_RC% geq 2 (
@@ -81,22 +81,10 @@ if %EDIT_RC% equ 1 (
 )
 
 REM --------------------------------------------------------------------------
-REM Paso 3: Verificar hashes, series (base_titulo), textos sin headers y STORED en Postgres
+REM Paso 3: Generar embeddings locales pendientes (título y texto sin headers)
 REM --------------------------------------------------------------------------
-echo [3/4] Verificando hashes, series y textos limpios sin headers...
-echo [3/4] Verificando hashes, series y textos limpios sin headers... >> "%LOG_FILE%"
-".venv\Scripts\python.exe" -m baco.server.db.rellenar_normalizados >> "%LOG_FILE%" 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Fallo la verificacion de hashes y normalizados. Codigo: %ERRORLEVEL%
-    echo [ERROR] Fallo la verificacion de hashes y normalizados. Codigo: %ERRORLEVEL% >> "%LOG_FILE%"
-    exit /b %ERRORLEVEL%
-)
-
-REM --------------------------------------------------------------------------
-REM Paso 4: Generar embeddings locales pendientes 
-REM --------------------------------------------------------------------------
-echo [4/4] Generando embeddings pendientes (titulo y texto sin headers)...
-echo [4/4] Generando embeddings pendientes (titulo y texto sin headers)... >> "%LOG_FILE%"
+echo [3/3] Generando embeddings pendientes (titulo y texto sin headers)...
+echo [3/3] Generando embeddings pendientes (titulo y texto sin headers)... >> "%LOG_FILE%"
 ".venv\Scripts\python.exe" -m baco.server.db.generar_embeddings >> "%LOG_FILE%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Fallo la generacion de embeddings. Codigo: %ERRORLEVEL%

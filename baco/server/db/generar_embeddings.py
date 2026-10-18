@@ -28,8 +28,6 @@ MAX_SEQ_LENGTH_TEXTO = 512
 BATCH_SIZE = 8
 
 
-
-
 def validar_contra_meta(conn, columna: str, model, expected_model_name: str, expected_dim: int):
     """Valida que el modelo cargado y su dimensión coincidan estrictamente con embeddings_meta.
 

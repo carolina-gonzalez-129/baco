@@ -16,13 +16,19 @@ from baco.server.services.embeddings import embedding_titulo, embedding_texto
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")
 
-HEADERS = {
-    "Api-Key": DISCOURSE_API_KEY,
-    "Api-Username": DISCOURSE_API_USERNAME,
-    "Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept": "application/json",
-}
+
+def get_headers() -> dict[str, str]:
+    """Retorna los headers HTTP actualizados con las credenciales del entorno."""
+    return {
+        "Api-Key": os.getenv("DISCOURSE_API_KEY", ""),
+        "Api-Username": os.getenv("DISCOURSE_API_USERNAME", "system"),
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "application/json",
+    }
+
+
+HEADERS = get_headers()
 
 PAUSA_ENTRE_REQUESTS = 0.3
 MAX_INTENTOS = 5
@@ -32,8 +38,37 @@ class ErrorAPIDiscourse(RuntimeError):
     pass
 
 
+def validar_credenciales_discourse(api_key: str | None = None, api_username: str | None = None) -> None:
+    """Verifica que las credenciales de la API de Discourse estén configuradas y no vacías.
+
+    Evita que peticiones anónimas filtren categorías privadas o traten artículos válidos
+    como huérfanos. Si no están configuradas, lanza ErrorAPIDiscourse de inmediato.
+    """
+    key = api_key if api_key is not None else os.getenv("DISCOURSE_API_KEY", "")
+    username = api_username if api_username is not None else os.getenv("DISCOURSE_API_USERNAME", "")
+
+    if not key or not key.strip():
+        raise ErrorAPIDiscourse(
+            "DISCOURSE_API_KEY no está configurada o está vacía en las variables de entorno (.env). "
+            "Se requiere una API Key válida para autenticar contra Discourse y evitar que "
+            "categorías privadas se oculten o sean tratadas erróneamente como artículos huérfanos."
+        )
+    if not username or not username.strip():
+        raise ErrorAPIDiscourse(
+            "DISCOURSE_API_USERNAME no está configurada o está vacía en las variables de entorno (.env)."
+        )
+
+
+class RecursoNoDisponible(ErrorAPIDiscourse):
+    """El recurso pedido no existe o fue retirado (HTTP 404/410). No tiene sentido reintentar."""
+
+
 def pedir(http: httpx.Client, ruta: str, params: dict | None = None) -> dict:
-    """GET con reintentos para 429 (rate limits) y 5xx."""
+    """GET con reintentos para 429 (rate limits), 5xx y errores de red.
+
+    Los demás 4xx son errores del cliente y no se reintentan: 404/410 levantan RecursoNoDisponible
+    y el resto ErrorAPIDiscourse inmediatamente.
+    """
     ultimo_error = None
     for intento in range(MAX_INTENTOS):
         try:
@@ -48,8 +83,14 @@ def pedir(http: httpx.Client, ruta: str, params: dict | None = None) -> dict:
                 ultimo_error = f"HTTP {r.status_code}"
                 time.sleep(2 * (intento + 1))
                 continue
+            if r.status_code in (404, 410):
+                raise RecursoNoDisponible(f"Recurso no disponible en {ruta}: HTTP {r.status_code}")
+            if 400 <= r.status_code < 500:
+                raise ErrorAPIDiscourse(f"Error del cliente en {ruta}: HTTP {r.status_code}")
             r.raise_for_status()
             return r.json()
+        except ErrorAPIDiscourse:
+            raise
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             ultimo_error = e
             time.sleep(2 * (intento + 1))
@@ -129,7 +170,11 @@ def descargar_articulo(
     else:
         raise ValueError("Se debe proporcionar tema_id o tema para descargar_articulo.")
 
-    detalle = pedir(http, f"/t/{target_id}.json")
+    try:
+        detalle = pedir(http, f"/t/{target_id}.json")
+    except RecursoNoDisponible:
+        print(f"   [OMITIDO] Tema {target_id} no disponible en Discourse (404/410).")
+        return None
     posts = detalle.get("post_stream", {}).get("posts", [])
     if not posts:
         return None
