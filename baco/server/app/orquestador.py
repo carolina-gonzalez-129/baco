@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 import uuid
+from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.schemas.chat_orquestado import (
@@ -135,8 +136,8 @@ def _normalizar_coincidencias(filas: list) -> List[CoincidenciaArticulo]:
 
 def _validar_borrador(sesion: SesionChat, prefijo: str = "") -> tuple[str, List[str]]:
     b = sesion.borrador
-    res = validar_texto_y_estructura_post_duplicados(
-        ArticuloSchema(
+    try:
+        articulo = ArticuloSchema(
             id=b.articulo_original_id or 0,
             titulo=b.titulo,
             texto=b.texto,
@@ -144,7 +145,29 @@ def _validar_borrador(sesion: SesionChat, prefijo: str = "") -> tuple[str, List[
             tags=[Tag(name=t) for t in b.tags],
             url=b.articulo_original_url,
         )
-    )
+    except ValidationError:
+        sesion.validacion = ValidarFormatoResponse(
+            valido=False,
+            status="Pendiente",
+            findings=[
+                {
+                    "severity": "Bloqueante",
+                    "field": "formato",
+                    "description": "El borrador no cumple con los límites requeridos (título entre 15 y 255 caracteres, texto de al menos 20 caracteres).",
+                    "action": "Editar el título o texto para cumplir con la longitud mínima requerida.",
+                }
+            ],
+            resumen={"longitud_texto": len(b.texto or ""), "tags_count": len(b.tags or [])},
+        )
+        sesion.estado = EstadoFlujo.REVISION_BORRADOR
+        msg = (
+            f"{prefijo}El borrador tiene observaciones bloqueantes:\n"
+            f"- [Bloqueante] El título debe tener entre 15 y 255 caracteres (actual: {len(b.titulo or '')}) y el texto al menos 20 caracteres (actual: {len(b.texto or '')}).\n"
+            f"Editá el borrador o sanitizalo para poder aprobar."
+        )
+        return msg, ["editar", "sanitizar", "rechazar", "reiniciar"]
+
+    res = validar_texto_y_estructura_post_duplicados(articulo)
     valido = res["status"] != "Pendiente"
     sesion.validacion = ValidarFormatoResponse(
         valido=valido,
@@ -236,8 +259,10 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
 
     # Paso 2 y 3: ESPERANDO_TITULO -> buscar_duplicados solo con el título (mejor coincidencia única)
     if sesion.estado == EstadoFlujo.ESPERANDO_TITULO:
-        if len(entrada_titulo) < 10:
-            return _respuesta(sesion, "Por favor, ingresá un título descriptivo de al menos 10 caracteres.", [])
+        if len(entrada_titulo) < 15:
+            return _respuesta(sesion, "Por favor, ingresá un título descriptivo de al menos 15 caracteres.", [])
+        if len(entrada_titulo) > 255:
+            return _respuesta(sesion, "El título no puede superar los 255 caracteres.", [])
 
         sesion.titulo = entrada_titulo
         if req.categoria_id is not None:
@@ -273,11 +298,11 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
                 categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
                 tags=tags_iniciales,
             )
-            if not texto_inicial:
+            if not texto_inicial or len(texto_inicial) < 20:
                 sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
                 return _respuesta(
                     sesion,
-                    f"Seleccionaste enriquecer el artículo #{elegido.id}. Ingresá el texto del borrador.",
+                    f"Seleccionaste enriquecer el artículo #{elegido.id}. Ingresá el texto del borrador (mínimo 20 caracteres).",
                     [],
                 )
             return _avanzar_a_metadatos_o_revision(sesion, f"Borrador de sesión creado sobre #{elegido.id}. ")
@@ -293,6 +318,8 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
         texto_in = (req.texto or req.mensaje or "").strip()
         if not texto_in:
             return _respuesta(sesion, "El texto no puede estar vacío. Ingresá el contenido del artículo.", [])
+        if len(texto_in) < 20:
+            return _respuesta(sesion, "El contenido del artículo debe tener al menos 20 caracteres.", [])
 
         sesion.texto = texto_in
         if req.categoria_id is not None:
