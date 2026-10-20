@@ -59,8 +59,10 @@ class ChatRequest(BaseModel):
                     self.tags = borrador_aprobado.tags
                 if not self.tipo_plantilla and borrador_aprobado.tipo_plantilla:
                     self.tipo_plantilla = borrador_aprobado.tipo_plantilla
+                if not self.categoria and borrador_aprobado.categoria_id:
+                    self.categoria = str(borrador_aprobado.categoria_id)
 
-        if self.skill == "plantillas" and not self.tipo_plantilla:
+        if not self.session_id and self.skill == "plantillas" and not self.tipo_plantilla:
             raise ValueError(
                 "Para la skill 'plantillas' es obligatorio especificar 'tipo_plantilla' ('instructivo' o 'soluciones'). "
                 "BACO no infiere la plantilla a partir del contexto; solo sabe aplicar la indicada."

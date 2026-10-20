@@ -7,7 +7,12 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
-from baco.server.app.orquestador import manejar_turno, obtener_borrador_aprobado
+from baco.server.app.orquestador import (
+    actualizar_borrador_texto,
+    manejar_turno,
+    obtener_borrador_aprobado,
+    obtener_borrador_sesion_validado,
+)
 
 router = APIRouter(tags=["API REST"])
 
@@ -28,24 +33,64 @@ async def chat_orquestado(
     response_model=BorradorSesion,
     summary="Obtiene el borrador de sesión aprobado y sanitizado"
 )
-def obtener_borrador_de_sesion(session_id: str) -> BorradorSesion:
-    borrador = obtener_borrador_aprobado(session_id)
-    if borrador is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No existe un borrador en estado APROBADO para la sesión indicada o la sesión expiró."
-        )
+def obtener_borrador_de_sesion(
+    borrador: BorradorSesion = Depends(obtener_borrador_sesion_validado),
+) -> BorradorSesion:
     return borrador
+
+##AGREGO ESTO PORQ SE SUPONE Q UNO PUEDE USAR A BACO SI Y SOLO SI PASAMOS LO ANTERIOR!
+@router.post(
+    "/chat/{session_id}/aplicar-plantilla",
+    response_model=ChatResponse,
+    summary="Aplica la skill 'plantillas' para estructurar el borrador en su formato oficial"
+)
+def aplicar_plantilla(
+    session_id: str,
+    borrador: BorradorSesion = Depends(obtener_borrador_sesion_validado),
+    baco=Depends(get_baco_agent),
+) -> ChatResponse:
+    prompt_sanitizado = (
+        f"Skill solicitada: plantillas\n"
+        f"Plantilla a aplicar: {borrador.tipo_plantilla}\n"
+        f"Título del borrador: {borrador.titulo}\n"
+        f"Borrador actual del artículo:\n\"\"\"\n{borrador.texto}\n\"\"\"\n\n"
+        f"Instrucción: Estructurar este borrador aprobado en el formato oficial correspondiente."
+    )
+    resultado = str(baco(prompt_sanitizado))
+    actualizar_borrador_texto(session_id, resultado)
+    return {"response": resultado}
+
+
+@router.post(
+    "/chat/{session_id}/auditar-semantica",
+    response_model=ChatResponse,
+    summary="Aplica la skill 'validador' para auditar la coherencia semántica y estilo del artículo"
+)
+def auditar_semantica(
+    borrador: BorradorSesion = Depends(obtener_borrador_sesion_validado),
+    baco=Depends(get_baco_agent),
+) -> ChatResponse:
+    tags_str = ", ".join(borrador.tags) if borrador.tags else "Ninguno"
+    prompt_sanitizado = (
+        f"Skill solicitada: validador\n"
+        f"Categoría / Módulo ERP: {borrador.categoria_id}\n"
+        f"Tags: {tags_str}\n"
+        f"Título del borrador: {borrador.titulo}\n"
+        f"Borrador actual del artículo:\n\"\"\"\n{borrador.texto}\n\"\"\"\n\n"
+        f"Instrucción: Auditar la calidad semántica, coherencia causa-efecto y estilo editorial del artículo antes de su publicación definitiva."
+    )
+    dictamen = str(baco(prompt_sanitizado))
+    return {"response": dictamen}
 
 
 @router.post(
     "/chat_baco",
     response_model=ChatResponse,
-    summary="Consulta al agente de conocimiento BACO"
+    summary="Consulta directa al agente de conocimiento BACO"
 )
 def chat(
-        request: ChatRequest,
-        baco=Depends(get_baco_agent)
+    request: ChatRequest,
+    baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     mensaje = request.construir_prompt_sanitizado()
     response = baco(mensaje)
