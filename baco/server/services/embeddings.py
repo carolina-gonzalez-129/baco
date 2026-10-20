@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Configuración del modelo oficial para embeddings de título
 MODEL_TITULO_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 DIM_TITULO = 384
 _MODEL_TITULO_INSTANCE: SentenceTransformer | None = None
@@ -158,21 +157,7 @@ def embedding_titulo(
         show_progress_bar: bool = False,
         model: SentenceTransformer | None = None,
 ) -> list[float] | list[list[float] | None] | None:
-    """PUNTO DE ENTRADA ÚNICO para generar embeddings del campo TÍTULO en BACO.
 
-    Aplica el pipeline oficial:
-      1. Preserva el título original (con mayúsculas, tildes y signos).
-      2. Colapsa espacios redundantes.
-      3. Genera el embedding usando el modelo paraphrase-multilingual-MiniLM-L12-v2
-         con normalize_embeddings=True (norma L2 = 1.0).
-
-    Retorna:
-        - Si titulo_original es str: list[float] con 384 flotantes normalizados.
-          Si está vacío o es None, devuelve None.
-        - Si titulo_original es Sequence[str]: list[list[float] | None] con un vector
-          por cada elemento (o None si ese elemento estaba vacío).
-        - Si titulo_original es None: None.
-    """
     if titulo_original is None:
         return None
 
@@ -230,22 +215,7 @@ def embedding_texto(
         show_progress_bar: bool = False,
         model: SentenceTransformer | None = None,
 ) -> list[float] | list[list[float] | None] | None:
-    """PUNTO DE ENTRADA ÚNICO para generar embeddings del campo TEXTO en BACO.
 
-    Aplica el pipeline oficial:
-      1. limpiar_suave(texto_original): elimina residuos de Discourse y colapsa espacios.
-         Preserva mayúsculas, tildes y puntuación.
-      2. truncar_1000(texto_limpio): corta a un máximo de 1000 caracteres sin partir palabras.
-      3. Antepone el prefijo oficial del modelo E5: 'query: '.
-      4. Genera el embedding usando el modelo intfloat/multilingual-e5-base con normalize_embeddings=True.
-
-    Retorna:
-        - Si texto_original es str: list[float] con 768 flotantes normalizados (norma L2 = 1.0).
-          Si el texto resultante es vacío o None, devuelve None.
-        - Si texto_original es Sequence[str]: list[list[float] | None] con un vector por cada
-          elemento de entrada (o None si ese elemento estaba vacío).
-        - Si texto_original es None: None.
-    """
     if texto_original is None:
         return None
 
@@ -272,7 +242,6 @@ def embedding_texto(
         )
         return vector.tolist()
 
-    # Caso 2: Procesamiento por lote (para migración masiva o múltiples artículos)
     textos_a_codificar: list[str] = []
     indices_a_codificar: list[int] = []
 

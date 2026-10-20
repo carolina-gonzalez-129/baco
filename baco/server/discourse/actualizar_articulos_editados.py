@@ -20,7 +20,7 @@ import os
 import sys
 import time
 from datetime import datetime
-from typing import Any
+
 
 # Asegurar codificación utf-8 en terminal de Windows
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -38,7 +38,6 @@ from baco.server.db.config import DB_NAME, get_conn
 from baco.server.db.ingesta import (
     ResumenIngesta,
     discourse_base_url,
-    normalizar_articulo,
     parsear_fecha,
     upsert_articulos,
 )

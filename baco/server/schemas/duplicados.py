@@ -1,5 +1,5 @@
-from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Literal
+from pydantic import BaseModel, Field
 
 class ArticuloSimilarTool(BaseModel):
     id: int = Field(..., description="ID del artículo en Discourse")

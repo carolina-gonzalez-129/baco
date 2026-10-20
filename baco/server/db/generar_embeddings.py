@@ -29,10 +29,7 @@ BATCH_SIZE = 8
 
 
 def validar_contra_meta(conn, columna: str, model, expected_model_name: str, expected_dim: int):
-    """Valida que el modelo cargado y su dimensión coincidan estrictamente con embeddings_meta.
 
-    Si el registro no existe o los valores difieren, aborta con ValueError.
-    """
     with conn.cursor() as cur:
         cur.execute(
             "SELECT model_name, dimension FROM embeddings_meta WHERE columna = %s;",
@@ -66,11 +63,6 @@ def validar_contra_meta(conn, columna: str, model, expected_model_name: str, exp
 
 
 def obtener_articulos_pendientes(conn):
-    """Obtiene artículos que requieran generar embedding de título o de texto.
-
-    Filtra con precisión: solo aquellos donde el embedding sea NULL pero el contenido
-    tenga hash válido (no vacío ni nulo). De este modo se evita re-procesar artículos vacíos.
-    """
     with conn.cursor() as cur:
         cur.execute("""
             SELECT id, titulo, texto_sin_headers, hash_titulo, hash_texto, embedding_titulo, embedding_texto 
@@ -83,7 +75,6 @@ def obtener_articulos_pendientes(conn):
 
 
 def medir_articulos_truncados(articulos, tokenizer, max_seq_length: int = MAX_SEQ_LENGTH_TEXTO) -> int:
-    """Mide e imprime cuántos artículos pendientes de texto superan la ventana de 512 tokens."""
     textos_a_evaluar = []
     for row in articulos:
         _id, _tit, txt_orig, _htit, htxt, _etit, etxt = row
@@ -96,7 +87,6 @@ def medir_articulos_truncados(articulos, tokenizer, max_seq_length: int = MAX_SE
         return 0
 
     truncados = 0
-    # Evaluamos longitudes en lotes usando el tokenizer de HuggingFace
     batch_size_eval = 256
     for b in range(0, total_textos, batch_size_eval):
         lote = textos_a_evaluar[b:b + batch_size_eval]
@@ -120,7 +110,6 @@ def generar_embeddings():
     print("==========================================================")
 
     with get_conn() as conn:
-        # 1. Consultar pendientes
         pendientes = obtener_articulos_pendientes(conn)
         total = len(pendientes)
         if total == 0:
@@ -129,11 +118,9 @@ def generar_embeddings():
 
         print(f"\n Se encontraron {total} artículos con embeddings pendientes.")
 
-        # Identificar si hay pendientes para cada columna
         hay_pendientes_titulo = any(r[5] is None and r[3] is not None for r in pendientes)
         hay_pendientes_texto = any(r[6] is None and r[4] is not None for r in pendientes)
 
-        # 2. Cargar y validar modelo de título si se necesita
         model_titulo = None
         if hay_pendientes_titulo:
             print(f" Cargando modelo para títulos: {MODEL_TITULO_NAME}...")
@@ -142,7 +129,6 @@ def generar_embeddings():
         else:
             print(" Embeddings de título: todos completos (no se requiere cargar MiniLM).")
 
-        # 3. Cargar y validar modelo de texto si se necesita
         model_texto = None
         if hay_pendientes_texto:
             print(f" Cargando modelo para textos: {MODEL_TEXTO_NAME}...")
@@ -150,7 +136,6 @@ def generar_embeddings():
             model_texto.max_seq_length = MAX_SEQ_LENGTH_TEXTO
             validar_contra_meta(conn, "texto", model_texto, MODEL_TEXTO_NAME, DIM_TEXTO)
 
-            # 4. Medir e informar tokens antes de procesar
             medir_articulos_truncados(pendientes, model_texto.tokenizer, MAX_SEQ_LENGTH_TEXTO)
         else:
             print(" Embeddings de texto: todos completos (no se requiere cargar e5).")

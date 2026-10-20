@@ -3,14 +3,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 import uuid
 
-from fastapi import HTTPException
-
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
     CoincidenciaArticulo,
     EstadoFlujo,
 )
 from baco.server.schemas.validacion import ValidarFormatoResponse
+from baco.server.services.orquestador.excepciones import (
+    EstadoInvalidoError,
+    SesionNoEncontradaError,
+)
 from baco.server.services.validar_articulo import sanitizar_borrador
 
 
@@ -58,7 +60,7 @@ class GestorSesiones:
             sesion.updated_at = ahora
             return sesion, False
 
-        sid = session_id or str(uuid.uuid4())
+        sid = str(uuid.uuid4())
         nueva = SesionChat(session_id=sid, updated_at=ahora)
         self._sesiones[sid] = nueva
         return nueva, True
@@ -85,17 +87,11 @@ class GestorSesiones:
         self.limpiar_expiradas(ahora)
 
         if not session_id or session_id not in self._sesiones:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No existe la sesión '{session_id}' o la sesión expiró."
-            )
+            raise SesionNoEncontradaError(f"No existe la sesión '{session_id}' o la sesión expiró.")
 
         sesion = self._sesiones[session_id]
         if sesion.estado != EstadoFlujo.APROBADO or sesion.borrador is None:
-            raise HTTPException(
-                status_code=409,
-                detail=f"El borrador no está en estado APROBADO (estado actual: '{sesion.estado.value}')."
-            )
+            raise EstadoInvalidoError(f"El borrador no está en estado APROBADO (estado actual: '{sesion.estado.value}').")
 
         sesion.updated_at = ahora
         return _sanitizar_y_clonar_borrador(sesion.borrador)
