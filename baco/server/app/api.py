@@ -83,15 +83,4 @@ def auditar_semantica(
     return {"response": dictamen}
 
 
-@router.post(
-    "/chat_baco",
-    response_model=ChatResponse,
-    summary="Consulta directa al agente de conocimiento BACO"
-)
-def chat(
-    request: ChatRequest,
-    baco=Depends(get_baco_agent),
-) -> ChatResponse:
-    mensaje = request.construir_prompt_sanitizado()
-    response = baco(mensaje)
-    return {"response": str(response)}
+ ##VER Q ONDA PORQ NO ESTA BUENO MANDAR DIRECTO LA SESSION_ID T_T
