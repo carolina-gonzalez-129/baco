@@ -19,12 +19,15 @@ from baco.server.services.orquestador.validaciones import (
 async def manejar_turno(
     req: ChatOrquestadorRequest, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
-    sesion, es_nueva = gestor_sesiones.obtener_o_crear(req.session_id)
+    sesion, es_nueva, fue_expirada = gestor_sesiones.obtener_o_crear(req.session_id)
     opcion = interpretar_opcion(req)
+
+    if fue_expirada:
+        return construir_respuesta(sesion, "La sesión expiró, empecemos de nuevo.", [])
 
     if opcion == "reiniciar":
         gestor_sesiones.eliminar(sesion.session_id)
-        sesion, _ = gestor_sesiones.obtener_o_crear(sesion.session_id)
+        sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
         return construir_respuesta(sesion, MENSAJE_BIENVENIDA, [])
 
     entrada_titulo = (req.titulo or req.mensaje or "").strip()

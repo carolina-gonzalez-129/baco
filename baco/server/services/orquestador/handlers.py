@@ -73,7 +73,9 @@ async def handle_esperando_titulo(
 
     res_tit = await run_in_threadpool(buscador.evaluar_titulo, titulo, 1)
     if res_tit and res_tit.get("coincidencias"):
-        sesion.coincidencias = normalizar_coincidencias(res_tit["coincidencias"])
+        sesion.coincidencias = normalizar_coincidencias(
+            res_tit["coincidencias"], mensaje=res_tit.get("mensaje", "")
+        )
         sesion.estado = EstadoFlujo.DECISION_TITULO
         primero = sesion.coincidencias[0]
         return construir_respuesta(
@@ -92,19 +94,29 @@ async def handle_decision_titulo(
     if opcion == "enriquecer":
         elegido = sesion.coincidencias[0]
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
-        if validar_longitud_maxima(texto_db or "", TEXTO_MAX, "texto"):
+        texto_base = (texto_db or "").strip()
+        elegido.texto_original = texto_base
+
+        if validar_longitud_maxima(texto_base, TEXTO_MAX, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_enviado = (req.texto or "").strip()
-        texto_base = (texto_db or "").strip()
+        sanit_env = sanitizar_borrador(texto=texto_enviado)
+        texto_enviado_limpio = sanit_env["texto_sanitizado"]
+        aviso_priv = sanit_env.get("aviso_privacidad")
+
+        if texto_enviado_limpio and texto_base and texto_base not in texto_enviado_limpio:
+            texto_consolidado = f"{texto_base}\n\n{texto_enviado_limpio}"
+        else:
+            texto_consolidado = texto_enviado_limpio or texto_base
 
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
             articulo_original_id=elegido.id,
             articulo_original_url=elegido.url,
             titulo=elegido.titulo,
-            texto=texto_enviado or texto_base,
+            texto=texto_consolidado,
             tipo_plantilla=extraer_tipo_plantilla(tags_ini),
             categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
             tags=tags_ini,
@@ -119,12 +131,14 @@ async def handle_decision_titulo(
                 ["descartar", "reiniciar"],
             )
 
-        err = validar_longitud(texto_enviado, TEXTO_MIN, TEXTO_MAX, "texto")
+        err = validar_longitud(texto_consolidado, TEXTO_MIN, TEXTO_MAX, "texto")
         if err:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
             return construir_respuesta(sesion, err, [])
 
-        return avanzar_a_metadatos_o_revision(sesion, prefijo_borrador_creado(elegido.id))
+        return avanzar_a_metadatos_o_revision(
+            sesion, prefijo_borrador_creado(elegido.id), aviso_privacidad=aviso_priv
+        )
 
     if opcion in ("descartar", "continuar"):
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
@@ -136,36 +150,64 @@ async def handle_decision_titulo(
 async def handle_esperando_texto(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
-    texto_in = (req.texto or req.mensaje or "").strip()
-    if not texto_in:
+    texto_raw = (req.texto or req.mensaje or "").strip()
+    if not texto_raw:
         return construir_respuesta(sesion, MSG_TEXTO_VACIO, [])
 
-    err = validar_longitud(texto_in, TEXTO_MIN, TEXTO_MAX, "texto")
-    if err:
-        return construir_respuesta(sesion, err, [])
-
-    sesion.texto = texto_in
     actualizar_metadatos_sesion(sesion, req)
 
     if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
-        sesion.borrador.texto = texto_in
+        texto_base = ""
+        if sesion.coincidencias and sesion.coincidencias[0].texto_original:
+            texto_base = sesion.coincidencias[0].texto_original.strip()
+        elif sesion.borrador.texto:
+            texto_base = sesion.borrador.texto.strip()
+
+        sanit_ap = sanitizar_borrador(texto=texto_raw)
+        texto_aporte = sanit_ap["texto_sanitizado"]
+        aviso_priv = sanit_ap.get("aviso_privacidad")
+
+        if texto_aporte and texto_base and texto_base not in texto_aporte:
+            texto_consolidado = f"{texto_base}\n\n{texto_aporte}"
+        else:
+            texto_consolidado = texto_aporte or texto_base
+
+        err = validar_longitud(texto_consolidado, TEXTO_MIN, TEXTO_MAX, "texto")
+        if err:
+            return construir_respuesta(sesion, err, [])
+
+        sesion.borrador.texto = texto_consolidado
+        sesion.texto = texto_consolidado
         if req.categoria_id is not None:
             sesion.borrador.categoria_id = req.categoria_id
         if req.tags is not None:
             sesion.borrador.tags = req.tags
         return avanzar_a_metadatos_o_revision(
-            sesion, prefijo_borrador_creado(sesion.borrador.articulo_original_id)
+            sesion, prefijo_borrador_creado(sesion.borrador.articulo_original_id), aviso_privacidad=aviso_priv
         )
 
-    res_txt = await run_in_threadpool(buscador.evaluar_texto, texto_in, True, sesion.titulo, 1)
+    err = validar_longitud(texto_raw, TEXTO_MIN, TEXTO_MAX, "texto")
+    if err:
+        return construir_respuesta(sesion, err, [])
+
+    sesion.texto = texto_raw
+
+    sanit_txt = sanitizar_borrador(texto=texto_raw)
+    texto_busqueda = sanit_txt["texto_sanitizado"]
+    aviso_privacidad = sanit_txt.get("aviso_privacidad")
+
+    res_txt = await run_in_threadpool(buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1)
     if res_txt and res_txt.get("coincidencias"):
-        sesion.coincidencias = normalizar_coincidencias(res_txt["coincidencias"])
+        sesion.coincidencias = normalizar_coincidencias(
+            res_txt["coincidencias"], mensaje=res_txt.get("mensaje", "")
+        )
         sesion.estado = EstadoFlujo.DECISION_TEXTO
         primero = sesion.coincidencias[0]
         return construir_respuesta(
             sesion,
             msg_coincidencia(res_txt["mensaje"], primero.titulo, primero.url),
             OPCIONES_ENRIQUECER_CONTINUAR,
+            aviso_privacidad=aviso_privacidad,
         )
 
     sesion.borrador = BorradorSesion(
@@ -176,7 +218,9 @@ async def handle_esperando_texto(
         categoria_id=sesion.categoria_id,
         tags=list(sesion.tags),
     )
-    return avanzar_a_metadatos_o_revision(sesion, PREFIJO_SIN_DUPLICADOS)
+    return avanzar_a_metadatos_o_revision(
+        sesion, PREFIJO_SIN_DUPLICADOS, aviso_privacidad=aviso_privacidad
+    )
 
 
 async def handle_decision_texto(
@@ -187,11 +231,26 @@ async def handle_decision_texto(
     if opcion == "enriquecer":
         elegido = sesion.coincidencias[0]
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
-        texto_enriquecido = (req.texto or texto_db or sesion.texto).strip()
-        if validar_longitud_maxima(texto_enriquecido, TEXTO_MAX, "texto"):
+        texto_base = (texto_db or "").strip()
+        elegido.texto_original = texto_base
+
+        if validar_longitud_maxima(texto_base, TEXTO_MAX, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
+        texto_aporte = (req.texto or sesion.texto or "").strip()
+        sanit_ap = sanitizar_borrador(texto=texto_aporte)
+        texto_aporte_limpio = sanit_ap["texto_sanitizado"]
+        aviso_priv = sanit_ap.get("aviso_privacidad")
+
+        if texto_aporte_limpio and texto_base and texto_base not in texto_aporte_limpio:
+            texto_enriquecido = f"{texto_base}\n\n{texto_aporte_limpio}"
+        else:
+            texto_enriquecido = texto_aporte_limpio or texto_base
+
+        if validar_longitud_maxima(texto_enriquecido, TEXTO_MAX, "texto"):
+            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
+
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
             articulo_original_id=elegido.id,
@@ -202,7 +261,9 @@ async def handle_decision_texto(
             categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
             tags=tags_ini,
         )
-        return avanzar_a_metadatos_o_revision(sesion, prefijo_borrador_enriquecido(elegido.id))
+        return avanzar_a_metadatos_o_revision(
+            sesion, prefijo_borrador_enriquecido(elegido.id), aviso_privacidad=aviso_priv
+        )
 
     if opcion in ("continuar", "descartar"):
         sesion.borrador = BorradorSesion(
@@ -225,12 +286,15 @@ async def handle_esperando_plantilla(
     if req.categoria_id is not None:
         b.categoria_id = req.categoria_id
 
-    plantilla = extraer_tipo_plantilla(req.tags or [], opcion)
+    opcion_plantilla = opcion or req.texto or req.mensaje or ""
+    plantilla = extraer_tipo_plantilla(req.tags or [], opcion_plantilla)
     if not plantilla:
         return construir_respuesta(sesion, MSG_ELEGIR_PLANTILLA, OPCIONES_PLANTILLAS)
 
     b.tipo_plantilla = plantilla
     b.tags = combinar_tags(plantilla, b.tags, req.tags or [])
+    if b.categoria_id is None:
+        b.categoria_id = sesion.categoria_id or 1
     return avanzar_a_metadatos_o_revision(sesion)
 
 
@@ -241,9 +305,15 @@ async def handle_esperando_metadatos(
     if req.categoria_id is not None:
         b.categoria_id = req.categoria_id
 
-    nuevos_tags, cat_res = parsear_metadatos_mensaje(req.mensaje, req.tags, req.categoria_id)
+    texto_fuente = req.mensaje or req.texto or req.accion
+    nuevos_tags, cat_res = parsear_metadatos_mensaje(
+        req.mensaje, req.tags, req.categoria_id, texto_fallback=texto_fuente
+    )
     if cat_res is not None:
         b.categoria_id = cat_res
+
+    if b.categoria_id is None:
+        b.categoria_id = sesion.categoria_id or 1
 
     b.tags = combinar_tags(b.tipo_plantilla, b.tags, nuevos_tags)
     if len(b.tags) < 2:
@@ -268,7 +338,7 @@ async def handle_revision_borrador(
         b.titulo = limpio["titulo_sanitizado"]
         b.texto = limpio["texto_sanitizado"]
         msg, ops = validar_borrador(sesion, PREFIJO_DATOS_SANITIZADOS)
-        return construir_respuesta(sesion, msg, ops)
+        return construir_respuesta(sesion, msg, ops, aviso_privacidad=limpio.get("aviso_privacidad"))
 
     if hubo_cambios:
         ops_actuales = (
@@ -285,6 +355,13 @@ async def handle_revision_borrador(
 
         if texto_edicion is not None:
             txt_nuevo = texto_edicion.strip()
+            texto_base = ""
+            if sesion.coincidencias and sesion.coincidencias[0].texto_original:
+                texto_base = sesion.coincidencias[0].texto_original.strip()
+
+            if b.modo == "enriquecimiento" and texto_base and texto_base not in txt_nuevo:
+                txt_nuevo = f"{texto_base}\n\n{txt_nuevo}"
+
             err_txt = validar_longitud_maxima(txt_nuevo, TEXTO_MAX, "texto")
             if err_txt:
                 return construir_respuesta(sesion, err_txt, ops_actuales)
@@ -316,7 +393,19 @@ async def handle_revision_borrador(
         b.titulo = limpio["titulo_sanitizado"]
         b.texto = limpio["texto_sanitizado"]
         sesion.estado = EstadoFlujo.APROBADO
-        return construir_respuesta(sesion, msg_articulo_aprobado(b.titulo), OPCIONES_REINICIAR)
+        if sesion.validacion.status == "Listo con ajustes sugeridos":
+            mensaje_aprobado = (
+                f"Artículo '{b.titulo}' APROBADO: observaciones de estilo confirmadas por el redactor. "
+                "Listo para publicación."
+            )
+        else:
+            mensaje_aprobado = msg_articulo_aprobado(b.titulo)
+        return construir_respuesta(
+            sesion,
+            mensaje_aprobado,
+            OPCIONES_REINICIAR,
+            aviso_privacidad=limpio.get("aviso_privacidad"),
+        )
 
     if opcion == "rechazar":
         sesion.estado = EstadoFlujo.RECHAZADO
@@ -339,4 +428,5 @@ STATE_HANDLERS: Dict[EstadoFlujo, EstadoHandler] = {
     EstadoFlujo.ESPERANDO_PLANTILLA: handle_esperando_plantilla,
     EstadoFlujo.ESPERANDO_METADATOS: handle_esperando_metadatos,
     EstadoFlujo.REVISION_BORRADOR: handle_revision_borrador,
+    EstadoFlujo.SUBSANANDO_BORRADOR: handle_revision_borrador,
 }

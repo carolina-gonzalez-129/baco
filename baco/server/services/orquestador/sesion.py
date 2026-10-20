@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+import secrets
 from typing import Dict, List, Optional, Tuple
-import uuid
 
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -28,6 +28,7 @@ class SesionChat:
     coincidencias: List[CoincidenciaArticulo] = field(default_factory=list)
     borrador: Optional[BorradorSesion] = None
     validacion: Optional[ValidarFormatoResponse] = None
+    intentos_correccion: int = 0
 
 
 def _sanitizar_y_clonar_borrador(borrador: BorradorSesion) -> BorradorSesion:
@@ -43,6 +44,10 @@ class GestorSesiones:
         self._sesiones: Dict[str, SesionChat] = {}
 
     @property
+    def ttl_segundos(self) -> int:
+        return int(self.ttl.total_seconds())
+
+    @property
     def sesiones(self) -> Dict[str, SesionChat]:
         return self._sesiones
 
@@ -51,19 +56,20 @@ class GestorSesiones:
         for sid in expiradas:
             self._sesiones.pop(sid, None)
 
-    def obtener_o_crear(self, session_id: Optional[str]) -> Tuple[SesionChat, bool]:
+    def obtener_o_crear(self, session_id: Optional[str]) -> Tuple[SesionChat, bool, bool]:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
 
         if session_id and session_id in self._sesiones:
             sesion = self._sesiones[session_id]
             sesion.updated_at = ahora
-            return sesion, False
+            return sesion, False, False
 
-        sid = str(uuid.uuid4())
+        fue_expirada = bool(session_id)
+        sid = secrets.token_urlsafe(32)
         nueva = SesionChat(session_id=sid, updated_at=ahora)
         self._sesiones[sid] = nueva
-        return nueva, True
+        return nueva, True, fue_expirada
 
     def eliminar(self, session_id: str) -> None:
         self._sesiones.pop(session_id, None)
@@ -117,6 +123,7 @@ class GestorSesiones:
 gestor_sesiones = GestorSesiones()
 SESIONES = gestor_sesiones.sesiones
 TTL_SESION = gestor_sesiones.ttl
+TTL_SEGUNDOS = gestor_sesiones.ttl_segundos
 obtener_borrador_aprobado = gestor_sesiones.obtener_borrador_aprobado
 obtener_borrador_sesion_validado = gestor_sesiones.obtener_borrador_sesion_validado
 actualizar_borrador_texto = gestor_sesiones.actualizar_borrador_texto

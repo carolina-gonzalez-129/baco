@@ -15,6 +15,7 @@ class EstadoFlujo(str, Enum):
     ESPERANDO_PLANTILLA = "ESPERANDO_PLANTILLA"
     ESPERANDO_METADATOS = "ESPERANDO_METADATOS"
     REVISION_BORRADOR = "REVISION_BORRADOR"
+    SUBSANANDO_BORRADOR = "SUBSANANDO_BORRADOR"
     APROBADO = "APROBADO"
     RECHAZADO = "RECHAZADO"
 
@@ -22,7 +23,15 @@ class EstadoFlujo(str, Enum):
 class CoincidenciaArticulo(BaseModel):
     id: int
     titulo: str
-    url: str
+    url: Optional[str] = None
+    score: Optional[float] = Field(
+        default=None,
+        description="Score de similitud (1.0 exacto, 0.70+ trigramas, 0.90+ embeddings)."
+    )
+    texto_original: Optional[str] = Field(
+        default=None,
+        description="Texto original del artículo coincidente."
+    )
 
 
 class BorradorSesion(BaseModel):
@@ -40,7 +49,7 @@ class BorradorSesion(BaseModel):
 class ChatOrquestadorRequest(BaseModel):
     session_id: Optional[str] = Field(
         default=None,
-        description="ID de la sesión conversacional."
+        description="DEPRECADO: El ID de sesión es gestionado exclusivamente por el servidor mediante cookie 'baco_session' o cabecera 'X-Session-ID'. Cualquier valor enviado en este campo del cuerpo será ignorado."
     )
     mensaje: Optional[str] = Field(
         default=None,
@@ -93,3 +102,7 @@ class ChatOrquestadorResponse(BaseModel):
     coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list)
     borrador: Optional[BorradorSesion] = None
     validacion: Optional[ValidarFormatoResponse] = None
+    aviso_privacidad: Optional[str] = Field(
+        default=None,
+        description="Notificación puntual ('flash') emitida cuando se detectan y anonimizan datos sensibles en el turno actual."
+    )

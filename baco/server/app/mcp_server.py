@@ -15,7 +15,8 @@ mcp = FastMCP(name="baco-mcp")
 ###FALTA MUCHISIMO PARA TENER ESTO BIEN, NO SE SI ESTA BUENO QUE UN AGENTE EJECUTE TOOLS DIRECTAMENTE SOBRE EL MODULO
 #DE BUSCAR_DUPLICADOS, QUIZAS ESTARIA BUENO IMPLEMENTAR UNA FACADE QUE LO HAGA Y NO EL DIRECTO
 #Quizas se podria usar directamente al orquestador pero eso requeriria que ellos tengan prendido el servidor
-
+#Quizas conviene crear un archivo similar a prueba orquestador, y que las tools lo usen
+#para no lidiar directamente con abrir el pool de conexiones mni
 
 def _buscar_duplicados_db(
     titulo: Optional[str] = None,

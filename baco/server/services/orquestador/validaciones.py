@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Tuple
+from typing import Any, List, Literal, Optional, Tuple
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
@@ -97,29 +97,90 @@ def combinar_tags(plantilla: Optional[str], *listas_tags: List[str]) -> List[str
     return resultado
 
 
-def normalizar_coincidencias(filas: list) -> List[CoincidenciaArticulo]:
+def extraer_score(fila: Any, mensaje: str = "") -> Optional[float]:
+    if isinstance(fila, dict):
+        for k in ("score_total", "score", "similarity", "sim_texto"):
+            if k in fila and fila[k] is not None:
+                try:
+                    return round(float(fila[k]), 3)
+                except (ValueError, TypeError):
+                    pass
+
+    if isinstance(fila, (list, tuple)):
+        if len(fila) >= 6:
+            try:
+                val = float(fila[5])
+                if 0.0 <= val <= 1.0:
+                    return round(val, 3)
+            except (ValueError, TypeError):
+                pass
+        if len(fila) == 4 and isinstance(fila[3], str):
+            return 0.850
+        if len(fila) > 3:
+            try:
+                val = float(fila[-1])
+                if 0.0 <= val <= 1.0:
+                    return round(val, 3)
+            except (ValueError, TypeError):
+                pass
+
+    if "exactamente" in (mensaje or "").lower():
+        return 1.0
+    return None
+
+
+def normalizar_coincidencias(
+    filas: list, mensaje: str = "", texto_original: Optional[str] = None
+) -> List[CoincidenciaArticulo]:
     if not filas:
         return []
     f = filas[0]
+    score = extraer_score(f, mensaje)
     if isinstance(f, dict):
-        return [CoincidenciaArticulo(id=int(f["id"]), titulo=str(f["titulo"]), url=str(f["url"]))]
-    return [CoincidenciaArticulo(id=int(f[0]), titulo=str(f[1]), url=str(f[2]))]
+        return [
+            CoincidenciaArticulo(
+                id=int(f["id"]),
+                titulo=str(f["titulo"]),
+                url=str(f["url"]),
+                score=score,
+                texto_original=texto_original or f.get("texto"),
+            )
+        ]
+    return [
+        CoincidenciaArticulo(
+            id=int(f[0]),
+            titulo=str(f[1]),
+            url=str(f[2]),
+            score=score,
+            texto_original=texto_original,
+        )
+    ]
 
 
 def parsear_metadatos_mensaje(
-    mensaje: Optional[str], tags_req: Optional[List[str]], cat_req: Optional[int]
+    mensaje: Optional[str],
+    tags_req: Optional[List[str]],
+    cat_req: Optional[int],
+    texto_fallback: Optional[str] = None,
 ) -> Tuple[List[str], Optional[int]]:
     nuevos_tags: List[str] = list(tags_req or [])
     cat_res = cat_req
-    if not nuevos_tags and mensaje:
-        for fragmento in mensaje.split(","):
+    cadena = (mensaje or texto_fallback or "").strip()
+    if not nuevos_tags and cadena:
+        for fragmento in cadena.split(","):
             item = fragmento.strip()
             if not item:
                 continue
-            if item.isdigit() and cat_req is None:
+            if item.isdigit() and cat_res is None:
                 cat_res = int(item)
             else:
                 nuevos_tags.append(item)
+    elif cadena and cat_res is None:
+        for fragmento in cadena.split(","):
+            item = fragmento.strip()
+            if item.isdigit() and cat_res is None:
+                cat_res = int(item)
+                break
     return nuevos_tags, cat_res
 
 
@@ -128,9 +189,9 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
     mapa = {
         "si": "enriquecer", "sí": "enriquecer", "1": "enriquecer", "enriquecer": "enriquecer",
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
-        "aprobar": "aprobar", "apruebo": "aprobar",
+        "aprobar": "aprobar", "apruebo": "aprobar", "confirmar": "aprobar", "confirmado": "aprobar", "omitir": "aprobar",
         "rechazar": "rechazar", "rechazo": "rechazar", "cancelar": "rechazar",
-        "sanitizar": "sanitizar", "editar": "editar",
+        "sanitizar": "sanitizar", "editar": "editar", "corregir": "editar", "enviar_correccion": "editar", "correccion": "editar",
         "reiniciar": "reiniciar", "cambiar tema": "reiniciar", "cambiar de tema": "reiniciar",
         "instructivo": "instructivo", "instructivos": "instructivo",
         "soluciones": "soluciones", "solucion": "soluciones", "solución": "soluciones",
@@ -138,7 +199,12 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
     return mapa.get(bruto, bruto)
 
 
-def construir_respuesta(sesion: SesionChat, mensaje: str, opciones: List[str]) -> ChatOrquestadorResponse:
+def construir_respuesta(
+    sesion: SesionChat,
+    mensaje: str,
+    opciones: List[str],
+    aviso_privacidad: Optional[str] = None,
+) -> ChatOrquestadorResponse:
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
         estado=sesion.estado,
@@ -147,6 +213,7 @@ def construir_respuesta(sesion: SesionChat, mensaje: str, opciones: List[str]) -
         coincidencias=sesion.coincidencias if sesion.estado in (EstadoFlujo.DECISION_TITULO, EstadoFlujo.DECISION_TEXTO) else [],
         borrador=sesion.borrador,
         validacion=sesion.validacion,
+        aviso_privacidad=aviso_privacidad,
     )
 
 
@@ -196,22 +263,41 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     )
     sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
-    detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in res["findings"])
+    bloqueantes = [f for f in res.get("findings", []) if f.get("severity") == "Bloqueante"]
+    ajustes = [f for f in res.get("findings", []) if f.get("severity") == "Requiere ajuste"]
+    sugerencias = [f for f in res.get("findings", []) if f.get("severity") == "Sugerencia"]
+
     if not valido:
+        detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in bloqueantes)
         return (
             f"{prefijo}El borrador tiene observaciones bloqueantes:\n{detalle}\nEditá el borrador o sanitizalo para poder aprobar.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
-    obs = f"\nSugerencias:\n{detalle}\n" if detalle else " "
+    if ajustes:
+        detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in ajustes)
+        return (
+            f"{prefijo}El borrador supera los requisitos técnicos mínimos pero presenta {len(ajustes)} observación(es) "
+            f"editoriales que requieren ajuste humano:\n{detalle}\n"
+            "Podés enviar la corrección correspondiente o confirmar para aprobarlo tal cual está.",
+            OPCIONES_REVISION_VALIDO,
+        )
+
+    obs = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in sugerencias)
+    detalle_sug = f"\nSugerencias:\n{obs}\n" if obs else " "
     return (
-        f"{prefijo}El borrador fue validado ({res['status']}).{obs}¿Confirmás aprobar o rechazar la publicación?",
+        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}¿Confirmás aprobar o rechazar la publicación?",
         OPCIONES_REVISION_VALIDO,
     )
 
 
-def avanzar_a_metadatos_o_revision(sesion: SesionChat, prefijo: str = "") -> ChatOrquestadorResponse:
+def avanzar_a_metadatos_o_revision(
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+) -> ChatOrquestadorResponse:
     b = sesion.borrador
+    if b.categoria_id is None:
+        b.categoria_id = sesion.categoria_id or 1
+
     plantilla = b.tipo_plantilla or extraer_tipo_plantilla(b.tags)
     if plantilla:
         b.tipo_plantilla = plantilla
@@ -219,11 +305,15 @@ def avanzar_a_metadatos_o_revision(sesion: SesionChat, prefijo: str = "") -> Cha
 
     if not b.tipo_plantilla:
         sesion.estado = EstadoFlujo.ESPERANDO_PLANTILLA
-        return construir_respuesta(sesion, msg_pedir_plantilla(prefijo), OPCIONES_PLANTILLAS)
+        return construir_respuesta(
+            sesion, msg_pedir_plantilla(prefijo), OPCIONES_PLANTILLAS, aviso_privacidad=aviso_privacidad
+        )
 
     if len(b.tags) < 2:
         sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-        return construir_respuesta(sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), [])
+        return construir_respuesta(
+            sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), [], aviso_privacidad=aviso_privacidad
+        )
 
     msg, ops = validar_borrador(sesion, prefijo)
-    return construir_respuesta(sesion, msg, ops)
+    return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)

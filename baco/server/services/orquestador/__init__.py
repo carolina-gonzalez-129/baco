@@ -4,6 +4,8 @@ from baco.server.services.orquestador.excepciones import (
     SesionNoEncontradaError,
 )
 from baco.server.services.orquestador.sesion import (
+    TTL_SEGUNDOS,
+    TTL_SESION,
     actualizar_borrador_texto,
     obtener_borrador_aprobado,
     obtener_borrador_sesion_validado,
@@ -16,4 +18,6 @@ __all__ = [
     "actualizar_borrador_texto",
     "SesionNoEncontradaError",
     "EstadoInvalidoError",
+    "TTL_SESION",
+    "TTL_SEGUNDOS",
 ]

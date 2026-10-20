@@ -6,6 +6,7 @@ from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
     ChatOrquestadorRequest,
     ChatOrquestadorResponse,
+    EstadoFlujo,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
@@ -14,6 +15,7 @@ from baco.server.services.agente_service import (
     ejecutar_skill_validador,
 )
 from baco.server.services.orquestador import (
+    TTL_SEGUNDOS,
     manejar_turno,
     obtener_borrador_sesion_validado,
 )
@@ -21,11 +23,18 @@ from baco.server.services.orquestador import (
 router = APIRouter(tags=["API REST"])
 
 
+def extraer_session_id(
+    baco_session: Optional[str] = Cookie(default=None),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+) -> Optional[str]:
+    return baco_session or x_session_id
+
+
 def resolver_sesion_y_borrador(
     baco_session: Optional[str] = Cookie(default=None),
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
 ) -> Tuple[str, BorradorSesion]:
-    sid = baco_session or x_session_id
+    sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
         raise HTTPException(
             status_code=401,
@@ -48,24 +57,26 @@ async def chat_orquestado(
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
     buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ) -> ChatOrquestadorResponse:
-    if not request.session_id:
-        request.session_id = baco_session or x_session_id
+    request.session_id = extraer_session_id(baco_session, x_session_id)
 
     resultado = await manejar_turno(request, buscador)
 
-    is_https = (
-        http_request.url.scheme == "https"
-        or http_request.headers.get("x-forwarded-proto") == "https"
-    )
-    response.set_cookie(
-        key="baco_session",
-        value=resultado.session_id,
-        httponly=True,
-        samesite="none" if is_https else "lax",
-        secure=is_https,
-        path="/",
-        max_age=1800,
-    )
+    if resultado.estado == EstadoFlujo.RECHAZADO:
+        response.delete_cookie(key="baco_session", path="/")
+    else:
+        is_https = (
+            http_request.url.scheme == "https"
+            or http_request.headers.get("x-forwarded-proto") == "https"
+        )
+        response.set_cookie(
+            key="baco_session",
+            value=resultado.session_id,
+            httponly=True,
+            samesite="none" if is_https else "lax",
+            secure=is_https,
+            path="/",
+            max_age=TTL_SEGUNDOS,
+        )
     response.headers["X-Session-ID"] = resultado.session_id
     return resultado
 

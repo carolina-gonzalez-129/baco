@@ -1,6 +1,14 @@
 import re
 from typing import Any
 from baco.server.schemas.articulo import ArticuloSchema
+from baco.server.config_limites import (
+    TEXTO_MAX,
+    TEXTO_MIN,
+    TITULO_MAX,
+    TITULO_MIN,
+    TAGS_MIN,
+    TAGS_PLANTILLAS_PERMITIDAS,
+)
 
 def _finding(severity: str, field: str, description: str, action: str) -> dict[str, str]:
     return {
@@ -93,36 +101,67 @@ def _sanitizar_urls_internas(contenido: str) -> tuple[str, int]:
     return RE_URL_COMPLETA.sub(_sub_url, contenido), reemplazos
 
 
-def _limpiar_texto_sensible(contenido: str) -> tuple[str, int]:
+# Expresiones regulares para validación de título
+RE_TITULO_REDUNDANTE = re.compile(r"^\s*(?:cómo|como|pasos para|como hacer para)\b", re.IGNORECASE)
+RE_TITULO_ERROR = re.compile(r"\berror\b", re.IGNORECASE)
+
+
+def _limpiar_texto_sensible(contenido: str) -> tuple[str, dict[str, int]]:
     paso_cuits, c = _sanitizar_cuits(contenido)
     paso_emails, e = _sanitizar_emails(paso_cuits)
     paso_urls, u = _sanitizar_urls_internas(paso_emails)
-    return paso_urls, (c + e + u)
+    detalles = {"cuits": c, "emails": e, "urls": u}
+    return paso_urls, detalles
+
 
 ##ESTO DEBERIA INVOCARSE DSPS DE CHAT ORQUESTADO PARA Q SE INYECTE A BACO!
-def sanitizar_borrador(texto: str = "", titulo: str = "") -> dict[str, Any]:
+def sanitizar_borrador(
+    texto: str = "",
+    titulo: str = "",
+    sanitizar_redundancia_titulo: bool = True,
+) -> dict[str, Any]:
     texto_limpio = (texto or "").strip()
     titulo_limpio = (titulo or "").strip()
 
-    texto_sanitizado, r_texto = _limpiar_texto_sensible(texto_limpio)
-    titulo_sanitizado, r_titulo = _limpiar_texto_sensible(titulo_limpio)
+    texto_sanitizado, d_texto = _limpiar_texto_sensible(texto_limpio)
+    titulo_sanitizado, d_titulo = _limpiar_texto_sensible(titulo_limpio)
 
-    if RE_TITULO_REDUNDANTE.search(titulo_sanitizado):
+    detalles = {
+        "cuits": d_texto["cuits"] + d_titulo["cuits"],
+        "emails": d_texto["emails"] + d_titulo["emails"],
+        "urls": d_texto["urls"] + d_titulo["urls"],
+    }
+    reemplazos_total = sum(detalles.values())
+
+    if sanitizar_redundancia_titulo and RE_TITULO_REDUNDANTE.search(titulo_sanitizado):
         titulo_sanitizado = RE_TITULO_REDUNDANTE.sub("", titulo_sanitizado).strip()
         if titulo_sanitizado and titulo_sanitizado[0].islower():
             titulo_sanitizado = titulo_sanitizado[0].upper() + titulo_sanitizado[1:]
 
+    aviso_privacidad = None
+    if reemplazos_total > 0:
+        partes = []
+        if detalles["cuits"] > 0:
+            partes.append(f"{detalles['cuits']} CUIT/CUIL")
+        if detalles["emails"] > 0:
+            partes.append(f"{detalles['emails']} dirección(es) de correo")
+        if detalles["urls"] > 0:
+            partes.append(f"{detalles['urls']} URL(s)/IP(s) interna(s)")
+
+        aviso_privacidad = (
+            f"Aviso de privacidad: Se detectaron datos sensibles en el contenido ({', '.join(partes)}) "
+            "y fueron reemplazados automáticamente por datos genéricos de ejemplo "
+            "('20-12345678-9', 'usuario@ejemplo.com', 'https://ejemplo.finneg.com') "
+            "para proteger la seguridad de la información antes de su publicación."
+        )
+
     return {
         "texto_sanitizado": texto_sanitizado,
         "titulo_sanitizado": titulo_sanitizado,
-        "reemplazos_total": r_texto + r_titulo
+        "reemplazos_total": reemplazos_total,
+        "detalles": detalles,
+        "aviso_privacidad": aviso_privacidad,
     }
-
-
-
-# cosas para validar el titulo
-RE_TITULO_REDUNDANTE = re.compile(r"^\s*(?:cómo|como|pasos para|como hacer para)\b", re.IGNORECASE)
-RE_TITULO_ERROR = re.compile(r"\berror\b", re.IGNORECASE)
 
 
 def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
@@ -190,13 +229,20 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
                     action="Citar el mensaje entre comillas si es literal, o titular con la acción correctiva correspondiente."
                 ))
 
-    # largo minimo y q no queden marcadores tipo
-    if longitud_texto < 150:
+    # largo minimo y maximo segun config_limites y que no queden marcadores tipo
+    if longitud_texto < TEXTO_MIN:
         findings.append(_finding(
             severity="Bloqueante",
             field="texto",
-            description=f"El texto es muy breve ({longitud_texto} caracteres). Se requieren al menos 150 caracteres.",
-            action="Detallar mejor el problema, pasos a seguir o contexto técnico."
+            description=f"El texto es muy breve ({longitud_texto} caracteres). Se requieren al menos {TEXTO_MIN} caracteres.",
+            action=f"Detallar mejor el problema, pasos a seguir o contexto técnico para superar los {TEXTO_MIN} caracteres."
+        ))
+    elif longitud_texto > TEXTO_MAX:
+        findings.append(_finding(
+            severity="Bloqueante",
+            field="texto",
+            description=f"El texto excede el límite permitido ({longitud_texto} caracteres recibidos, máximo {TEXTO_MAX}).",
+            action=f"Reducir la extensión del contenido para no superar {TEXTO_MAX} caracteres."
         ))
     elif re.search(r"\[Indicar[^]]*]", texto_limpio, re.IGNORECASE):
         findings.append(_finding(
@@ -217,20 +263,21 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     tags = articulo.tags or []
     slugs_o_nombres = {getattr(t, "slug", None) or getattr(t, "name", str(t)).lower().strip() for t in tags}
 
-    if len(tags) < 2:
+    if len(tags) < TAGS_MIN:
         findings.append(_finding(
             severity="Bloqueante",
             field="tags",
-            description=f"Se requieren al menos 2 tags o etiquetas (actualmente tiene {len(tags)}).",
-            action="Agregar al menos dos etiquetas relevantes (ej. 'instructivo', 'facturacion')."
+            description=f"Se requieren al menos {TAGS_MIN} tags o etiquetas (actualmente tiene {len(tags)}).",
+            action=f"Agregar al menos {TAGS_MIN} etiquetas relevantes (ej. 'instructivo', 'facturacion')."
         ))
 
-    if not any(tipo in slugs_o_nombres for tipo in ("instructivo", "soluciones", "instructivos", "solucion")):
+    if not any(tipo in slugs_o_nombres for tipo in (*TAGS_PLANTILLAS_PERMITIDAS, "instructivos", "solucion")):
+        plantillas_fmt = " o ".join(f"'{p}'" for p in TAGS_PLANTILLAS_PERMITIDAS)
         findings.append(_finding(
             severity="Bloqueante",
             field="tags",
-            description="Falta la etiqueta obligatoria de tipo de plantilla ('instructivo' o 'soluciones').",
-            action="Incorporar 'instructivo' o 'soluciones' entre las etiquetas del artículo."
+            description=f"Falta la etiqueta obligatoria de tipo de plantilla ({plantillas_fmt}).",
+            action=f"Incorporar {plantillas_fmt} entre las etiquetas del artículo."
         ))
 
     # si hay bloqueantes queda pendiente, sino listo
