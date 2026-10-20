@@ -4,7 +4,8 @@ import secrets
 from pathlib import Path
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi import Request
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 for p in [Path(__file__).resolve().parent, *Path(__file__).resolve().parents]:
@@ -42,3 +43,35 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
         return await call_next(request)
+
+
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()] or [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+cors_kwargs = {
+    "allow_origins": allow_origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": ["X-Session-ID"],
+}
+cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX")
+if cors_origin_regex:
+    cors_kwargs["allow_origin_regex"] = cors_origin_regex
+
+
+class CleanCORSMiddleware(CORSMiddleware):
+    def preflight_response(self, request_headers):
+        response = super().preflight_response(request_headers)
+        if response.status_code == 400 and "access-control-allow-credentials" in response.headers:
+            del response.headers["access-control-allow-credentials"]
+        return response
+
+
+def setup_middlewares(app: FastAPI) -> None:
+    app.add_middleware(CleanCORSMiddleware, **cors_kwargs)
+    app.add_middleware(SecurityMiddleware)
