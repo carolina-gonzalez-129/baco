@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
 from baco.server.db.config import db_pool
 from baco.server.app.api import router as api_router
 from baco.server.app.mcp_server import mcp_http_app
 from baco.server.app.middleware import SecurityMiddleware
+from baco.server.services.orquestador import EstadoInvalidoError, SesionNoEncontradaError
 
 
 @asynccontextmanager
@@ -20,6 +23,7 @@ async def lifespan(app: FastAPI):
     finally:
         db_pool.close()
 
+
 app = FastAPI(
     title="BACO (api rest y mcp server)",
     lifespan=lifespan
@@ -31,23 +35,25 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Session-ID"],
 )
 
 app.add_middleware(SecurityMiddleware)
 
+
+@app.exception_handler(SesionNoEncontradaError)
+async def sesion_no_encontrada_handler(request, exc: SesionNoEncontradaError):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(EstadoInvalidoError)
+async def estado_invalido_handler(request, exc: EstadoInvalidoError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+# uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
+##cloudflared tunnel --url http://127.0.0.1:8080 --http-host-header="localhost:8080"
+##ej podria ser url_tunel/chat
+##o los endpoints de api.py
+
 app.include_router(api_router)
 app.mount("/", mcp_http_app)
-
-# NO USAR SIEMPRE ESTE COMANDO XQ SE RECARGA POR LO DEL RELOAD, LAP UTA QE LO PARIO
-# uvicorn baco.server.app.main:app --reload --host 0.0.0.0 --port 8080
-# http://localhost:8080/docs
-# Endpoint MCP: http://localhost:8080/mcp
-## PARA DIEGO
-##PASARLE LA URL Q ME GENERE CLOUDFLARED !!! CON /docs al final  (DSPS DE .COM
-# !!!!!!!!!
-##CAMBIAR LO DEL RELOAD DE UVICORN DESPUES DE HACER TODAS LAS PRUEBAS XQ NO QUIERO Q SE CORTE MOSTRANDO NADA
-#X SI JUSTO NO SE CAMBIO ALOG EN EL MOMENTO O TOCO ALGO
-##!!!!
-##osea # uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
-#Quizas dsps convieene hashear la pwd tmb
-##cloudflared tunnel --url http://127.0.0.1:8080 --http-host-header="localhost:8080"

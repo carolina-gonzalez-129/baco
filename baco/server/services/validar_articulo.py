@@ -29,7 +29,7 @@ def _hay_cuit_real(contenido: str) -> bool:
         digitos = re.sub(r"\D", "", m.group(0))
         if digitos in CUITS_EJEMPLO:
             continue
-        if re.fullmatch(r"\d{2}0{8}\d", digitos):  # cuerpo todo en ceros: claramente ficticio
+        if re.fullmatch(r"\d{2}0{8}\d", digitos):
             continue
         return True
     return False

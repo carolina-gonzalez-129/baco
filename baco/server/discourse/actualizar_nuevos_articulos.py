@@ -33,7 +33,6 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 
 import httpx
 from datetime import datetime
-from typing import Any
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -2,12 +2,19 @@ import os
 import pytest
 import psycopg
 
-# Asegurar DISCOURSE_URL para entorno de tests si no está definida
+# Asegurar DISCOURSE_URL y credenciales para entorno de tests si no están definidas
 if not os.getenv("DISCOURSE_URL"):
     os.environ["DISCOURSE_URL"] = "https://bc-dev.finneg.com"
+if not os.getenv("DISCOURSE_API_KEY"):
+    os.environ["DISCOURSE_API_KEY"] = "test_mock_api_key_12345"
+if not os.getenv("DISCOURSE_API_USERNAME"):
+    os.environ["DISCOURSE_API_USERNAME"] = "system"
 
 from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
-from baco.server.db.cargar_articulos_postgres import DDL_SCHEMA
+from pathlib import Path
+
+SCHEMA_FILE = Path(__file__).resolve().parents[1] / "baco" / "server" / "db" / "schema_completo.sql"
+DDL_SCHEMA = SCHEMA_FILE.read_text(encoding="utf-8")
 
 
 class LocalPostgresFallback:
