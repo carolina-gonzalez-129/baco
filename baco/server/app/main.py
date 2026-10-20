@@ -50,8 +50,8 @@ async def sesion_no_encontrada_handler(request, exc: SesionNoEncontradaError):
 async def estado_invalido_handler(request, exc: EstadoInvalidoError):
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
-# uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
-##cloudflared tunnel --url http://127.0.0.1:8080 --http-host-header="localhost:8080"
+#   uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
+##  cloudflared tunnel --url http://127.0.0.1:8080"
 ##ej podria ser url_tunel/chat
 ##o los endpoints de api.py
 
