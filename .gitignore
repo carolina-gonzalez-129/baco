@@ -1,6 +1,7 @@
 
 .env
 .env.*
+!.env.example
 
 
 __pycache__/
@@ -37,3 +38,9 @@ ENV/
 
 *.iml
 docs
+
+
+logs/*
+!logs/.gitkeep
+*.log
+
