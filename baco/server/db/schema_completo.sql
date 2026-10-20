@@ -169,3 +169,24 @@ CREATE INDEX IF NOT EXISTS idx_articulos_base_titulo ON articulos(base_titulo);
 CREATE INDEX IF NOT EXISTS idx_articulos_titulo_trgm ON articulos USING gin (titulo_normalizado gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_articulos_embedding_titulo ON articulos USING hnsw (embedding_titulo vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_articulos_embedding_texto ON articulos USING hnsw (embedding_texto vector_cosine_ops);
+
+DO $$
+    DECLARE
+        ro_pwd text := nullif(current_setting('baco.ro_password', true), '');
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'baco_readonly') THEN
+            IF ro_pwd IS NULL THEN
+                RAISE EXCEPTION 'Para crear baco_readonly se requiere definir la variable de entorno DB_RO_PASSWORD';
+            END IF;
+            EXECUTE format('CREATE ROLE baco_readonly WITH LOGIN PASSWORD %L', ro_pwd);
+        END IF;
+
+        ALTER ROLE baco_readonly SET default_transaction_read_only = on;
+        EXECUTE format('GRANT CONNECT ON DATABASE %I TO baco_readonly', current_database());
+    END
+$$;
+
+GRANT USAGE ON SCHEMA public TO baco_readonly;
+GRANT SELECT ON TABLE articulos, tags, articulo_tags TO baco_readonly;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO baco_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO baco_readonly;

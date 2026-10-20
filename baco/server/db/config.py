@@ -18,19 +18,47 @@ else:
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", 5432))
+DB_NAME = os.getenv("DB_NAME", "baco_db")
+
+
+DB_RO_USER = os.getenv("DB_RO_USER")
+DB_RO_PASSWORD = os.getenv("DB_RO_PASSWORD")
+
+if not DB_RO_USER or not DB_RO_PASSWORD:
+    raise RuntimeError(
+        "Faltan variables de entorno para la conexión de solo lectura: "
+        "DB_RO_USER y DB_RO_PASSWORD son requeridas sin fallback."
+    )
+
+RO_CONN_INFO = (
+    f"host={DB_HOST} port={DB_PORT} user={DB_RO_USER} password={DB_RO_PASSWORD} dbname={DB_NAME}"
+)
+
+
+db_ro_pool = ConnectionPool(
+    conninfo=RO_CONN_INFO,
+    min_size=2,
+    max_size=10,
+    open=False,
+    check=ConnectionPool.check_connection,
+)
+
+
+def get_ro_conn():
+    return db_ro_pool.connection()
+
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME", "baco_db")
 CONN_INFO = f"host={DB_HOST} port={DB_PORT} user={DB_USER} password={DB_PASSWORD} dbname={DB_NAME}"
-
 
 db_pool = ConnectionPool(
     conninfo=CONN_INFO,
     min_size=2,
     max_size=20,
     open=False,
-    check=ConnectionPool.check_connection
+    check=ConnectionPool.check_connection,
 )
+
 
 def get_conn(dbname: str = None, autocommit: bool = False):
     target_db = dbname or DB_NAME
