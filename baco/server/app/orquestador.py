@@ -2,8 +2,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 import uuid
+from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
+from baco.server.config_limites import (
+    TEXTO_MAX,
+    TEXTO_MIN,
+    TITULO_MAX,
+    TITULO_MIN,
+)
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -81,6 +88,46 @@ def obtener_borrador_aprobado(session_id: Optional[str]) -> Optional[BorradorSes
     return sesion.borrador.model_copy(deep=True)
 
 
+def obtener_borrador_sesion_validado(session_id: str) -> BorradorSesion:
+    ahora = datetime.now(timezone.utc)
+    _limpiar_sesiones_expiradas(ahora)
+
+    if not session_id or session_id not in SESIONES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existe la sesión '{session_id}' o la sesión expiró."
+        )
+
+    sesion = SESIONES[session_id]
+    if sesion.estado != EstadoFlujo.APROBADO or sesion.borrador is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El borrador no está en estado APROBADO (estado actual: '{sesion.estado.value}')."
+        )
+
+    sesion.updated_at = ahora
+    limpio = sanitizar_borrador(texto=sesion.borrador.texto, titulo=sesion.borrador.titulo)
+    sesion.borrador.titulo = limpio["titulo_sanitizado"]
+    sesion.borrador.texto = limpio["texto_sanitizado"]
+    return sesion.borrador.model_copy(deep=True)
+
+
+def actualizar_borrador_texto(session_id: str, nuevo_texto: str) -> bool:
+    ahora = datetime.now(timezone.utc)
+    _limpiar_sesiones_expiradas(ahora)
+
+    if not session_id or session_id not in SESIONES:
+        return False
+
+    sesion = SESIONES[session_id]
+    if sesion.borrador is not None:
+        sesion.borrador.texto = nuevo_texto
+        sesion.texto = nuevo_texto
+        sesion.updated_at = ahora
+        return True
+    return False
+
+
 async def _cargar_datos_articulo(
     buscador: BuscadorDuplicados, articulo_id: int
 ) -> tuple[str, Optional[int], List[str]]:
@@ -145,24 +192,27 @@ def _validar_borrador(sesion: SesionChat, prefijo: str = "") -> tuple[str, List[
             tags=[Tag(name=t) for t in b.tags],
             url=b.articulo_original_url,
         )
-    except ValidationError:
+    except ValidationError as e:
+        findings = [
+            {
+                "severity": "Bloqueante",
+                "field": ".".join(map(str, err["loc"])),
+                "description": err["msg"],
+                "action": "Corregir el campo para cumplir con los requisitos del artículo.",
+            }
+            for err in e.errors()
+        ]
         sesion.validacion = ValidarFormatoResponse(
             valido=False,
             status="Pendiente",
-            findings=[
-                {
-                    "severity": "Bloqueante",
-                    "field": "formato",
-                    "description": "El borrador no cumple con los límites requeridos (título entre 15 y 255 caracteres, texto de al menos 20 caracteres).",
-                    "action": "Editar el título o texto para cumplir con la longitud mínima requerida.",
-                }
-            ],
+            findings=findings,
             resumen={"longitud_texto": len(b.texto or ""), "tags_count": len(b.tags or [])},
         )
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
+        detalle = "\n".join(f"- [{f['severity']}] {f['field']}: {f['description']}" for f in findings)
         msg = (
             f"{prefijo}El borrador tiene observaciones bloqueantes:\n"
-            f"- [Bloqueante] El título debe tener entre 15 y 255 caracteres (actual: {len(b.titulo or '')}) y el texto al menos 20 caracteres (actual: {len(b.texto or '')}).\n"
+            f"{detalle}\n"
             f"Editá el borrador o sanitizalo para poder aprobar."
         )
         return msg, ["editar", "sanitizar", "rechazar", "reiniciar"]
@@ -259,10 +309,10 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
 
     # Paso 2 y 3: ESPERANDO_TITULO -> buscar_duplicados solo con el título (mejor coincidencia única)
     if sesion.estado == EstadoFlujo.ESPERANDO_TITULO:
-        if len(entrada_titulo) < 15:
-            return _respuesta(sesion, "Por favor, ingresá un título descriptivo de al menos 15 caracteres.", [])
-        if len(entrada_titulo) > 255:
-            return _respuesta(sesion, "El título no puede superar los 255 caracteres.", [])
+        if len(entrada_titulo) < TITULO_MIN:
+            return _respuesta(sesion, f"Por favor, ingresá un título descriptivo de al menos {TITULO_MIN} caracteres.", [])
+        if len(entrada_titulo) > TITULO_MAX:
+            return _respuesta(sesion, f"El título supera los {TITULO_MAX} caracteres. Resumilo para continuar.", [])
 
         sesion.titulo = entrada_titulo
         if req.categoria_id is not None:
@@ -287,6 +337,12 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
             elegido = sesion.coincidencias[0]
             texto_db, cat_db, tags_db = await _cargar_datos_articulo(buscador, elegido.id)
             texto_inicial = (req.texto or texto_db or sesion.texto).strip()
+            if len(texto_inicial) > TEXTO_MAX:
+                return _respuesta(
+                    sesion,
+                    f"Este artículo es muy largo para editarlo desde el chat (supera los {TEXTO_MAX} caracteres). Podés modificarlo directamente en la plataforma.",
+                    ["descartar", "reiniciar"],
+                )
             tags_iniciales = req.tags if req.tags is not None else (tags_db or sesion.tags)
             sesion.borrador = BorradorSesion(
                 modo="enriquecimiento",
@@ -298,11 +354,11 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
                 categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
                 tags=tags_iniciales,
             )
-            if not texto_inicial or len(texto_inicial) < 20:
+            if not texto_inicial or len(texto_inicial) < TEXTO_MIN:
                 sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
                 return _respuesta(
                     sesion,
-                    f"Seleccionaste enriquecer el artículo #{elegido.id}. Ingresá el texto del borrador (mínimo 20 caracteres).",
+                    f"Seleccionaste enriquecer el artículo #{elegido.id}. Ingresá el texto del borrador (mínimo {TEXTO_MIN} caracteres).",
                     [],
                 )
             return _avanzar_a_metadatos_o_revision(sesion, f"Borrador de sesión creado sobre #{elegido.id}. ")
@@ -318,8 +374,10 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
         texto_in = (req.texto or req.mensaje or "").strip()
         if not texto_in:
             return _respuesta(sesion, "El texto no puede estar vacío. Ingresá el contenido del artículo.", [])
-        if len(texto_in) < 20:
-            return _respuesta(sesion, "El contenido del artículo debe tener al menos 20 caracteres.", [])
+        if len(texto_in) < TEXTO_MIN:
+            return _respuesta(sesion, f"El contenido del artículo debe tener al menos {TEXTO_MIN} caracteres.", [])
+        if len(texto_in) > TEXTO_MAX:
+            return _respuesta(sesion, f"El texto supera los {TEXTO_MAX} caracteres. Dividilo o resumilo para continuar.", [])
 
         sesion.texto = texto_in
         if req.categoria_id is not None:
@@ -366,6 +424,12 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
             elegido = sesion.coincidencias[0]
             texto_db, cat_db, tags_db = await _cargar_datos_articulo(buscador, elegido.id)
             texto_enriquecido = (req.texto or texto_db or sesion.texto).strip()
+            if len(texto_enriquecido) > TEXTO_MAX:
+                return _respuesta(
+                    sesion,
+                    f"Este artículo es muy largo para editarlo desde el chat (supera los {TEXTO_MAX} caracteres). Podés modificarlo directamente en la plataforma.",
+                    ["descartar", "reiniciar"],
+                )
             tags_iniciales = req.tags if req.tags is not None else (tags_db or sesion.tags)
             sesion.borrador = BorradorSesion(
                 modo="enriquecimiento",
@@ -455,10 +519,29 @@ async def manejar_turno(req: ChatOrquestadorRequest, buscador: BuscadorDuplicado
             return _respuesta(sesion, msg, ops)
 
         if hubo_cambios:
+            ops_actuales = (
+                ["aprobar", "editar", "sanitizar", "rechazar", "reiniciar"]
+                if (sesion.validacion and sesion.validacion.valido)
+                else ["editar", "sanitizar", "rechazar", "reiniciar"]
+            )
             if req.titulo is not None:
-                b.titulo = req.titulo.strip()
+                tit_nuevo = req.titulo.strip()
+                if len(tit_nuevo) > TITULO_MAX:
+                    return _respuesta(
+                        sesion,
+                        f"El título supera los {TITULO_MAX} caracteres. Resumilo para continuar.",
+                        ops_actuales,
+                    )
+                b.titulo = tit_nuevo
             if texto_edicion is not None:
-                b.texto = texto_edicion.strip()
+                txt_nuevo = texto_edicion.strip()
+                if len(txt_nuevo) > TEXTO_MAX:
+                    return _respuesta(
+                        sesion,
+                        f"El texto supera los {TEXTO_MAX} caracteres. Dividilo o resumilo para continuar.",
+                        ops_actuales,
+                    )
+                b.texto = txt_nuevo
             if req.categoria_id is not None:
                 b.categoria_id = req.categoria_id
             if req.tags is not None:

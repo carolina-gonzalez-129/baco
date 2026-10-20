@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from baco.server.config_limites import TEXTO_MAX, TITULO_MAX
 from baco.server.schemas.validacion import ValidarFormatoResponse
 
 
@@ -35,15 +37,41 @@ class BorradorSesion(BaseModel):
 
 class ChatOrquestadorRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, description="ID de la sesión conversacional.")
-    mensaje: Optional[str] = Field(default=None, description="Entrada del usuario (título, texto o respuesta).")
+    mensaje: Optional[str] = Field(
+        default=None,
+        max_length=TEXTO_MAX,
+        description="Entrada del usuario (título, texto o respuesta)."
+    )
     accion: Optional[str] = Field(
         default=None,
         description="Atajo de botón ('enriquecer', 'descartar', 'continuar', 'editar', 'sanitizar', 'aprobar', 'rechazar', 'reiniciar')."
     )
-    titulo: Optional[str] = Field(default=None, description="Título al editar el borrador.")
-    texto: Optional[str] = Field(default=None, description="Cuerpo al cargar texto o editar el borrador.")
+    titulo: Optional[str] = Field(
+        default=None,
+        max_length=TITULO_MAX,
+        description="Título al editar el borrador."
+    )
+    texto: Optional[str] = Field(
+        default=None,
+        max_length=TEXTO_MAX,
+        description="Cuerpo al cargar texto o editar el borrador."
+    )
     categoria_id: Optional[int] = Field(default=None, description="Categoría del borrador.")
     tags: Optional[List[str]] = Field(default=None, description="Tags del borrador.")
+
+    @field_validator("texto", "mensaje", mode="before")
+    @classmethod
+    def validar_longitud_texto(cls, v: Optional[str]) -> Optional[str]:
+        if v and len(v) > TEXTO_MAX:
+            raise ValueError(f"El texto supera los {TEXTO_MAX} caracteres. Dividilo o resumilo.")
+        return v
+
+    @field_validator("titulo", mode="before")
+    @classmethod
+    def validar_longitud_titulo(cls, v: Optional[str]) -> Optional[str]:
+        if v and len(v) > TITULO_MAX:
+            raise ValueError(f"El título supera los {TITULO_MAX} caracteres. Resumilo.")
+        return v
 
 
 class ChatOrquestadorResponse(BaseModel):
