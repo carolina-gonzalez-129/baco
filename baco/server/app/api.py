@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
-from baco.server.schemas.chat import ChatRequest, ChatResponse
+from fastapi import APIRouter, Depends
+from baco.server.schemas.chat import ChatResponse
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
     ChatOrquestadorRequest,
@@ -7,23 +7,26 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
-from baco.server.app.orquestador import (
-    actualizar_borrador_texto,
+from baco.server.services.agente_service import (
+    ejecutar_skill_plantillas,
+    ejecutar_skill_validador,
+)
+from baco.server.services.orquestador import (
     manejar_turno,
-    obtener_borrador_aprobado,
     obtener_borrador_sesion_validado,
 )
 
 router = APIRouter(tags=["API REST"])
 
+
 @router.post(
     "/chat",
     response_model=ChatOrquestadorResponse,
-    summary="Endpoint unificado de chat simulando al agente baco"
+    summary="Endpoint unificado de chat conversacional con el orquestador"
 )
 async def chat_orquestado(
-        request: ChatOrquestadorRequest,
-        buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
+    request: ChatOrquestadorRequest,
+    buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ) -> ChatOrquestadorResponse:
     return await manejar_turno(request, buscador)
 
@@ -38,7 +41,7 @@ def obtener_borrador_de_sesion(
 ) -> BorradorSesion:
     return borrador
 
-##AGREGO ESTO PORQ SE SUPONE Q UNO PUEDE USAR A BACO SI Y SOLO SI PASAMOS LO ANTERIOR!
+
 @router.post(
     "/chat/{session_id}/aplicar-plantilla",
     response_model=ChatResponse,
@@ -49,16 +52,8 @@ def aplicar_plantilla(
     borrador: BorradorSesion = Depends(obtener_borrador_sesion_validado),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
-    prompt_sanitizado = (
-        f"Skill solicitada: plantillas\n"
-        f"Plantilla a aplicar: {borrador.tipo_plantilla}\n"
-        f"Título del borrador: {borrador.titulo}\n"
-        f"Borrador actual del artículo:\n\"\"\"\n{borrador.texto}\n\"\"\"\n\n"
-        f"Instrucción: Estructurar este borrador aprobado en el formato oficial correspondiente."
-    )
-    resultado = str(baco(prompt_sanitizado))
-    actualizar_borrador_texto(session_id, resultado)
-    return {"response": resultado}
+    resultado = ejecutar_skill_plantillas(session_id, borrador, baco)
+    return ChatResponse(response=resultado)
 
 
 @router.post(
@@ -70,17 +65,5 @@ def auditar_semantica(
     borrador: BorradorSesion = Depends(obtener_borrador_sesion_validado),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
-    tags_str = ", ".join(borrador.tags) if borrador.tags else "Ninguno"
-    prompt_sanitizado = (
-        f"Skill solicitada: validador\n"
-        f"Categoría / Módulo ERP: {borrador.categoria_id}\n"
-        f"Tags: {tags_str}\n"
-        f"Título del borrador: {borrador.titulo}\n"
-        f"Borrador actual del artículo:\n\"\"\"\n{borrador.texto}\n\"\"\"\n\n"
-        f"Instrucción: Auditar la calidad semántica, coherencia causa-efecto y estilo editorial del artículo antes de su publicación definitiva."
-    )
-    dictamen = str(baco(prompt_sanitizado))
-    return {"response": dictamen}
-
-
- ##VER Q ONDA PORQ NO ESTA BUENO MANDAR DIRECTO LA SESSION_ID T_T
+    dictamen = ejecutar_skill_validador(borrador, baco)
+    return ChatResponse(response=dictamen)

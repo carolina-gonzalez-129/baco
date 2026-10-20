@@ -48,7 +48,7 @@ class ChatRequest(BaseModel):
     @model_validator(mode="after")
     def validar_tipo_plantilla_no_inferida(self):
         if self.session_id:
-            from baco.server.app.orquestador import obtener_borrador_aprobado
+            from baco.server.services.orquestador import obtener_borrador_aprobado
             borrador_aprobado = obtener_borrador_aprobado(self.session_id)
             if borrador_aprobado is not None:
                 if not self.borrador:
