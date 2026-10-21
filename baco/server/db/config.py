@@ -35,13 +35,17 @@ RO_CONN_INFO = (
 )
 
 
-db_ro_pool = ConnectionPool(
-    conninfo=RO_CONN_INFO,
-    min_size=2,
-    max_size=10,
-    open=False,
-    check=ConnectionPool.check_connection,
-)
+def crear_ro_pool():
+    return ConnectionPool(
+        conninfo=RO_CONN_INFO,
+        min_size=2,
+        max_size=10,
+        open=False,
+        check=ConnectionPool.check_connection,
+    )
+
+
+db_ro_pool = crear_ro_pool()
 
 
 def get_ro_conn():

@@ -8,6 +8,7 @@ from .config import (
     DB_RO_USER,
     DB_RO_PASSWORD,
     get_ro_conn,
+    crear_ro_pool,
     db_ro_pool,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "DB_RO_USER",
     "DB_RO_PASSWORD",
     "get_ro_conn",
+    "crear_ro_pool",
     "db_ro_pool",
 ]
