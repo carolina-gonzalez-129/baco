@@ -249,12 +249,12 @@ class BuscadorDuplicados:
         if not texto_sin_headers.strip():
             return []
 
-        vec_txt = (embedding_texto([texto_sin_headers]) or [None])[0]
+        vec_txt = embedding_texto(texto_sin_headers)
         if not vec_txt:
             return []
         str_vec_txt = "[" + ",".join(str(f) for f in vec_txt) + "]"
 
-        vec_tit = (embedding_titulo([titulo]) or [None])[0] if (titulo and titulo.strip()) else None
+        vec_tit = embedding_titulo(titulo) if (titulo and titulo.strip()) else None
         if vec_tit:
             str_vec_tit = "[" + ",".join(str(f) for f in vec_tit) + "]"
             params = (str_vec_txt, k_vecinos, str_vec_tit, k_vecinos, titulo, str_vec_txt, str_vec_tit, umbral, limite * 3)

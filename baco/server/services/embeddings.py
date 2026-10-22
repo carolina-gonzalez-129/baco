@@ -1,13 +1,27 @@
 from __future__ import annotations
 
+import os
 import logging
 import re
+from functools import lru_cache
 from typing import TYPE_CHECKING, Callable, Sequence
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+ONNX_INTRA_OP_THREADS = int(os.getenv("ONNX_INTRA_OP_THREADS", "2"))
+
+def _crear_session_options():
+    if ONNX_INTRA_OP_THREADS > 0:
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = ONNX_INTRA_OP_THREADS
+        opts.inter_op_num_threads = 1
+        return opts
+    return None
+
 
 MODEL_TITULO_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 DIM_TITULO = 384
@@ -20,6 +34,35 @@ MAX_CARACTERES_TEXTO = 1000
 
 _MODEL_TEXTO_INSTANCE: SentenceTransformer | None = None
 
+CACHE_EMBEDDINGS_SIZE = 1024
+@lru_cache(maxsize=CACHE_EMBEDDINGS_SIZE)
+def _encode_titulo_cached(titulo_normalizado: str) -> tuple[float, ...]:
+    sentence_model = get_model_titulo()
+    vector = sentence_model.encode(
+        titulo_normalizado,
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )
+    return tuple(vector.tolist())
+
+
+@lru_cache(maxsize=CACHE_EMBEDDINGS_SIZE)
+def _encode_texto_cached(texto_con_prefijo: str) -> tuple[float, ...]:
+    sentence_model = get_model_texto()
+    vector = sentence_model.encode(
+        texto_con_prefijo,
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )
+    return tuple(vector.tolist())
+
+
+def info_cache_embeddings() -> dict:
+    return {
+        "titulo": _encode_titulo_cached.cache_info()._asdict(),
+        "texto": _encode_texto_cached.cache_info()._asdict(),
+    }
+
 
 def get_model_titulo() -> SentenceTransformer:
     """Retorna la instancia única (singleton) del modelo SentenceTransformer para títulos con aceleración ONNX INT8."""
@@ -27,11 +70,16 @@ def get_model_titulo() -> SentenceTransformer:
     if _MODEL_TITULO_INSTANCE is None:
         from sentence_transformers import SentenceTransformer
 
-        logger.info(f"Cargando modelo de embeddings de título ONNX INT8: {MODEL_TITULO_NAME}...")
+        logger.info(f"Cargando modelo de embeddings de título ONNX INT8: {MODEL_TITULO_NAME} (intra_threads={ONNX_INTRA_OP_THREADS})...")
+        kwargs = {"file_name": "onnx/model_quint8_avx2.onnx"}
+        opts = _crear_session_options()
+        if opts is not None:
+            kwargs["session_options"] = opts
+
         _MODEL_TITULO_INSTANCE = SentenceTransformer(
             MODEL_TITULO_NAME,
             backend="onnx",
-            model_kwargs={"file_name": "onnx/model_quint8_avx2.onnx"},
+            model_kwargs=kwargs,
         )
     return _MODEL_TITULO_INSTANCE
 
@@ -42,11 +90,16 @@ def get_model_texto() -> SentenceTransformer:
     if _MODEL_TEXTO_INSTANCE is None:
         from sentence_transformers import SentenceTransformer
 
-        logger.info(f"Cargando modelo de embeddings de texto ONNX INT8: {MODEL_TEXTO_NAME}...")
+        logger.info(f"Cargando modelo de embeddings de texto ONNX INT8: {MODEL_TEXTO_NAME} (intra_threads={ONNX_INTRA_OP_THREADS})...")
+        kwargs = {"file_name": "onnx/model_qint8_avx512_vnni.onnx"}
+        opts = _crear_session_options()
+        if opts is not None:
+            kwargs["session_options"] = opts
+
         _MODEL_TEXTO_INSTANCE = SentenceTransformer(
             MODEL_TEXTO_NAME,
             backend="onnx",
-            model_kwargs={"file_name": "onnx/model_qint8_avx512_vnni.onnx"},
+            model_kwargs=kwargs,
         )
     return _MODEL_TEXTO_INSTANCE
 
@@ -167,13 +220,7 @@ def embedding_titulo(
         titulo_limpio = colapsar_espacios(titulo_original)
         if not titulo_limpio:
             return None
-
-        vector = sentence_model.encode(
-            titulo_limpio,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
-        return vector.tolist()
+        return list(_encode_titulo_cached(titulo_limpio))
 
 
     titulos_a_codificar: list[str] = []
@@ -203,6 +250,19 @@ def embedding_titulo(
         resultados[idx_original] = vectores[pos_vector].tolist()
 
     return resultados
+
+
+def contar_tokens_texto(texto: str | None) -> int:
+    """Retorna la cantidad exacta de tokens del texto usando el tokenizer del modelo de texto."""
+    if not texto:
+        return 0
+    sentence_model = get_model_texto()
+    if hasattr(sentence_model, "tokenizer") and sentence_model.tokenizer:
+        texto_limpio = limpiar_suave(texto)
+        texto_truncado = truncar_1000(texto_limpio)
+        texto_con_prefijo = f"{PREFIJO_E5_TEXTO}{texto_truncado}"
+        return len(sentence_model.tokenizer.encode(texto_con_prefijo))
+    return len(texto.split())
 
 
 # ===========================================================================
@@ -235,12 +295,7 @@ def embedding_texto(
             return None
 
         texto_con_prefijo = f"{PREFIJO_E5_TEXTO}{texto_truncado}"
-        vector = sentence_model.encode(
-            texto_con_prefijo,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
-        return vector.tolist()
+        return list(_encode_texto_cached(texto_con_prefijo))
 
     textos_a_codificar: list[str] = []
     indices_a_codificar: list[int] = []

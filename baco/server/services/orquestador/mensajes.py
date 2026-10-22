@@ -1,32 +1,73 @@
+from typing import Any, List, Optional, Tuple
+
+from baco.server.schemas.chat_orquestado import EstadoFlujo
 
 
 MENSAJE_BIENVENIDA = (
-    "Hola, soy Baco, agente encargado en asistirte en la carga de documentación "
-    "a la base de conocimiento de Finnegans. ¿Sobre qué te gustaría publicar?"
+    "Hola, soy Baco. Te acompaño en todo el proceso para que tu artículo quede impecable "
+    "en la base de conocimiento de Finnegans. ¿Sobre qué tema tenés ganas de escribir hoy? "
+    "(Si todavía estás pensando el título, no te preocupes: una buena guía es indicar la acción y el circuito, "
+    "como por ejemplo: Configurar facturación electrónica en Ventas)."
 )
 
-OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar"]
-OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar"]
-OPCIONES_PLANTILLAS = ["instructivo", "soluciones"]
-OPCIONES_REVISION_VALIDO = ["aprobar", "editar", "sanitizar", "rechazar", "reiniciar"]
-OPCIONES_REVISION_BLOQUEANTE = ["editar", "sanitizar", "rechazar", "reiniciar"]
+OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
+OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
+OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
+OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
+OPCIONES_REVISION_VALIDO = ["aprobar", "editar", "sanitizar", "rechazar", "volver", "reiniciar"]
+OPCIONES_REVISION_BLOQUEANTE = ["editar", "sanitizar", "rechazar", "volver", "reiniciar"]
 OPCIONES_REINICIAR = ["reiniciar"]
 
-MSG_SIN_COINCIDENCIAS_TITULO = "No encontré coincidencias por título. Ingresá el texto del artículo."
-MSG_DESCARTAR_COINCIDENCIA_TITULO = "Descartamos la coincidencia por título. Ingresá el texto del artículo."
-MSG_ELEGIR_ENRIQUECER_O_DESCARTAR = "Elegí 'enriquecer' el artículo existente o 'descartar' para ingresar tu texto."
-MSG_TEXTO_VACIO = "El texto no puede estar vacío. Ingresá el contenido del artículo."
-MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = "Elegí 'enriquecer' el artículo hallado o 'continuar' con tu propio texto."
-MSG_ELEGIR_PLANTILLA = "Por favor, elegí el tipo de plantilla aplicable: 'instructivo' o 'soluciones'."
-MSG_PEDIR_EDICION = "Enviá los campos que quieras modificar (titulo, texto, categoria_id o tags) para actualizar y re-validar el borrador."
-MSG_RECHAZADO = "Borrador rechazado. No se realizaron cambios."
+MSG_SIN_COINCIDENCIAS_TITULO = (
+    "No encontré ningún artículo existente con este título, así que avanzamos con uno nuevo. "
+    "Por favor, enviame el texto o desarrollo del artículo."
+)
+MSG_DESCARTAR_COINCIDENCIA_TITULO = (
+    "Descartamos la sugerencia para continuar con tu propuesta original. "
+    "Escribí o pegá el texto completo del artículo para continuar."
+)
+MSG_ELEGIR_ENRIQUECER_O_DESCARTAR = (
+    "Encontré un artículo existente sobre este tema. "
+    "Tocá 'enriquecer' para trabajar sobre él y sumar tu aporte sin duplicar información, "
+    "o 'descartar' si tu caso es diferente y querés ingresar tu texto desde cero."
+)
+MSG_ELEGIR_SERIE_O_DESCARTAR = (
+    "Este título pertenece a una serie periódica. "
+    "Tocá 'actualizar' si querés renovar el contenido de la última entrega, "
+    "o 'descartar' si se trata de una nueva edición que querés publicar por separado."
+)
+MSG_TEXTO_VACIO = (
+    "Perfecto, ahora necesito que me pases el texto o los pasos del artículo "
+    "para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes."
+)
+MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
+    "Detecté un contenido muy parecido al que redactaste. "
+    "Elegí 'enriquecer' si querés sumar tus cambios al documento actual, "
+    "o 'continuar' si tu artículo trata un caso distinto."
+)
+MSG_ELEGIR_PLANTILLA = (
+    "Definamos el formato: tocá 'instructivo' si es un paso a paso de configuración o uso, "
+    "o 'soluciones' si describe la causa y resolución de un problema."
+)
+MSG_PEDIR_EDICION = (
+    "Escribí el campo que querés ajustar junto con su nuevo valor "
+    "(por ejemplo: titulo: Mi nuevo título o el texto actualizado) para actualizar el borrador."
+)
+MSG_RECHAZADO = (
+    "Cancelamos el borrador y no se guardó ningún cambio. "
+    "Si querés comenzar otra redacción desde el principio, tocá 'reiniciar'."
+)
+MSG_SESION_EXPIRADA = (
+    "Disculpá la interrupción: la sesión se cerró por inactividad para proteger tus datos. "
+    "Para retomar, ingresá el título de tu artículo o tocá 'reiniciar'."
+)
 
 PREFIJO_SIN_DUPLICADOS = "Sin duplicados en el contenido. "
 PREFIJO_CONTINUAR_PROPIO = "Continuamos con tu propio texto. "
 PREFIJO_METADATOS_REGISTRADOS = "Metadatos registrados. "
 PREFIJO_DATOS_SANITIZADOS = "Datos sensibles sanitizados. "
 PREFIJO_BORRADOR_ACTUALIZADO = "Borrador actualizado. "
-PREFIJO_ERROR_APROBACION = "No se puede aprobar mientras existan errores bloqueantes. "
+PREFIJO_ERROR_APROBACION = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
 
 
 def prefijo_borrador_creado(articulo_id: int) -> str:
@@ -41,52 +82,172 @@ def msg_coincidencia(res_msg: str, titulo: str, url: str) -> str:
     return f"{res_msg} ({titulo} - {url})"
 
 
-def msg_error_longitud_minima(campo: str, min_c: int) -> str:
-    if campo == "texto":
-        return f"El contenido del artículo debe tener al menos {min_c} caracteres."
-    return f"Por favor, ingresá un {campo} descriptivo de al menos {min_c} caracteres."
+VARIANTES_TEXTO_VACIO = [
+    "Perfecto, ahora necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes.",
+    "El mensaje me llegó en blanco, probá pegando de nuevo el contenido acá.",
+    "Aún no recibí el mensaje. Si necesitás prepararlo antes en tu editor, acá te espero; o podés tocar 'reiniciar' si preferís comenzar en otro momento.",
+]
 
 
-def msg_error_longitud_maxima(campo: str, max_c: int) -> str:
+def msg_texto_vacio(intento: int = 0) -> str:
+    return VARIANTES_TEXTO_VACIO[intento % len(VARIANTES_TEXTO_VACIO)]
+
+
+VARIANTES_TITULO_CORTO = [
+    "¡Me gusta la idea del tema! Para que a tus compañeros y clientes les sea bien fácil encontrarlo en el buscador, necesito que sea un poquito más largo (al menos 15 caracteres). ¿Cómo describirías la acción principal?",
+    "Sé que a veces cuesta resumir en una sola frase, pero los títulos muy cortitos se pierden entre tantos artículos. Una fórmula que no falla es poner qué querés hacer y en qué pantalla o circuito (por ejemplo: la acción y el módulo).",
+    "Tranqui, le encontramos la vuelta juntos. En lugar de poner solo una palabra como 'Ventas', probemos con algo como 'Configurar listas de precios en Ventas'. ¿Cómo te gustaría formular el tuyo?",
+]
+
+
+def msg_error_longitud_minima(campo: str, min_c: int, intento: int = 0) -> str:
     if campo == "texto":
-        return f"El {campo} supera los {max_c} caracteres. Dividilo o resumilo para continuar."
-    return f"El {campo} supera los {max_c} caracteres. Resumilo para continuar."
+        return f"El texto es demasiado corto para conformar un artículo útil. Necesito una explicación más detallada de al menos {min_c} caracteres."
+    return VARIANTES_TITULO_CORTO[intento % len(VARIANTES_TITULO_CORTO)]
+
+
+VARIANTES_TEXTO_LARGO = [
+    "¡Se nota que le pusiste un montón de detalle y dedicación a la explicación! El texto supera los {max_c} caracteres permitidos para que a los usuarios no se les haga pesado de leer. ¿Te parece si dejamos los puntos esenciales acá o lo dividimos en dos entregas?",
+    "Sé que da pereza tener que recortar cuando ya redactaste todo. Para no sobrecargar una única nota, una opción que suele funcionar re bien es publicar la guía básica ahora y armar un segundo artículo con los casos especiales. ¿Probamos acortarlo un poquito?",
+]
+
+
+def msg_error_longitud_maxima(campo: str, max_c: int, intento: int = 0) -> str:
+    if campo == "texto":
+        plantilla = VARIANTES_TEXTO_LARGO[intento % len(VARIANTES_TEXTO_LARGO)]
+        return plantilla.format(max_c=max_c)
+    return f"El título supera los {max_c} caracteres permitidos. Para que sea fácil de leer en la plataforma, resumí la idea principal e ingresalo de nuevo."
 
 
 def msg_articulo_muy_largo(max_c: int) -> str:
     return (
         f"Este artículo es muy largo para editarlo desde el chat (supera los {max_c} caracteres). "
-        "Podés modificarlo directamente en la plataforma."
+        "Podés modificarlo directamente en la plataforma. "
+        "Tocá 'descartar' para escribir un texto nuevo o 'reiniciar' para volver al inicio."
     )
 
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"Seleccionaste enriquecer el artículo #{articulo_id} ('{titulo}'). "
-        "Cargamos su contenido en tu editor para que puedas modificarlo, agregar información o corregirlo. "
-        "Cuando termines, enviá el texto actualizado."
+        f"Cargué el texto del artículo #{articulo_id} ('{titulo}').\n\n"
+        "Podés revisarlo, modificar explicaciones, eliminar secciones obsoletas o adicionar nuevos pasos. "
+        "Cuando termines tus cambios, enviame la versión completa para avanzar."
     )
 
 
+def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
+    return (
+        f"Cargué el contenido de la última entrega de la serie (#{articulo_id} - '{titulo}').\n\n"
+        "Tenés total libertad para trabajar sobre él: podés modificar lo que haya cambiado, "
+        "eliminar los datos que ya no apliquen o adicionar las novedades. "
+        "Cuando esté listo, enviame el texto completo actualizado."
+    )
+
+
+VARIANTES_OPCION_INVALIDA = [
+    "Disculpá, no llegué a interpretar bien lo que me enviaste. Para que no tengas que escribirlo a mano, podés tocar directamente uno de los botones que te aparecen en pantalla.",
+    "No te preocupes, a veces me confundo si no usamos la palabra exacta. Para que avancemos sobre seguro, elegí 'enriquecer' (o 'actualizar') si querés aprovechar lo que ya existe en la base, o 'descartar' si preferís ingresar tu contenido aparte.",
+]
+
+
+def msg_opcion_invalida(intento: int = 0) -> str:
+    return VARIANTES_OPCION_INVALIDA[intento % len(VARIANTES_OPCION_INVALIDA)]
+
+
+VARIANTES_TAGS_FALTANTES = [
+    "¡Ya casi lo tenemos listo! Para que el artículo quede bien clasificado y cualquiera lo encuentre al toque en la plataforma, sumale al menos una etiqueta temática (por ejemplo: ventas, facturacion o stock).",
+    "No te preocupes si no estás seguro de cuál usar. Pensá en qué palabra escribirías vos en el buscador si tuvieras este problema en el trabajo (el módulo o el circuito). Con una o dos palabras clave separadas por coma ya estamos.",
+]
+
+
+def msg_pedir_tag_adicional(plantilla: str = "", intento: int = 0) -> str:
+    return VARIANTES_TAGS_FALTANTES[intento % len(VARIANTES_TAGS_FALTANTES)]
+
+
 def msg_pedir_plantilla(prefijo: str = "") -> str:
-    return f"{prefijo}¿Qué tipo de plantilla corresponde aplicar a este artículo: 'instructivo' o 'soluciones'?"
+    return f"{prefijo}{MSG_ELEGIR_PLANTILLA}"
 
 
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
-        f"{prefijo}Plantilla '{plantilla}' seleccionada. "
-        "Ingresá al menos un tag temático adicional (ej. 'ventas', 'facturacion', separados por coma si son varios) "
-        "y opcionalmente el ID de categoría."
+        f"{prefijo}Asignamos el formato '{plantilla}'. "
+        "Para clasificar el artículo, escribí al menos una etiqueta temática "
+        "(por ejemplo: ventas, facturacion) y, si lo conocés, el número de categoría."
     )
 
 
-def msg_pedir_tag_adicional(plantilla: str) -> str:
-    return f"Ingresá al menos un tag temático adicional además de '{plantilla}' (ej. 'ventas', 'facturacion')."
-
-
 def msg_articulo_aprobado(titulo: str) -> str:
-    return f"Artículo '{titulo}' aprobado para publicación."
+    return (
+        f"¡Impecable! Tu artículo '{titulo}' está muy bien formulado. "
+        "Si querés comenzar con otro tema, tocá 'reiniciar'."
+    )
 
 
 def msg_sesion_finalizada(estado_valor: str) -> str:
-    return f"La sesión ya finalizó en estado {estado_valor}. Enviá 'reiniciar' para comenzar otra carga."
+    return f"Esta conversación ya concluyó (el artículo fue {estado_valor}). Para comenzar una nueva redacción, tocá 'reiniciar'."
+
+
+def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
+    est = sesion.estado
+    if est == EstadoFlujo.ESPERANDO_TITULO:
+        return (
+            "[Placeholder] Estás en el inicio de la redacción. Por favor, ingresá el título de tu artículo (por ejemplo: la acción y el circuito).",
+            [],
+        )
+    if est == EstadoFlujo.DECISION_TITULO:
+        es_serie = bool(sesion.coincidencias and sesion.coincidencias[0].tipo_coincidencia == "serie")
+        ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
+        return (
+            "[Placeholder] Encontré un artículo similar en la base. Podés enriquecerlo/actualizarlo, descartarlo para escribir uno nuevo con este título, o tocar 'volver' para ingresar otro título.",
+            ops + ["volver"],
+        )
+    if est == EstadoFlujo.ESPERANDO_TEXTO:
+        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
+            return (
+                "[Placeholder] Cargamos el artículo existente. Podés editarlo o sumar contenido nuevo. También podés tocar 'descartar' si preferís escribir tu propio texto desde cero, o 'reiniciar'.",
+                ["descartar", "reiniciar"],
+            )
+        return (
+            "[Placeholder] Necesito el texto o los pasos de tu artículo (al menos 20 caracteres). Pegalo o redactalo acá abajo cuando gustes, o tocá 'volver' para cambiar el título.",
+            ["volver"],
+        )
+    if est == EstadoFlujo.DECISION_TEXTO:
+        return (
+            "[Placeholder] Encontré un artículo con contenido muy parecido. Podés elegir 'enriquecer' para sumar tu aporte, 'continuar' para publicar tu texto propio, o 'volver' para modificar tu texto.",
+            OPCIONES_ENRIQUECER_CONTINUAR + ["volver"],
+        )
+    if est == EstadoFlujo.ESPERANDO_PLANTILLA:
+        return (
+            "[Placeholder] Seleccioná la plantilla que mejor se ajuste a tu documento ('instructivo' o 'soluciones'), o tocá 'volver' para revisar el texto.",
+            OPCIONES_PLANTILLAS + ["volver"],
+        )
+    if est == EstadoFlujo.ESPERANDO_METADATOS:
+        plantilla = (sesion.borrador.tipo_plantilla if sesion.borrador else "") or ""
+        return (
+            f"[Placeholder] Necesitamos al menos dos etiquetas temáticas (ejemplo: ventas, afip) para clasificar el {plantilla}. Podés escribir las etiquetas separadas por coma o tocar 'volver' para cambiar de plantilla.",
+            ["volver"],
+        )
+    if est in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR):
+        if getattr(sesion, "confirmando_rechazo", False):
+            return (
+                "[Placeholder] Estás por descartar el borrador. Tocá 'confirmar_rechazo' si querés cancelarlo definitivamente, o 'volver' para conservarlo.",
+                ["confirmar_rechazo", "volver"],
+            )
+        if sesion.validacion and not sesion.validacion.valido:
+            return (
+                "[Placeholder] El borrador tiene puntos pendientes obligatorios. Podés tocar 'editar' para corregirlos, 'sanitizar' si hay datos sensibles, o 'rechazar' para cancelar.",
+                OPCIONES_REVISION_BLOQUEANTE,
+            )
+        return (
+            "[Placeholder] El borrador está listo para confirmar. Podés tocar 'aprobar' para confirmarlo, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
+            OPCIONES_REVISION_VALIDO,
+        )
+    if est in (EstadoFlujo.APROBADO, EstadoFlujo.RECHAZADO):
+        return (
+            msg_sesion_finalizada(est.value),
+            OPCIONES_REINICIAR,
+        )
+    return (
+        "[Placeholder] Podés continuar escribiendo o tocar 'reiniciar' para comenzar de nuevo.",
+        OPCIONES_REINICIAR,
+    )

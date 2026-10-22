@@ -18,7 +18,10 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.schemas.validacion import ValidarFormatoResponse
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.services.validar_articulo import validar_texto_y_estructura_post_duplicados
+from baco.server.services.validar_articulo import (
+    sanitizar_borrador,
+    validar_texto_y_estructura_post_duplicados,
+)
 from baco.server.services.orquestador.mensajes import (
     OPCIONES_PLANTILLAS,
     OPCIONES_REVISION_BLOQUEANTE,
@@ -44,6 +47,29 @@ def validar_longitud_maxima(texto: str, max_c: int, campo: str) -> Optional[str]
     if len(texto.strip()) > max_c:
         return msg_error_longitud_maxima(campo, max_c)
     return None
+
+
+def consolidar_texto_enriquecimiento(
+    texto_base: str, texto_aporte_raw: str
+) -> Tuple[str, Optional[str]]:
+    """
+    Sanitiza el aporte y lo consolida con el texto base del artículo existente.
+    Permite modificar o eliminar secciones cuando el aporte es sustancial o reemplazo completo,
+    y anexa automáticamente cuando se trata de una nota o adición breve (<40% o <250 caracteres).
+    Retorna: (texto_consolidado, aviso_privacidad).
+    """
+    sanit = sanitizar_borrador(texto=texto_aporte_raw)
+    aporte_limpio = sanit["texto_sanitizado"]
+    aviso_priv = sanit.get("aviso_privacidad")
+
+    base = (texto_base or "").strip()
+    if aporte_limpio and base:
+        if base in aporte_limpio:
+            return aporte_limpio, aviso_priv
+        if len(aporte_limpio) < min(len(base) * 0.4, 250):
+            return f"{base}\n\n{aporte_limpio}", aviso_priv
+        return aporte_limpio, aviso_priv
+    return (aporte_limpio or base), aviso_priv
 
 
 def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest) -> None:
@@ -130,12 +156,23 @@ def extraer_score(fila: Any, mensaje: str = "") -> Optional[float]:
 
 
 def normalizar_coincidencias(
-    filas: list, mensaje: str = "", texto_original: Optional[str] = None
+    filas: list, mensaje: str = "", texto_original: Optional[str] = None, tipo_coincidencia: Optional[str] = None
 ) -> List[CoincidenciaArticulo]:
     if not filas:
         return []
     f = filas[0]
     score = extraer_score(f, mensaje)
+    tipo = tipo_coincidencia
+    if not tipo:
+        if "serie" in (mensaje or "").lower() or (isinstance(f, dict) and "base_titulo" in f):
+            tipo = "serie"
+        elif "exactamente" in (mensaje or "").lower():
+            tipo = "exacto"
+        elif "similar" in (mensaje or "").lower():
+            tipo = "trigrama"
+        else:
+            tipo = "semantico"
+
     if isinstance(f, dict):
         return [
             CoincidenciaArticulo(
@@ -144,6 +181,7 @@ def normalizar_coincidencias(
                 url=str(f["url"]),
                 score=score,
                 texto_original=texto_original or f.get("texto"),
+                tipo_coincidencia=tipo,
             )
         ]
     return [
@@ -153,6 +191,7 @@ def normalizar_coincidencias(
             url=str(f[2]),
             score=score,
             texto_original=texto_original,
+            tipo_coincidencia=tipo,
         )
     ]
 
@@ -188,11 +227,15 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
     bruto = (req.accion or req.mensaje or "").strip().lower()
     mapa = {
         "si": "enriquecer", "sí": "enriquecer", "1": "enriquecer", "enriquecer": "enriquecer",
+        "actualizar": "actualizar", "actualizo": "actualizar",
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
         "aprobar": "aprobar", "apruebo": "aprobar", "confirmar": "aprobar", "confirmado": "aprobar", "omitir": "aprobar",
         "rechazar": "rechazar", "rechazo": "rechazar", "cancelar": "rechazar",
+        "confirmar_rechazo": "confirmar_rechazo", "confirmar rechazo": "confirmar_rechazo", "si, rechazar": "confirmar_rechazo", "sí, rechazar": "confirmar_rechazo",
         "sanitizar": "sanitizar", "editar": "editar", "corregir": "editar", "enviar_correccion": "editar", "correccion": "editar",
         "reiniciar": "reiniciar", "cambiar tema": "reiniciar", "cambiar de tema": "reiniciar",
+        "volver": "volver", "atras": "volver", "atrás": "volver", "regresar": "volver", "anterior": "volver",
+        "ayuda": "ayuda", "opciones": "ayuda", "que hago": "ayuda", "qué hago": "ayuda", "?": "ayuda", "instrucciones": "ayuda",
         "instructivo": "instructivo", "instructivos": "instructivo",
         "soluciones": "soluciones", "solucion": "soluciones", "solución": "soluciones",
     }
@@ -247,7 +290,8 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
         detalle = "\n".join(f"- [{f['severity']}] {f['field']}: {f['description']}" for f in findings)
         return (
-            f"{prefijo}El borrador tiene observaciones bloqueantes:\n{detalle}\nEditá el borrador o sanitizalo para poder aprobar.",
+            f"{prefijo}Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n{detalle}\n"
+            "Podés tocar 'editar' para corregirlos, 'sanitizar' si necesitás limpiar datos personales, o 'rechazar' para cancelar.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
@@ -270,7 +314,8 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     if not valido:
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in bloqueantes)
         return (
-            f"{prefijo}El borrador tiene observaciones bloqueantes:\n{detalle}\nEditá el borrador o sanitizalo para poder aprobar.",
+            f"{prefijo}Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n{detalle}\n"
+            "Podés tocar 'editar' para corregirlos, 'sanitizar' si necesitás limpiar datos personales, o 'rechazar' para cancelar.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
@@ -286,7 +331,7 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     obs = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in sugerencias)
     detalle_sug = f"\nSugerencias:\n{obs}\n" if obs else " "
     return (
-        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}¿Confirmás aprobar o rechazar la publicación?",
+        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}¿Confirmás aprobar o rechazar?",
         OPCIONES_REVISION_VALIDO,
     )
 
@@ -312,7 +357,7 @@ def avanzar_a_metadatos_o_revision(
     if len(b.tags) < 2:
         sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
         return construir_respuesta(
-            sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), [], aviso_privacidad=aviso_privacidad
+            sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), ["volver"], aviso_privacidad=aviso_privacidad
         )
 
     msg, ops = validar_borrador(sesion, prefijo)
