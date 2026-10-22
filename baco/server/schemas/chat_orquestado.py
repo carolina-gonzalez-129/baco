@@ -15,6 +15,8 @@ class EstadoFlujo(str, Enum):
     ESPERANDO_PLANTILLA = "ESPERANDO_PLANTILLA"
     ESPERANDO_METADATOS = "ESPERANDO_METADATOS"
     REVISION_BORRADOR = "REVISION_BORRADOR"
+    # SUBSANANDO_BORRADOR se preserva por compatibilidad de esquema OpenAPI/Front,
+    # pero el flujo operativo gestiona la subsanación bloqueante dentro de REVISION_BORRADOR.
     SUBSANANDO_BORRADOR = "SUBSANANDO_BORRADOR"
     APROBADO = "APROBADO"
     RECHAZADO = "RECHAZADO"
@@ -31,6 +33,10 @@ class CoincidenciaArticulo(BaseModel):
     texto_original: Optional[str] = Field(
         default=None,
         description="Texto original del artículo coincidente."
+    )
+    tipo_coincidencia: Optional[str] = Field(
+        default=None,
+        description="Tipo de coincidencia: 'exacto', 'serie', 'trigrama' o 'semantico'."
     )
 
 

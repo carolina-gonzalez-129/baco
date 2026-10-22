@@ -29,6 +29,18 @@ class SesionChat:
     borrador: Optional[BorradorSesion] = None
     validacion: Optional[ValidarFormatoResponse] = None
     intentos_correccion: int = 0
+    intentos_fallidos_por_estado: Dict[str, int] = field(default_factory=dict)
+    confirmando_rechazo: bool = False
+
+    def registrar_fallo(self, estado_clave: Optional[str] = None) -> int:
+        clave = estado_clave or self.estado.value
+        actual = self.intentos_fallidos_por_estado.get(clave, 0)
+        self.intentos_fallidos_por_estado[clave] = actual + 1
+        return actual
+
+    def limpiar_fallos(self, estado_clave: Optional[str] = None) -> None:
+        clave = estado_clave or self.estado.value
+        self.intentos_fallidos_por_estado.pop(clave, None)
 
 
 def _sanitizar_y_clonar_borrador(borrador: BorradorSesion) -> BorradorSesion:

@@ -10,6 +10,15 @@ if not os.getenv("DISCOURSE_API_KEY"):
 if not os.getenv("DISCOURSE_API_USERNAME"):
     os.environ["DISCOURSE_API_USERNAME"] = "system"
 
+from dotenv import load_dotenv
+load_dotenv()
+
+# Asegurar credenciales de solo lectura para entorno de tests si no están definidas
+if not os.getenv("DB_RO_USER"):
+    os.environ["DB_RO_USER"] = "baco_readonly"
+if not os.getenv("DB_RO_PASSWORD"):
+    os.environ["DB_RO_PASSWORD"] = "baco_readonly_pass"
+
 from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
 from pathlib import Path
 
@@ -59,6 +68,8 @@ def postgres_container():
         url = container.get_connection_url().replace("+psycopg2", "").replace("+asyncpg", "")
         with psycopg.connect(url, autocommit=True) as conn:
             with conn.cursor() as cur:
+                ro_pwd = os.getenv("DB_RO_PASSWORD", "baco_readonly_pass")
+                cur.execute("SELECT set_config('baco.ro_password', %s, false);", (ro_pwd,))
                 cur.execute(DDL_SCHEMA)
         yield container
         container.stop()
@@ -79,6 +90,8 @@ def postgres_container():
         url = fallback.get_connection_url()
         with psycopg.connect(url, autocommit=True) as conn:
             with conn.cursor() as cur:
+                ro_pwd = os.getenv("DB_RO_PASSWORD", "baco_readonly_pass")
+                cur.execute("SELECT set_config('baco.ro_password', %s, false);", (ro_pwd,))
                 cur.execute(DDL_SCHEMA)
         yield fallback
 
@@ -88,8 +101,14 @@ def db_conn(postgres_container):
     """Provee una conexión limpia de PostgreSQL para cada test."""
     url = postgres_container.get_connection_url().replace("+psycopg2", "").replace("+asyncpg", "")
     with psycopg.connect(url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE articulo_tags, articulos, tags, categorias RESTART IDENTITY CASCADE;")
+        conn.commit()
         yield conn
         conn.rollback()
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE articulo_tags, articulos, tags, categorias RESTART IDENTITY CASCADE;")
+        conn.commit()
 
 
 @pytest.fixture

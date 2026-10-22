@@ -19,6 +19,7 @@ from baco.server.services.orquestador.mensajes import (
     MSG_DESCARTAR_COINCIDENCIA_TITULO,
     MSG_ELEGIR_ENRIQUECER_O_CONTINUAR,
     MSG_ELEGIR_ENRIQUECER_O_DESCARTAR,
+    MSG_ELEGIR_SERIE_O_DESCARTAR,
     MSG_ELEGIR_PLANTILLA,
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
@@ -26,6 +27,7 @@ from baco.server.services.orquestador.mensajes import (
     MSG_TEXTO_VACIO,
     OPCIONES_ENRIQUECER_CONTINUAR,
     OPCIONES_ENRIQUECER_DESCARTAR,
+    OPCIONES_SERIE_DECISION,
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
     OPCIONES_REVISION_BLOQUEANTE,
@@ -36,11 +38,16 @@ from baco.server.services.orquestador.mensajes import (
     PREFIJO_ERROR_APROBACION,
     PREFIJO_METADATOS_REGISTRADOS,
     PREFIJO_SIN_DUPLICADOS,
+    msg_actualizar_serie_cargado,
     msg_articulo_aprobado,
     msg_articulo_muy_largo,
     msg_coincidencia,
     msg_enriquecer_cargado,
+    msg_error_longitud_maxima,
+    msg_error_longitud_minima,
+    msg_opcion_invalida,
     msg_pedir_tag_adicional,
+    msg_texto_vacio,
     prefijo_borrador_creado,
     prefijo_borrador_enriquecido,
 )
@@ -50,6 +57,7 @@ from baco.server.services.orquestador.validaciones import (
     avanzar_a_metadatos_o_revision,
     cargar_datos_articulo,
     combinar_tags,
+    consolidar_texto_enriquecimiento,
     construir_respuesta,
     extraer_tipo_plantilla,
     normalizar_coincidencias,
@@ -64,34 +72,57 @@ async def handle_esperando_titulo(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     titulo = (req.titulo or req.mensaje or "").strip()
-    err = validar_longitud(titulo, TITULO_MIN, TITULO_MAX, "título")
-    if err:
-        return construir_respuesta(sesion, err, [])
+    if not titulo:
+        intento = sesion.registrar_fallo("ESPERANDO_TITULO")
+        return construir_respuesta(sesion, msg_error_longitud_minima("título", TITULO_MIN, intento), [])
 
+    if len(titulo) < TITULO_MIN:
+        intento = sesion.registrar_fallo("ESPERANDO_TITULO")
+        return construir_respuesta(sesion, msg_error_longitud_minima("título", TITULO_MIN, intento), [])
+
+    if len(titulo) > TITULO_MAX:
+        intento = sesion.registrar_fallo("ESPERANDO_TITULO")
+        return construir_respuesta(sesion, msg_error_longitud_maxima("título", TITULO_MAX, intento), [])
+
+    sesion.limpiar_fallos("ESPERANDO_TITULO")
     sesion.titulo = titulo
     actualizar_metadatos_sesion(sesion, req)
 
     res_tit = await run_in_threadpool(buscador.evaluar_titulo, titulo, 1)
     if res_tit and res_tit.get("coincidencias"):
-        sesion.coincidencias = normalizar_coincidencias(
-            res_tit["coincidencias"], mensaje=res_tit.get("mensaje", "")
+        es_serie = "serie" in (res_tit.get("mensaje") or "").lower()
+        coincs = normalizar_coincidencias(
+            res_tit["coincidencias"],
+            mensaje=res_tit.get("mensaje", ""),
+            tipo_coincidencia="serie" if es_serie else "duplicado",
         )
-        sesion.estado = EstadoFlujo.DECISION_TITULO
-        primero = sesion.coincidencias[0]
-        return construir_respuesta(
-            sesion,
-            msg_coincidencia(res_tit["mensaje"], primero.titulo, primero.url),
-            OPCIONES_ENRIQUECER_DESCARTAR,
-        )
+        if coincs:
+            sesion.coincidencias = coincs
+            sesion.estado = EstadoFlujo.DECISION_TITULO
+            primero = sesion.coincidencias[0]
+            ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
+            return construir_respuesta(
+                sesion,
+                msg_coincidencia(res_tit["mensaje"], primero.titulo, primero.url),
+                ops,
+            )
 
     sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-    return construir_respuesta(sesion, MSG_SIN_COINCIDENCIAS_TITULO, [])
+    return construir_respuesta(sesion, MSG_SIN_COINCIDENCIAS_TITULO, ["volver"])
 
 
 async def handle_decision_titulo(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
-    if opcion == "enriquecer":
+    if opcion in ("enriquecer", "actualizar"):
+        sesion.limpiar_fallos("DECISION_TITULO")
+        if not sesion.coincidencias:
+            sesion.estado = EstadoFlujo.ESPERANDO_TITULO
+            return construir_respuesta(
+                sesion,
+                "[Placeholder] No se encontró la coincidencia previa seleccionada. Por favor, ingresá el título de tu artículo:",
+                [],
+            )
         elegido = sesion.coincidencias[0]
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
         texto_base = (texto_db or "").strip()
@@ -102,14 +133,7 @@ async def handle_decision_titulo(
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_enviado = (req.texto or "").strip()
-        sanit_env = sanitizar_borrador(texto=texto_enviado)
-        texto_enviado_limpio = sanit_env["texto_sanitizado"]
-        aviso_priv = sanit_env.get("aviso_privacidad")
-
-        if texto_enviado_limpio and texto_base and texto_base not in texto_enviado_limpio:
-            texto_consolidado = f"{texto_base}\n\n{texto_enviado_limpio}"
-        else:
-            texto_consolidado = texto_enviado_limpio or texto_base
+        texto_consolidado, aviso_priv = consolidar_texto_enriquecimiento(texto_base, texto_enviado)
 
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
@@ -125,35 +149,91 @@ async def handle_decision_titulo(
 
         if not texto_enviado:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
+            es_serie = elegido.tipo_coincidencia == "serie"
+            msg_carga = (
+                msg_actualizar_serie_cargado(elegido.id, elegido.titulo)
+                if es_serie
+                else msg_enriquecer_cargado(elegido.id, elegido.titulo)
+            )
             return construir_respuesta(
                 sesion,
-                msg_enriquecer_cargado(elegido.id, elegido.titulo),
-                ["descartar", "reiniciar"],
+                msg_carga,
+                ["descartar", "volver", "reiniciar"],
             )
 
         err = validar_longitud(texto_consolidado, TEXTO_MIN, TEXTO_MAX, "texto")
         if err:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-            return construir_respuesta(sesion, err, [])
+            return construir_respuesta(sesion, err, ["descartar", "volver"])
 
         return avanzar_a_metadatos_o_revision(
             sesion, prefijo_borrador_creado(elegido.id), aviso_privacidad=aviso_priv
         )
 
     if opcion in ("descartar", "continuar"):
+        sesion.limpiar_fallos("DECISION_TITULO")
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-        return construir_respuesta(sesion, MSG_DESCARTAR_COINCIDENCIA_TITULO, [])
+        return construir_respuesta(sesion, MSG_DESCARTAR_COINCIDENCIA_TITULO, ["volver"])
 
-    return construir_respuesta(sesion, MSG_ELEGIR_ENRIQUECER_O_DESCARTAR, OPCIONES_ENRIQUECER_DESCARTAR)
+    if opcion == "volver":
+        sesion.limpiar_fallos("DECISION_TITULO")
+        sesion.coincidencias = []
+        sesion.estado = EstadoFlujo.ESPERANDO_TITULO
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] Volvemos al paso anterior. Ingresá un nuevo título para tu artículo:",
+            [],
+        )
+
+    intento = sesion.registrar_fallo("DECISION_TITULO")
+    elegido = sesion.coincidencias[0] if sesion.coincidencias else None
+    es_serie = elegido and elegido.tipo_coincidencia == "serie"
+    ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
+    return construir_respuesta(sesion, msg_opcion_invalida(intento), ops)
 
 
 async def handle_esperando_texto(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
+    if opcion == "volver":
+        sesion.limpiar_fallos("ESPERANDO_TEXTO")
+        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
+            sesion.estado = EstadoFlujo.DECISION_TITULO
+            elegido = sesion.coincidencias[0] if sesion.coincidencias else None
+            es_serie = elegido and elegido.tipo_coincidencia == "serie"
+            ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
+            return construir_respuesta(
+                sesion,
+                "[Placeholder] Volvemos al paso anterior. ¿Deseás enriquecer el artículo encontrado o descartarlo?",
+                ops,
+            )
+        sesion.estado = EstadoFlujo.ESPERANDO_TITULO
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] Volvemos al paso anterior. Ingresá un nuevo título para tu artículo:",
+            [],
+        )
+
+    if opcion in ("descartar", "continuar"):
+        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
+            sesion.borrador = None
+            sesion.coincidencias = []
+            sesion.limpiar_fallos("ESPERANDO_TEXTO")
+            texto_directo = (req.texto or "").strip()
+            if not texto_directo:
+                return construir_respuesta(
+                    sesion,
+                    "[Placeholder] Descartamos el artículo existente. Ingresá el texto o los pasos para redactar tu propio artículo:",
+                    ["volver"],
+                )
+
     texto_raw = (req.texto or req.mensaje or "").strip()
     if not texto_raw:
-        return construir_respuesta(sesion, MSG_TEXTO_VACIO, [])
+        intento = sesion.registrar_fallo("ESPERANDO_TEXTO")
+        ops_texto = ["descartar", "volver"] if (sesion.borrador and sesion.borrador.modo == "enriquecimiento") else ["volver"]
+        return construir_respuesta(sesion, msg_texto_vacio(intento), ops_texto)
 
+    sesion.limpiar_fallos("ESPERANDO_TEXTO")
     actualizar_metadatos_sesion(sesion, req)
 
     if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
@@ -163,18 +243,15 @@ async def handle_esperando_texto(
         elif sesion.borrador.texto:
             texto_base = sesion.borrador.texto.strip()
 
-        sanit_ap = sanitizar_borrador(texto=texto_raw)
-        texto_aporte = sanit_ap["texto_sanitizado"]
-        aviso_priv = sanit_ap.get("aviso_privacidad")
+        texto_consolidado, aviso_priv = consolidar_texto_enriquecimiento(texto_base, texto_raw)
 
-        if texto_aporte and texto_base and texto_base not in texto_aporte:
-            texto_consolidado = f"{texto_base}\n\n{texto_aporte}"
-        else:
-            texto_consolidado = texto_aporte or texto_base
+        if len(texto_consolidado) < TEXTO_MIN:
+            intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
+            return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
 
-        err = validar_longitud(texto_consolidado, TEXTO_MIN, TEXTO_MAX, "texto")
-        if err:
-            return construir_respuesta(sesion, err, [])
+        if len(texto_consolidado) > TEXTO_MAX:
+            intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
+            return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), [])
 
         sesion.borrador.texto = texto_consolidado
         sesion.texto = texto_consolidado
@@ -186,9 +263,13 @@ async def handle_esperando_texto(
             sesion, prefijo_borrador_creado(sesion.borrador.articulo_original_id), aviso_privacidad=aviso_priv
         )
 
-    err = validar_longitud(texto_raw, TEXTO_MIN, TEXTO_MAX, "texto")
-    if err:
-        return construir_respuesta(sesion, err, [])
+    if len(texto_raw) < TEXTO_MIN:
+        intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
+        return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
+
+    if len(texto_raw) > TEXTO_MAX:
+        intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
+        return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), [])
 
     sesion.texto = texto_raw
 
@@ -198,17 +279,19 @@ async def handle_esperando_texto(
 
     res_txt = await run_in_threadpool(buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1)
     if res_txt and res_txt.get("coincidencias"):
-        sesion.coincidencias = normalizar_coincidencias(
-            res_txt["coincidencias"], mensaje=res_txt.get("mensaje", "")
+        coincs = normalizar_coincidencias(
+            res_txt["coincidencias"], mensaje=res_txt.get("mensaje", ""), tipo_coincidencia="semantico"
         )
-        sesion.estado = EstadoFlujo.DECISION_TEXTO
-        primero = sesion.coincidencias[0]
-        return construir_respuesta(
-            sesion,
-            msg_coincidencia(res_txt["mensaje"], primero.titulo, primero.url),
-            OPCIONES_ENRIQUECER_CONTINUAR,
-            aviso_privacidad=aviso_privacidad,
-        )
+        if coincs:
+            sesion.coincidencias = coincs
+            sesion.estado = EstadoFlujo.DECISION_TEXTO
+            primero = sesion.coincidencias[0]
+            return construir_respuesta(
+                sesion,
+                msg_coincidencia(res_txt["mensaje"], primero.titulo, primero.url),
+                OPCIONES_ENRIQUECER_CONTINUAR,
+                aviso_privacidad=aviso_privacidad,
+            )
 
     sesion.borrador = BorradorSesion(
         modo="nuevo",
@@ -229,6 +312,13 @@ async def handle_decision_texto(
     actualizar_metadatos_sesion(sesion, req)
 
     if opcion == "enriquecer":
+        sesion.limpiar_fallos("DECISION_TEXTO")
+        if not sesion.coincidencias:
+            return construir_respuesta(
+                sesion,
+                "[Placeholder] No se encontró el artículo coincidente para enriquecer. Tocá 'continuar' para usar tu propio texto:",
+                ["continuar", "reiniciar"],
+            )
         elegido = sesion.coincidencias[0]
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
         texto_base = (texto_db or "").strip()
@@ -239,14 +329,7 @@ async def handle_decision_texto(
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_aporte = (req.texto or sesion.texto or "").strip()
-        sanit_ap = sanitizar_borrador(texto=texto_aporte)
-        texto_aporte_limpio = sanit_ap["texto_sanitizado"]
-        aviso_priv = sanit_ap.get("aviso_privacidad")
-
-        if texto_aporte_limpio and texto_base and texto_base not in texto_aporte_limpio:
-            texto_enriquecido = f"{texto_base}\n\n{texto_aporte_limpio}"
-        else:
-            texto_enriquecido = texto_aporte_limpio or texto_base
+        texto_enriquecido, aviso_priv = consolidar_texto_enriquecimiento(texto_base, texto_aporte)
 
         if validar_longitud_maxima(texto_enriquecido, TEXTO_MAX, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
@@ -266,6 +349,7 @@ async def handle_decision_texto(
         )
 
     if opcion in ("continuar", "descartar"):
+        sesion.limpiar_fallos("DECISION_TEXTO")
         sesion.borrador = BorradorSesion(
             modo="nuevo",
             titulo=sesion.titulo,
@@ -276,12 +360,32 @@ async def handle_decision_texto(
         )
         return avanzar_a_metadatos_o_revision(sesion, PREFIJO_CONTINUAR_PROPIO)
 
-    return construir_respuesta(sesion, MSG_ELEGIR_ENRIQUECER_O_CONTINUAR, OPCIONES_ENRIQUECER_CONTINUAR)
+    if opcion == "volver":
+        sesion.limpiar_fallos("DECISION_TEXTO")
+        sesion.coincidencias = []
+        sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] Volvemos al paso anterior. Ingresá el texto corregido para tu artículo:",
+            ["volver"],
+        )
+
+    intento = sesion.registrar_fallo("DECISION_TEXTO")
+    return construir_respuesta(sesion, msg_opcion_invalida(intento), OPCIONES_ENRIQUECER_CONTINUAR)
 
 
 async def handle_esperando_plantilla(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
+    if opcion == "volver":
+        sesion.limpiar_fallos("ESPERANDO_PLANTILLA")
+        sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] Volvemos al paso anterior. Ingresá el texto actualizado para tu artículo:",
+            ["volver"],
+        )
+
     b = sesion.borrador
     if req.categoria_id is not None:
         b.categoria_id = req.categoria_id
@@ -302,6 +406,17 @@ async def handle_esperando_metadatos(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
+    if opcion == "volver":
+        sesion.limpiar_fallos("ESPERANDO_METADATOS")
+        sesion.estado = EstadoFlujo.ESPERANDO_PLANTILLA
+        if b:
+            b.tipo_plantilla = None
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] Volvemos a la selección de formato. ¿Qué plantilla preferís para este artículo?",
+            OPCIONES_PLANTILLAS,
+        )
+
     if req.categoria_id is not None:
         b.categoria_id = req.categoria_id
 
@@ -317,8 +432,10 @@ async def handle_esperando_metadatos(
 
     b.tags = combinar_tags(b.tipo_plantilla, b.tags, nuevos_tags)
     if len(b.tags) < 2:
-        return construir_respuesta(sesion, msg_pedir_tag_adicional(b.tipo_plantilla), [])
+        intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
+        return construir_respuesta(sesion, msg_pedir_tag_adicional(b.tipo_plantilla or "", intento), [])
 
+    sesion.limpiar_fallos("ESPERANDO_METADATOS")
     msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)
     return construir_respuesta(sesion, msg, ops)
 
@@ -332,6 +449,28 @@ async def handle_revision_borrador(
         texto_edicion = req.mensaje
 
     hubo_cambios = any(v is not None for v in (req.titulo, texto_edicion, req.categoria_id, req.tags))
+
+    if sesion.confirmando_rechazo:
+        if opcion in ("confirmar_rechazo", "rechazar"):
+            sesion.confirmando_rechazo = False
+            sesion.estado = EstadoFlujo.RECHAZADO
+            return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
+        if opcion == "volver":
+            sesion.confirmando_rechazo = False
+            msg, ops = validar_borrador(sesion)
+            return construir_respuesta(
+                sesion,
+                "[Placeholder] Operación cancelada. Mantenemos tu borrador intacto:\n\n" + msg,
+                ops,
+            )
+        if opcion in ("editar", "sanitizar", "aprobar") or hubo_cambios:
+            sesion.confirmando_rechazo = False
+        else:
+            return construir_respuesta(
+                sesion,
+                "[Placeholder] Por favor confirmá si querés descartar el artículo tocando 'confirmar_rechazo' o 'volver' para continuar trabajando en él.",
+                ["confirmar_rechazo", "volver"],
+            )
 
     if opcion == "sanitizar":
         limpio = sanitizar_borrador(texto=req.texto or b.texto, titulo=req.titulo or b.titulo)
@@ -355,13 +494,6 @@ async def handle_revision_borrador(
 
         if texto_edicion is not None:
             txt_nuevo = texto_edicion.strip()
-            texto_base = ""
-            if sesion.coincidencias and sesion.coincidencias[0].texto_original:
-                texto_base = sesion.coincidencias[0].texto_original.strip()
-
-            if b.modo == "enriquecimiento" and texto_base and texto_base not in txt_nuevo:
-                txt_nuevo = f"{texto_base}\n\n{txt_nuevo}"
-
             err_txt = validar_longitud_maxima(txt_nuevo, TEXTO_MAX, "texto")
             if err_txt:
                 return construir_respuesta(sesion, err_txt, ops_actuales)
@@ -385,6 +517,22 @@ async def handle_revision_borrador(
         )
         return construir_respuesta(sesion, MSG_PEDIR_EDICION, ops)
 
+    if opcion == "volver":
+        sesion.limpiar_fallos("REVISION_BORRADOR")
+        if b and b.modo == "enriquecimiento":
+            sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
+            return construir_respuesta(
+                sesion,
+                "[Placeholder] Volvemos al paso anterior. Ingresá el texto o tu aporte actualizado para el artículo:",
+                ["descartar", "volver"],
+            )
+        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] Volvemos al paso anterior. Podés redefinir las etiquetas o tags para clasificar tu artículo:",
+            ["volver"],
+        )
+
     if opcion == "aprobar":
         if not sesion.validacion or not sesion.validacion.valido:
             msg, ops = validar_borrador(sesion, PREFIJO_ERROR_APROBACION)
@@ -395,8 +543,9 @@ async def handle_revision_borrador(
         sesion.estado = EstadoFlujo.APROBADO
         if sesion.validacion.status == "Listo con ajustes sugeridos":
             mensaje_aprobado = (
-                f"Artículo '{b.titulo}' APROBADO: observaciones de estilo confirmadas por el redactor. "
-                "Listo para publicación."
+                f"¡Impecable! Tu artículo '{b.titulo}' está muy bien formulado "
+                "(observaciones de estilo confirmadas por el redactor). "
+                "Si querés comenzar con otro tema, tocá 'reiniciar'."
             )
         else:
             mensaje_aprobado = msg_articulo_aprobado(b.titulo)
@@ -408,6 +557,15 @@ async def handle_revision_borrador(
         )
 
     if opcion == "rechazar":
+        sesion.confirmando_rechazo = True
+        return construir_respuesta(
+            sesion,
+            "[Placeholder] ¿Estás seguro de que querés descartar todo el artículo? Se perderán los cambios realizados en esta sesión.",
+            ["confirmar_rechazo", "volver"],
+        )
+
+    if opcion == "confirmar_rechazo":
+        sesion.confirmando_rechazo = False
         sesion.estado = EstadoFlujo.RECHAZADO
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
