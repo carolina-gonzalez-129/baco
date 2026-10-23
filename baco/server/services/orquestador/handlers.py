@@ -110,6 +110,7 @@ async def handle_esperando_titulo(
 async def handle_decision_titulo(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
+    actualizar_metadatos_sesion(sesion, req)
     if opcion in ("enriquecer", "actualizar"):
         sesion.limpiar_fallos("DECISION_TITULO")
         if not sesion.coincidencias:
@@ -131,11 +132,14 @@ async def handle_decision_titulo(
         texto_enviado = (req.texto or "").strip()
         texto_consolidado, aviso_priv = consolidar_texto_enriquecimiento(texto_base, texto_enviado)
 
+        es_serie = elegido.tipo_coincidencia == "serie" or opcion == "actualizar"
+        titulo_borrador = (sesion.titulo or req.titulo or elegido.titulo).strip() if es_serie else elegido.titulo
+
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
             articulo_original_id=elegido.id,
             articulo_original_url=elegido.url,
-            titulo=elegido.titulo,
+            titulo=titulo_borrador,
             texto=texto_consolidado,
             tipo_plantilla=extraer_tipo_plantilla(tags_ini),
             categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
@@ -145,7 +149,6 @@ async def handle_decision_titulo(
 
         if not texto_enviado:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-            es_serie = elegido.tipo_coincidencia == "serie"
             msg_carga = (
                 msg_actualizar_serie_cargado(elegido.id, elegido.titulo)
                 if es_serie
@@ -168,6 +171,50 @@ async def handle_decision_titulo(
 
     if opcion in ("descartar", "continuar"):
         sesion.limpiar_fallos("DECISION_TITULO")
+        for c in sesion.coincidencias:
+            if c.id and c.id not in sesion.articulos_descartados_ids:
+                sesion.articulos_descartados_ids.append(c.id)
+        sesion.coincidencias = []
+        texto_disponible = (req.texto or sesion.texto or "").strip()
+
+        if texto_disponible and len(texto_disponible) >= TEXTO_MIN:
+            # Condición sine qua non: habiendo recibido título y texto, al descartar
+            # la coincidencia de título la búsqueda por duplicados continúa sobre el texto.
+            sesion.texto = texto_disponible
+            sanit_txt = sanitizar_borrador(texto=texto_disponible)
+            texto_busqueda = sanit_txt["texto_sanitizado"]
+            aviso_privacidad = sanit_txt.get("aviso_privacidad")
+
+            res_txt = await run_in_threadpool(buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1)
+            if res_txt and res_txt.get("coincidencias"):
+                coincs = normalizar_coincidencias(
+                    res_txt["coincidencias"], mensaje=res_txt.get("mensaje", ""), tipo_coincidencia="semantico"
+                )
+                coincs = [c for c in coincs if c.id not in sesion.articulos_descartados_ids]
+                if coincs:
+                    sesion.coincidencias = coincs
+                    sesion.estado = EstadoFlujo.DECISION_TEXTO
+                    primero = sesion.coincidencias[0]
+                    return construir_respuesta(
+                        sesion,
+                        msg_coincidencia(res_txt["mensaje"], primero.titulo, primero.url),
+                        OPCIONES_ENRIQUECER_CONTINUAR,
+                        aviso_privacidad=aviso_privacidad,
+                    )
+
+            # Si evaluar_texto no arrojó coincidencias, se crea el borrador nuevo y avanza
+            sesion.borrador = BorradorSesion(
+                modo="nuevo",
+                titulo=sesion.titulo,
+                texto=sesion.texto,
+                tipo_plantilla=extraer_tipo_plantilla(sesion.tags),
+                categoria_id=req.categoria_id or sesion.categoria_id,
+                tags=list(req.tags or sesion.tags),
+            )
+            return avanzar_a_metadatos_o_revision(
+                sesion, PREFIJO_SIN_DUPLICADOS, aviso_privacidad=aviso_privacidad
+            )
+
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
         return construir_respuesta(sesion, MSG_DESCARTAR_COINCIDENCIA_TITULO, ["volver"])
 
@@ -212,6 +259,11 @@ async def handle_esperando_texto(
 
     if opcion in ("descartar", "continuar"):
         if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
+            if sesion.borrador.articulo_original_id and sesion.borrador.articulo_original_id not in sesion.articulos_descartados_ids:
+                sesion.articulos_descartados_ids.append(sesion.borrador.articulo_original_id)
+            for c in sesion.coincidencias:
+                if c.id and c.id not in sesion.articulos_descartados_ids:
+                    sesion.articulos_descartados_ids.append(c.id)
             sesion.borrador = None
             sesion.coincidencias = []
             sesion.limpiar_fallos("ESPERANDO_TEXTO")
@@ -278,6 +330,7 @@ async def handle_esperando_texto(
         coincs = normalizar_coincidencias(
             res_txt["coincidencias"], mensaje=res_txt.get("mensaje", ""), tipo_coincidencia="semantico"
         )
+        coincs = [c for c in coincs if c.id not in sesion.articulos_descartados_ids]
         if coincs:
             sesion.coincidencias = coincs
             sesion.estado = EstadoFlujo.DECISION_TEXTO
@@ -307,7 +360,7 @@ async def handle_decision_texto(
 ) -> ChatOrquestadorResponse:
     actualizar_metadatos_sesion(sesion, req)
 
-    if opcion == "enriquecer":
+    if opcion in ("enriquecer", "actualizar"):
         sesion.limpiar_fallos("DECISION_TEXTO")
         if not sesion.coincidencias:
             return construir_respuesta(
@@ -330,11 +383,14 @@ async def handle_decision_texto(
         if validar_longitud_maxima(texto_enriquecido, TEXTO_MAX, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
 
+        es_serie = elegido.tipo_coincidencia == "serie" or opcion == "actualizar"
+        titulo_borrador = (sesion.titulo or req.titulo or elegido.titulo).strip() if es_serie else elegido.titulo
+
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
             articulo_original_id=elegido.id,
             articulo_original_url=elegido.url,
-            titulo=elegido.titulo,
+            titulo=titulo_borrador,
             texto=texto_enriquecido,
             tipo_plantilla=extraer_tipo_plantilla(tags_ini),
             categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
@@ -346,6 +402,10 @@ async def handle_decision_texto(
 
     if opcion in ("continuar", "descartar"):
         sesion.limpiar_fallos("DECISION_TEXTO")
+        for c in sesion.coincidencias:
+            if c.id and c.id not in sesion.articulos_descartados_ids:
+                sesion.articulos_descartados_ids.append(c.id)
+        sesion.coincidencias = []
         sesion.borrador = BorradorSesion(
             modo="nuevo",
             titulo=sesion.titulo,

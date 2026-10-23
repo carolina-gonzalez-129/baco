@@ -407,8 +407,10 @@ BACO.apiMock = (function () {
             const art = BACO.datos.baseConocimiento.find((a) => a.id_externo === el.id) || {};
             const textoIni = String(req.texto || el.texto_original || sesion.texto || '').trim();
             const tagsIni = req.tags != null ? req.tags : (art.etiquetas || sesion.tags);
+            const esSerie = el.tipo_coincidencia === 'serie' || opcion === 'actualizar';
+            const tituloFinal = (sesion.titulo || req.titulo || el.titulo).trim();
             sesion.borrador = { modo: 'enriquecimiento', articulo_original_id: el.id, articulo_original_url: el.url,
-              titulo: el.titulo, texto: textoIni, texto_original_aprobado: el.texto_original || null,
+              titulo: tituloFinal, texto: textoIni, texto_original_aprobado: el.texto_original || null,
               tipo_plantilla: tipoPlantilla(tagsIni),
               categoria_id: req.categoria_id || sesion.categoria_id, tags: tagsIni };
             if (!textoIni || textoIni.length < L.MIN_TEXTO) {
@@ -420,6 +422,24 @@ BACO.apiMock = (function () {
           }
           if (opcion === 'descartar' || opcion === 'continuar') {
             marcar();
+            sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
+            (sesion.coincidencias || []).forEach((c) => {
+              if (c.id && !sesion.articulos_descartados_ids.includes(c.id)) {
+                sesion.articulos_descartados_ids.push(c.id);
+              }
+            });
+            const textoDisp = String(req.texto || sesion.texto || '').trim();
+            if (textoDisp && textoDisp.length >= L.MIN_TEXTO) {
+              const hitTxt = buscarSimilares(textoDisp, 'texto');
+              if (hitTxt && !sesion.articulos_descartados_ids.includes(hitTxt.id)) {
+                sesion.coincidencias = [hitTxt];
+                sesion.estado = 'DECISION_TEXTO';
+                return resp('Encontré un artículo que explica prácticamente lo mismo en el contenido: "' +
+                  hitTxt.titulo + '" (' + hitTxt.url + '). ¿Querés enriquecer ese artículo o seguimos con tu texto?',
+                  OPS.ENRIQUECER_CONTINUAR);
+              }
+              return avanzar('Listo, descartamos la coincidencia y seguimos con tu contenido propio. ');
+            }
             sesion.estado = 'ESPERANDO_TEXTO';
             return resp('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['volver']);
           }
@@ -452,7 +472,8 @@ BACO.apiMock = (function () {
           }
 
           const hit = buscar(sesion.texto + ' ' + sesion.titulo);
-          if (hit) {
+          sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
+          if (hit && !sesion.articulos_descartados_ids.includes(hit.id)) {
             marcar();
             sesion.coincidencias = [hit];
             sesion.estado = 'DECISION_TEXTO';
@@ -476,13 +497,20 @@ BACO.apiMock = (function () {
             const el = sesion.coincidencias[0];
             const art = BACO.datos.baseConocimiento.find((a) => a.id_externo === el.id) || {};
             const tagsIni = req.tags != null ? req.tags : (art.etiquetas || sesion.tags);
+            const tituloFinal = (sesion.titulo || req.titulo || el.titulo).trim();
             sesion.borrador = { modo: 'enriquecimiento', articulo_original_id: el.id, articulo_original_url: el.url,
-              titulo: el.titulo, texto: String(req.texto || sesion.texto || '').trim(),
+              titulo: tituloFinal, texto: String(req.texto || sesion.texto || '').trim(),
               texto_original_aprobado: el.texto_original || null,
               tipo_plantilla: tipoPlantilla(tagsIni), categoria_id: req.categoria_id || sesion.categoria_id, tags: tagsIni };
             return avanzar('Armé el borrador de enriquecimiento sobre #' + el.id + '. ');
           }
           if (opcion === 'continuar' || opcion === 'descartar') {
+            sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
+            (sesion.coincidencias || []).forEach((c) => {
+              if (c.id && !sesion.articulos_descartados_ids.includes(c.id)) {
+                sesion.articulos_descartados_ids.push(c.id);
+              }
+            });
             sesion.borrador = { modo: 'nuevo', articulo_original_id: null, articulo_original_url: null,
               titulo: sesion.titulo, texto: sesion.texto, texto_original_aprobado: null,
               tipo_plantilla: tipoPlantilla(sesion.tags),

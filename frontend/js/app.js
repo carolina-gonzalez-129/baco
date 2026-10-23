@@ -22,7 +22,13 @@
   const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const hora = () => new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-  const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
+  const nl2br = (s) => {
+    let txt = esc(s);
+    // Renderizar imágenes markdown en las burbujas de chat
+    txt = txt.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g, '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>');
+    txt = txt.replace(/\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g, '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📄 $1</a>');
+    return txt.replace(/\n/g, '<br>');
+  };
   let tToast = null;
   let ultimoFallo = null;   // para poder reintentar la llamada que falló
 
@@ -149,6 +155,11 @@
     pintarCoincidencias(s);
     pintarValidacion(s);
     pintarOpciones(s);
+    pintarImagenesDetectadas(s);
+
+    if (!$('#preview').hidden) {
+      $('#preview').innerHTML = renderMd(s.form.texto);
+    }
   }
 
   function pintarStepper(s, etapaActual) {
@@ -655,22 +666,104 @@
     tToast = setTimeout(() => t.classList.remove('show'), 2400);
   }
 
+  function pintarImagenesDetectadas(s) {
+    const bar = $('#editorImgBar');
+    if (!bar) return;
+    const txt = (s && s.form && s.form.texto) || '';
+    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g;
+    const matches = [];
+    let m;
+    while ((m = imgRegex.exec(txt)) !== null) {
+      matches.push({ alt: m[1] || 'Captura', url: m[2] });
+    }
+
+    if (!matches.length) {
+      bar.hidden = true;
+      bar.innerHTML = '';
+      return;
+    }
+
+    let h = '<div class="eib-head"><span>🖼️ Imágenes en este borrador (' + matches.length + ')</span><span style="font-weight:400;color:var(--ink-3)">Clic para abrir imagen en pestaña nueva</span></div>';
+    h += '<div class="eib-list">';
+    matches.forEach((img, idx) => {
+      const altEsc = esc(img.alt);
+      const urlEsc = encodeURI(img.url);
+      h += '<a class="eib-thumb" href="' + urlEsc + '" target="_blank" rel="noopener" title="Ver imagen ' + (idx + 1) + '">' +
+           '<img src="' + urlEsc + '" alt="' + altEsc + '" loading="lazy" referrerpolicy="no-referrer" />' +
+           '<div class="eib-cap">' + (altEsc || ('Imagen ' + (idx + 1))) + '</div>' +
+           '</a>';
+    });
+    h += '</div>';
+    bar.innerHTML = h;
+    bar.hidden = !$('#preview').hidden;
+  }
+
   /* Markdown mínimo para la vista previa */
   function renderMd(src) {
-    const ln = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+    const renderInline = (s) => {
+      // 1. Reemplazar imágenes markdown antes de escapar texto general
+      let res = String(s).replace(
+        /!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g,
+        '___IMG_START___$1___SEP___$2___IMG_END___'
+      ).replace(
+        /\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g,
+        '___ATT_START___$1___SEP___$2___ATT_END___'
+      );
+
+      // 2. Escapar caracteres HTML peligrosos
+      res = esc(res);
+
+      // 3. Restaurar imágenes y enlaces seguros
+      res = res.replace(
+        /___IMG_START___(.*?)___SEP___(.*?)___IMG_END___/g,
+        '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>'
+      ).replace(
+        /___ATT_START___(.*?)___SEP___(.*?)___ATT_END___/g,
+        '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📄 $1</a>'
+      );
+
+      // 4. Formatos inline estándar (negrita, código)
+      return res
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>');
+    };
+
     const out = []; let lista = null;
     const cerrar = () => { if (lista) { out.push('</' + lista + '>'); lista = null; } };
+
     String(src).split('\n').forEach((raw) => {
       const l = raw.trim();
       if (!l) { cerrar(); return; }
-      if (/^ruta\s*[:>]/i.test(l)) { cerrar(); out.push('<div class="ruta">' + ln(l) + '</div>'); return; }
-      if (/^#{1,4}\s/.test(l)) { cerrar(); out.push('<h4>' + ln(l.replace(/^#+\s*/, '')) + '</h4>'); return; }
-      if (/^>\s?/.test(l)) { cerrar(); out.push('<blockquote>' + ln(l.replace(/^>\s?/, '')) + '</blockquote>'); return; }
-      if (/^\|/.test(l)) { cerrar(); out.push('<div class="tabla">' + ln(l) + '</div>'); return; }
-      if (/^\d+[.)]\s/.test(l)) { if (lista !== 'ol') { cerrar(); out.push('<ol>'); lista = 'ol'; } out.push('<li>' + ln(l.replace(/^\d+[.)]\s*/, '')) + '</li>'); return; }
-      if (/^[-*]\s/.test(l)) { if (lista !== 'ul') { cerrar(); out.push('<ul>'); lista = 'ul'; } out.push('<li>' + ln(l.replace(/^[-*]\s*/, '')) + '</li>'); return; }
-      cerrar(); out.push('<p>' + ln(l) + '</p>');
+
+      // Línea solitaria con imagen
+      const imgMatch = l.match(/^!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)$/);
+      if (imgMatch) {
+        cerrar();
+        const alt = esc(imgMatch[1]);
+        const url = encodeURI(imgMatch[2]);
+        out.push('<div class="preview-img-box"><img src="' + url + '" alt="' + alt + '" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">' + alt + '</span></div>');
+        return;
+      }
+
+      if (/^ruta\s*[:>]/i.test(l)) { cerrar(); out.push('<div class="ruta">' + renderInline(l) + '</div>'); return; }
+      if (/^#{1,4}\s/.test(l)) { cerrar(); out.push('<h4>' + renderInline(l.replace(/^#+\s*/, '')) + '</h4>'); return; }
+      if (/^>\s?/.test(l)) { cerrar(); out.push('<blockquote>' + renderInline(l.replace(/^>\s?/, '')) + '</blockquote>'); return; }
+      if (/^\|/.test(l)) { cerrar(); out.push('<div class="tabla">' + renderInline(l) + '</div>'); return; }
+      if (/^\d+[.)]\s/.test(l)) {
+        if (lista !== 'ol') { cerrar(); out.push('<ol>'); lista = 'ol'; }
+        out.push('<li>' + renderInline(l.replace(/^\d+[.)]\s*/, '')) + '</li>');
+        return;
+      }
+      if (/^[-*]\s/.test(l)) {
+        if (lista !== 'ul') { cerrar(); out.push('<ul>'); lista = 'ul'; }
+        out.push('<li>' + renderInline(l.replace(/^[-*]\s*/, '')) + '</li>');
+        return;
+      }
+
+      cerrar();
+      out.push('<p>' + renderInline(l) + '</p>');
     });
+
     cerrar();
     return out.join('') || '<p class="vacio">Todavía no hay contenido.</p>';
   }
@@ -708,11 +801,13 @@
     $('#btnEditor').onclick = () => {
       $('#fCuerpo').hidden = false; $('#preview').hidden = true;
       $('#btnEditor').classList.add('sel'); $('#btnPreview').classList.remove('sel');
+      pintarImagenesDetectadas(store.get());
     };
     $('#btnPreview').onclick = () => {
       $('#preview').innerHTML = renderMd(store.get().form.texto);
       $('#fCuerpo').hidden = true; $('#preview').hidden = false;
       $('#btnPreview').classList.add('sel'); $('#btnEditor').classList.remove('sel');
+      const bar = $('#editorImgBar'); if (bar) bar.hidden = true;
     };
 
     $('#btnSubir').onclick = () => $('#fileInput').click();

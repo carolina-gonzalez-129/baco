@@ -974,6 +974,157 @@ def test_catalogo_curado_opcion_a_y_resolucion_nombres(client, mock_buscador):
     assert mapa["Agro"] == 37
 
 
+def test_actualizar_serie_toma_nuevo_titulo_de_entrada(client, mock_buscador):
+    # Simular coincidencia de tipo serie
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de serie encontrada",
+        "link": "https://bc.finneg.com/t/501",
+        "coincidencias": [(501, "Novedades Impositivas Mayo 2026", "https://bc.finneg.com/t/501")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 501,
+        "titulo": "Novedades Impositivas Mayo 2026",
+        "url": "https://bc.finneg.com/t/501",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 23,
+        "tags": ["instructivo", "afip"],
+    }
+
+    # Usuario ingresa el nuevo título de la serie
+    r1 = client.post("/chat", json={"mensaje": "Novedades Impositivas Junio 2026"}).json()
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+    assert "actualizar" in r1["opciones"]
+    assert "descartar" in r1["opciones"]
+
+    # Usuario clickea en 'Actualizar el existente' (serie)
+    r2 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "actualizar"}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r2["borrador"]["modo"] == "enriquecimiento"
+    assert r2["borrador"]["articulo_original_id"] == 501
+    # CONDICION CLAVE: Debe tomar el NUEVO título, no el histórico
+    assert r2["borrador"]["titulo"] == "Novedades Impositivas Junio 2026"
+
+
+def test_actualizar_o_enriquecer_termina_busqueda_duplicados_sin_evaluar_texto(client, mock_buscador):
+    # Simular coincidencia de serie por título
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de serie encontrada",
+        "link": "https://bc.finneg.com/t/501",
+        "coincidencias": [(501, "Novedades Impositivas Mayo 2026", "https://bc.finneg.com/t/501")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 501,
+        "titulo": "Novedades Impositivas Mayo 2026",
+        "url": "https://bc.finneg.com/t/501",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 23,
+        "tags": ["instructivo", "afip"],
+    }
+
+    # 1. Envía nuevo título de serie
+    r1 = client.post("/chat", json={"mensaje": "Novedades Impositivas Junio 2026"}).json()
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+
+    # 2. Clickea 'actualizar'
+    r2 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "actualizar"}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r2["borrador"]["modo"] == "enriquecimiento"
+
+    # 3. Envía texto con cambios
+    r3 = client.post("/chat", json={"session_id": r1["session_id"], "texto": TEXTO_VALIDO + " Novedades del mes."}).json()
+    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["borrador"]["titulo"] == "Novedades Impositivas Junio 2026"
+
+    # CONDICION CLAVE FASE 2: evaluar_texto NUNCA debe haber sido llamado
+    mock_buscador.evaluar_texto.assert_not_called()
+
+
+def test_descartar_titulo_con_titulo_y_texto_ejecuta_evaluar_texto_inmediatamente(client, mock_buscador):
+    # Simular coincidencia de título
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de título encontrada",
+        "link": "https://bc.finneg.com/t/601",
+        "coincidencias": [(601, "Configuración de Ventas Mayo", "https://bc.finneg.com/t/601")],
+    }
+    # Y coincidencia de texto que se disparará al descartar
+    mock_buscador.evaluar_texto.return_value = {
+        "mensaje": "Coincidencia de texto encontrada",
+        "link": "https://bc.finneg.com/t/602",
+        "coincidencias": [(602, "Configuración de Ventas General", "https://bc.finneg.com/t/602")],
+    }
+
+    # 1. Envía TÍTULO Y TEXTO juntos
+    r1 = client.post(
+        "/chat",
+        json={"titulo": "Configuración de Ventas Junio", "texto": TEXTO_VALIDO},
+    ).json()
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+    # Solo se evaluó título hasta acá
+    mock_buscador.evaluar_texto.assert_not_called()
+
+    # 2. Clickea 'descartar'
+    # CONDICION SINE QUA NON FASE 3: Como ya se recibieron título y texto,
+    # al descartar se ejecuta evaluar_texto inmediatamente.
+    r2 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "descartar"}).json()
+    assert r2["estado"] == EstadoFlujo.DECISION_TEXTO
+    assert r2["coincidencias"][0]["id"] == 602
+    mock_buscador.evaluar_texto.assert_called_once()
+
+    # Caso B: Si evaluar_texto no arroja coincidencias al descartar
+    client.cookies.clear()
+    mock_buscador.evaluar_texto.reset_mock()
+    mock_buscador.evaluar_texto.return_value = None
+    r_b1 = client.post(
+        "/chat",
+        json={"titulo": "Configuración de Ventas Julio", "texto": TEXTO_VALIDO},
+    ).json()
+    assert r_b1["estado"] == EstadoFlujo.DECISION_TITULO
+
+    r_b2 = client.post("/chat", json={"session_id": r_b1["session_id"], "accion": "descartar"}).json()
+    assert r_b2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert r_b2["borrador"]["modo"] == "nuevo"
+    assert r_b2["borrador"]["titulo"] == "Configuración de Ventas Julio"
+    mock_buscador.evaluar_texto.assert_called_once()
+
+
+def test_evaluar_texto_excluye_articulo_previamente_descartado(client, mock_buscador):
+    client.cookies.clear()
+    # Simular coincidencia de título con el artículo #701
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de título encontrada",
+        "link": "https://bc.finneg.com/t/701",
+        "coincidencias": [(701, "Configuración AFIP Facturación", "https://bc.finneg.com/t/701")],
+    }
+    # La búsqueda de texto devuelve también el artículo #701 (el mismo)
+    mock_buscador.evaluar_texto.return_value = {
+        "mensaje": "Coincidencia de texto encontrada",
+        "link": "https://bc.finneg.com/t/701",
+        "coincidencias": [(701, "Configuración AFIP Facturación", "https://bc.finneg.com/t/701")],
+    }
+
+    # 1. Envía título y texto
+    r1 = client.post(
+        "/chat",
+        json={"titulo": "Facturación Electrónica AFIP", "texto": TEXTO_VALIDO},
+    ).json()
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+    assert r1["coincidencias"][0]["id"] == 701
+
+    # 2. Descarta el artículo #701
+    # CONDICION DE EXCLUSION: evaluar_texto busca y devuelve #701, pero el orquestador
+    # lo excluye porque ya fue rechazado por el usuario. No debe volver a mostrar #701.
+    r2 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "descartar"}).json()
+    # Al ser #701 la única coincidencia y estar excluida, avanza directo a ESPERANDO_PLANTILLA
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert r2["borrador"]["modo"] == "nuevo"
+    assert r2["borrador"]["titulo"] == "Facturación Electrónica AFIP"
+
+
+
+
+
+
+
 
 
 
