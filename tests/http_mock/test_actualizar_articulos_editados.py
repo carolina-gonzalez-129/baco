@@ -193,7 +193,7 @@ def test_sincronizar_articulos_editados_ignora_si_no_hay_cambios(
 @patch("baco.server.discourse.actualizar_articulos_editados.get_conn")
 @patch("baco.server.discourse.actualizar_articulos_editados.pedir")
 @patch("baco.server.discourse.actualizar_articulos_editados.descargar_articulo")
-def test_sincronizar_articulos_editados_elimina_post_borrado(
+def test_sincronizar_articulos_editados_reporta_post_borrado_sin_borrar_bd(
     mock_descargar, mock_pedir, mock_get_conn
 ):
     cur = MagicMock()
@@ -234,7 +234,6 @@ def test_sincronizar_articulos_editados_elimina_post_borrado(
     # No debe llamar a descargar
     mock_descargar.assert_not_called()
 
-    # Verifica que se hayan ejecutado los dos DELETE FROM articulos
-    cur.execute.assert_any_call("DELETE FROM articulos WHERE id = %s;", (70,))
-    cur.execute.assert_any_call("DELETE FROM articulos WHERE id = %s;", (80,))
-    assert conn.commit.call_count >= 2
+    # Verifica que NO se haya ejecutado DELETE FROM articulos (preservación histórica)
+    executed_queries = [str(call[0][0]) for call in cur.execute.call_args_list]
+    assert not any("DELETE FROM articulos" in q for q in executed_queries), "No debe borrarse físicamente de la base de datos"

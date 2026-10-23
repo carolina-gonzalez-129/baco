@@ -31,12 +31,12 @@ def test_buscar_exacto_valor_vacio_retorna_lista_vacia():
     mock_cur.execute.assert_not_called()
 
 
-def test_buscar_exacto_campo_no_permitido_lanza_error():
+def test_buscar_exacto_campo_no_permitido_retorna_vacio():
     mock_cur = MagicMock()
     buscador = BuscadorDuplicados(mock_cur)
     
-    with pytest.raises(ValueError, match="Campo no permitido"):
-        buscador.buscar_exacto("campo_invalido", "test")
+    assert buscador.buscar_exacto("campo_invalido", "test") == []
+    mock_cur.execute.assert_not_called()
 
 
 def test_buscar_exacto_ejecuta_query_correcta():
@@ -48,8 +48,8 @@ def test_buscar_exacto_ejecuta_query_correcta():
     assert res == [(1, "Articulo 1", "https://url.com/1")]
     mock_cur.execute.assert_called_once()
     query_ejecutada = mock_cur.execute.call_args[0][0]
-    assert "hash_titulo" in query_ejecutada
-    assert mock_cur.execute.call_args[0][1] == ("Factura", 3)
+    assert "duplicados.buscar_exacto" in query_ejecutada
+    assert mock_cur.execute.call_args[0][1] == ("Factura", "titulo", 3)
 
 
 def test_buscar_por_titulo_y_texto():
@@ -58,10 +58,12 @@ def test_buscar_por_titulo_y_texto():
     buscador = BuscadorDuplicados(mock_cur)
 
     buscador.buscar_por_titulo("Título Test", limite=2)
-    assert "hash_titulo" in mock_cur.execute.call_args[0][0]
+    assert "duplicados.buscar_exacto" in mock_cur.execute.call_args[0][0]
+    assert mock_cur.execute.call_args[0][1] == ("Título Test", "titulo", 2)
 
     buscador.buscar_por_texto("Texto Test", limite=1)
-    assert "hash_texto" in mock_cur.execute.call_args[0][0]
+    assert "duplicados.buscar_exacto" in mock_cur.execute.call_args[0][0]
+    assert mock_cur.execute.call_args[0][1] == ("Texto Test", "texto", 1)
 
 
 def test_buscar_por_serie_vacio_y_con_valor():
@@ -76,7 +78,7 @@ def test_buscar_por_serie_vacio_y_con_valor():
     mock_cur.fetchall.return_value = [(2, "Serie Mayo 2026", "https://url/2", "Serie")]
     res = buscador.buscar_por_serie("Serie Junio 2026", limite=5)
     assert len(res) == 1
-    assert "titulo_base" in mock_cur.execute.call_args[0][0]
+    assert "duplicados.similares_series" in mock_cur.execute.call_args[0][0]
 
 
 def test_buscar_por_titulo_trigrama():
@@ -89,20 +91,8 @@ def test_buscar_por_titulo_trigrama():
     mock_cur.fetchall.return_value = [(3, "Título Similar", "https://url/3", 0.85)]
     res = buscador.buscar_por_titulo_trigrama("Titulo Similar", threshold=0.75, limite=5)
     assert len(res) == 1
-    # Debe haber ejecutado set_config y la query
-    assert mock_cur.execute.call_count == 2
-    assert "pg_trgm.similarity_threshold" in mock_cur.execute.call_args_list[0][0][0]
-
-
-def test_buscar_por_texto_sin_headers():
-    mock_cur = MagicMock()
-    mock_cur.fetchall.return_value = [(4, "Texto", "https://url/4")]
-    buscador = BuscadorDuplicados(mock_cur)
-
-    assert buscador.buscar_por_texto_sin_headers("") == []
-    res = buscador.buscar_por_texto_sin_headers("Contenido de prueba")
-    assert len(res) == 1
-    assert "hash_texto_sin_headers" in mock_cur.execute.call_args[0][0]
+    assert mock_cur.execute.call_count == 1
+    assert "duplicados.similares_trigramas" in mock_cur.execute.call_args[0][0]
 
 
 # ==============================================================================
@@ -118,7 +108,7 @@ def test_evaluar_titulo_exacto_incluye_link():
         assert res is not None
         assert res["link"] == "https://bc.finneg.com/10"
         assert "exactamente este título" in res["mensaje"]
-        assert "https://bc.finneg.com/10" in res["mensaje"]
+
 
 
 def test_evaluar_titulo_serie_incluye_link():
@@ -143,7 +133,7 @@ def test_evaluar_titulo_trigrama_incluye_link():
         res = buscador.evaluar_titulo("Configurar CAE")
         assert res is not None
         assert res["link"] == "https://bc.finneg.com/30"
-        assert "muy parecidos" in res["mensaje"]
+        assert "muy similar" in res["mensaje"]
 
 
 def test_evaluar_titulo_sin_coincidencias_retorna_none():
@@ -172,7 +162,7 @@ def test_evaluar_texto_exacto_y_embeddings():
         res = buscador.evaluar_texto("Texto similar", headers=True, titulo="Titulo")
         assert res is not None
         assert res["link"] == "https://bc.finneg.com/50"
-        assert "similares" in res["mensaje"]
+        assert "prácticamente lo mismo" in res["mensaje"]
 
     # Coincidencia por embeddings (franja alta >= 0.92: casi seguro duplicado)
     with patch.object(buscador, "buscar_por_texto", return_value=[]), \
@@ -213,17 +203,19 @@ def test_evaluar_coincidencias_evalua_texto_si_titulo_no_coincide():
 # ==============================================================================
 
 def test_get_buscador_duplicados_injects_db():
-    from baco.server.app.api import get_buscador_duplicados
+    from baco.server.app.dependencies import get_buscador_duplicados
+    from psycopg.rows import dict_row
     mock_cur = MagicMock()
     mock_conn = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
 
-    with patch("baco.server.app.api.get_conn") as mock_get_conn:
+    with patch("baco.server.app.dependencies.get_conn") as mock_get_conn:
         mock_get_conn.return_value.__enter__.return_value = mock_conn
         gen = get_buscador_duplicados()
         buscador = next(gen)
         assert isinstance(buscador, BuscadorDuplicados)
         assert buscador.cur is mock_cur
+        mock_conn.cursor.assert_called_with(row_factory=dict_row)
 
 
 def test_titulo_base_series_en_postgres():

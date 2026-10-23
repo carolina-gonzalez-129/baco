@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch, ANY
 import pytest
 
 from baco.server.discourse.actualizar_nuevos_articulos import (
@@ -203,16 +204,20 @@ def test_sincronizar_articulos_inserta_nuevo_y_recalcula_embeddings(
     mock_act_emb.assert_called_once_with(conn, 999, "Nuevo Artículo", "Contenido")
 
 
+@patch("baco.server.discourse.actualizar_nuevos_articulos.respaldar_articulos_purgados")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.confirmar_huerfano")
 @patch("baco.server.discourse.actualizar_nuevos_articulos.get_conn")
 @patch("baco.server.discourse.actualizar_nuevos_articulos.listar_temas")
 @patch("baco.server.discourse.actualizar_nuevos_articulos.descargar_articulo")
 @patch("baco.server.discourse.actualizar_nuevos_articulos.upsert_articulos")
 def test_sincronizar_articulos_completo_con_purgar_elimina_huerfanos(
-    mock_upsert, mock_descargar, mock_listar, mock_get_conn
+    mock_upsert, mock_descargar, mock_listar, mock_get_conn, mock_confirmar, mock_respaldar
 ):
     cur = MagicMock()
     conn = _mock_conn_cur(cur)
     mock_get_conn.return_value = conn
+    mock_confirmar.return_value = True
+    mock_respaldar.return_value = Path("data/backups/articulos_purgados_test.json")
 
     # En la base existen los temas 1, 2 y 3
     ids_en_base = {1, 2, 3}
@@ -224,9 +229,66 @@ def test_sincronizar_articulos_completo_con_purgar_elimina_huerfanos(
         rc = sincronizar_articulos(completo=True, purgar=True)
 
     assert rc == 0
+    mock_confirmar.assert_called_once_with(ANY, 3)
+    mock_respaldar.assert_called_once_with(conn, [3])
     # Verifica que se haya ejecutado el DELETE para el tema 3
     cur.execute.assert_called_with("DELETE FROM articulos WHERE id = ANY(%s);", ([3],))
     conn.commit.assert_called()
+
+
+@patch("baco.server.discourse.actualizar_nuevos_articulos.confirmar_huerfano")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.get_conn")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.listar_temas")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.descargar_articulo")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.upsert_articulos")
+def test_sincronizar_articulos_huerfano_no_confirmado_no_se_elimina(
+    mock_upsert, mock_descargar, mock_listar, mock_get_conn, mock_confirmar
+):
+    cur = MagicMock()
+    conn = _mock_conn_cur(cur)
+    mock_get_conn.return_value = conn
+    # Discourse confirma que el tema 3 sigue existiendo en /t/3.json (ej. categoría privada)
+    mock_confirmar.return_value = False
+
+    ids_en_base = {1, 2, 3}
+    with patch("baco.server.discourse.actualizar_nuevos_articulos.obtener_ids_existentes", return_value=ids_en_base):
+        mock_listar.return_value = iter([{"id": 1, "visible": True}, {"id": 2, "visible": True}])
+        mock_descargar.return_value = None
+
+        rc = sincronizar_articulos(completo=True, purgar=True)
+
+    assert rc == 0
+    mock_confirmar.assert_called_once_with(ANY, 3)
+    # No debe ejecutar DELETE
+    for call_args in cur.execute.call_args_list:
+        assert "DELETE" not in str(call_args)
+
+
+@patch("baco.server.discourse.actualizar_nuevos_articulos.confirmar_huerfano")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.get_conn")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.listar_temas")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.descargar_articulo")
+@patch("baco.server.discourse.actualizar_nuevos_articulos.upsert_articulos")
+def test_sincronizar_articulos_circuit_breaker_aborta_si_supera_limite(
+    mock_upsert, mock_descargar, mock_listar, mock_get_conn, mock_confirmar
+):
+    cur = MagicMock()
+    conn = _mock_conn_cur(cur)
+    mock_get_conn.return_value = conn
+    mock_confirmar.return_value = True
+
+    # 60 huérfanos confirmados (supera MAX_HUERFANOS_PERMITIDOS = 50)
+    ids_en_base = set(range(1, 62))
+    with patch("baco.server.discourse.actualizar_nuevos_articulos.obtener_ids_existentes", return_value=ids_en_base):
+        mock_listar.return_value = iter([{"id": 1, "visible": True}])
+        mock_descargar.return_value = None
+
+        rc = sincronizar_articulos(completo=True, purgar=True, forzar_purga=False)
+
+    assert rc == 0
+    # Circuit breaker frena la purga: no se ejecuta DELETE
+    for call_args in cur.execute.call_args_list:
+        assert "DELETE" not in str(call_args)
 
 
 @patch("baco.server.discourse.actualizar_nuevos_articulos.get_conn")

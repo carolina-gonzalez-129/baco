@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Tuple
 
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 

@@ -70,7 +70,7 @@ def test_titulo_de_serie_novedades_mayo_vs_junio_no_es_duplicado_exacto(clean_db
         resultado = buscador.evaluar_coincidencias("Novedades de la Versión - Junio 2026")
 
         assert resultado["encontrado"] is True
-        assert "nueva edición de la serie" in resultado["mensaje"]
+        assert "pertenecer a la serie" in resultado["mensaje"]
         assert resultado["link"] == "https://bc-dev.finneg.com/t/502"
 
 

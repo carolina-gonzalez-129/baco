@@ -30,9 +30,6 @@ def main():
         headers={"X-API-Key": api_key},
         timeout=60.0,
     )
-
-    print(f"Conectando al Orquestador en: {base_url}/chat")
-
     res = client.post("/chat", json={})
     if res.status_code != 200:
         print(f"\n[ERROR DE CONEXIÓN {res.status_code}]: {res.text}")
@@ -47,7 +44,7 @@ def main():
         opciones = resp.get("opciones") or []
         aviso_priv = resp.get("aviso_privacidad")
 
-        print(f"\n[Estado: {estado}]")
+        ##print(f"\n[Estado: {estado}]")
         if aviso_priv:
             print(f"Aviso de privacidad: {aviso_priv}")
         print(f"{mensaje}")

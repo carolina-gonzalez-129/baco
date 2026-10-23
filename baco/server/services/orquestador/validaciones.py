@@ -1,16 +1,8 @@
 from typing import Any, List, Literal, Optional, Tuple
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
-
-from baco.server.config_limites import (
-    TEXTO_MAX,
-    TEXTO_MIN,
-    TITULO_MAX,
-    TITULO_MIN,
-)
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.schemas.chat_orquestado import (
-    BorradorSesion,
     ChatOrquestadorRequest,
     ChatOrquestadorResponse,
     CoincidenciaArticulo,

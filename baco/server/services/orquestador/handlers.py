@@ -17,14 +17,10 @@ from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.mensajes import (
     MSG_DESCARTAR_COINCIDENCIA_TITULO,
-    MSG_ELEGIR_ENRIQUECER_O_CONTINUAR,
-    MSG_ELEGIR_ENRIQUECER_O_DESCARTAR,
-    MSG_ELEGIR_SERIE_O_DESCARTAR,
     MSG_ELEGIR_PLANTILLA,
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
     MSG_SIN_COINCIDENCIAS_TITULO,
-    MSG_TEXTO_VACIO,
     OPCIONES_ENRIQUECER_CONTINUAR,
     OPCIONES_ENRIQUECER_DESCARTAR,
     OPCIONES_SERIE_DECISION,

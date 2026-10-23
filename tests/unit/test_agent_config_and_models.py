@@ -71,10 +71,14 @@ def test_httpx_client_con_discourse_base_url_contiene_host():
 
 def test_schemas_articulo_y_tag_aplican_defaults():
     tag = Tag(name="ventas")
-    articulo = ArticuloSchema(id=1)
+    articulo = ArticuloSchema(
+        id=1,
+        titulo="Título de prueba con más de 15 caracteres",
+        texto="Texto de prueba que supera holgadamente los 20 caracteres mínimos requeridos.",
+    )
 
     assert tag.id is None
-    assert articulo.titulo == "Sin título"
+    assert articulo.titulo == "Título de prueba con más de 15 caracteres"
     assert articulo.tags == []
-    assert articulo.texto == ""
+    assert "Texto de prueba" in articulo.texto
     assert articulo.raw_extra == {}
