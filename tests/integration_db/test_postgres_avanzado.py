@@ -1,6 +1,9 @@
 import pytest
 import psycopg
-from baco.server.db.cargar_articulos_postgres import DDL_SCHEMA
+from pathlib import Path
+
+SCHEMA_FILE = Path(__file__).resolve().parents[2] / "baco" / "server" / "db" / "schema_completo.sql"
+DDL_SCHEMA = SCHEMA_FILE.read_text(encoding="utf-8")
 
 
 def test_idempotencia_migraciones_schema_dos_veces_seguidas(postgres_container):

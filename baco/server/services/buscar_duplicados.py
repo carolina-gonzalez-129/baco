@@ -1,57 +1,5 @@
 from baco.server.services.reglas_semanticas import son_semanticas_divergentes
 
-CAMPOS_PERMITIDOS = {
-    "titulo": "hash_titulo",
-    "texto": "hash_texto",
-    "texto_sin_headers": "hash_texto_sin_headers",
-}
-
-SQL_EMBEDDINGS_CON_TITULO = """
-    WITH candidatos AS (
-        (SELECT id FROM articulos WHERE embedding_texto IS NOT NULL ORDER BY embedding_texto <=> %s::vector LIMIT %s)
-        UNION
-        (SELECT id FROM articulos WHERE embedding_titulo IS NOT NULL ORDER BY embedding_titulo <=> %s::vector LIMIT %s)
-    ),
-    puntuados AS (
-        SELECT a.id, a.titulo, a.url, a.titulo_normalizado,
-               normalizar_texto(%s) AS consulta_normalizada,
-               LEFT(COALESCE(a.texto_normalizado, ''), 1000) AS texto_norm_1000,
-               round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
-               round((1 - (a.embedding_titulo <=> %s::vector))::numeric, 3) AS sim_titulo
-        FROM articulos a JOIN candidatos c ON a.id = c.id
-    )
-    SELECT id, titulo, url, titulo_normalizado, consulta_normalizada,
-           texto_norm_1000, sim_texto, sim_titulo,
-           round((0.8 * sim_texto + 0.2 * sim_titulo)::numeric, 3) AS score_total
-    FROM puntuados
-    WHERE sim_texto >= 0.90
-      AND sim_titulo >= 0.65
-      AND ((0.8 * sim_texto + 0.2 * sim_titulo) >= %s OR (sim_texto >= 0.93 AND sim_titulo >= 0.65))
-    ORDER BY score_total DESC
-    LIMIT %s;
-"""
-
-SQL_EMBEDDINGS_SOLO_TEXTO = """
-    WITH candidatos AS (
-        SELECT id FROM articulos WHERE embedding_texto IS NOT NULL ORDER BY embedding_texto <=> %s::vector LIMIT %s
-    ),
-    puntuados AS (
-        SELECT a.id, a.titulo, a.url, a.titulo_normalizado,
-               normalizar_texto(%s) AS consulta_normalizada,
-               LEFT(COALESCE(a.texto_normalizado, ''), 1000) AS texto_norm_1000,
-               round((1 - (a.embedding_texto <=> %s::vector))::numeric, 3) AS sim_texto,
-               0.0 AS sim_titulo
-        FROM articulos a JOIN candidatos c ON a.id = c.id
-    )
-    SELECT id, titulo, url, titulo_normalizado, consulta_normalizada,
-           texto_norm_1000, sim_texto, sim_titulo,
-           sim_texto AS score_total
-    FROM puntuados
-    WHERE sim_texto >= %s
-    ORDER BY score_total DESC
-    LIMIT %s;
-"""
-
 
 def extraer_url(coincidencia):
     if not coincidencia:
@@ -133,16 +81,12 @@ class BuscadorDuplicados:
         return None
 
     def evaluar_texto(self, texto: str, headers: bool, titulo: str, limite: int = 5):
-        exactos = (
-            self.buscar_por_texto(texto, limite=limite)
-            if headers
-            else self.buscar_por_texto_sin_headers(texto, limite=limite)
-        )
+        exactos = self.buscar_por_texto(texto, limite=limite)
         if exactos := self._filtrar_divergentes(exactos, titulo, texto=texto):
             return self._hallazgo(
                 "Ya existe un artículo con exactamente la misma descripción, ¿te gustaría mejorarlo?", exactos
             )
-        if similares := self.buscar_en_embeddings(texto, titulo, limite=limite):
+        if similares := self.buscar_en_embeddings(texto, titulo, umbral=0.85, limite=limite):
             return self._hallazgo(
                 "Ya existe un artículo que explica prácticamente lo mismo, ¿te gustaría mejorarlo?", similares
             )
@@ -157,27 +101,19 @@ class BuscadorDuplicados:
     def buscar_exacto(self, campo: str, valor: str, limite: int = 5):
         if not valor or not valor.strip():
             return []
-        columna = CAMPOS_PERMITIDOS.get(campo)
-        if not columna:
-            raise ValueError("Campo no permitido")
-        query = f"SELECT id, titulo, url FROM articulos WHERE {columna} = md5(normalizar_texto(%s)) ORDER BY id LIMIT %s"
-        self.cur.execute(query, (valor, limite))
+        if campo not in {"titulo", "texto"}:
+            return []
+        query = "SELECT id_articulo AS id, titulo_articulo AS titulo, url_articulo AS url FROM duplicados.buscar_exacto(%s, %s, %s);"
+        self.cur.execute(query, (valor, campo, limite))
         return self.cur.fetchall()
 
     def obtener_articulo(self, articulo_id: int) -> dict | None:
         if not articulo_id:
             return None
         query = """
-            SELECT a.id, a.titulo, a.url, a.texto, a.categoria_id,
-                   COALESCE(
-                       (SELECT array_agg(t.name ORDER BY t.name)
-                        FROM articulo_tags at
-                        JOIN tags t ON t.id = at.tag_id
-                        WHERE at.articulo_id = a.id),
-                       ARRAY[]::varchar[]
-                   ) AS tags
-            FROM articulos a
-            WHERE a.id = %s
+            SELECT id_articulo AS id, titulo_articulo AS titulo, url_articulo AS url, 
+                   texto_articulo AS texto, categoria_id, tags 
+            FROM duplicados.obtener_articulo(%s);
         """
         self.cur.execute(query, (articulo_id,))
         fila = self.cur.fetchone()
@@ -198,52 +134,29 @@ class BuscadorDuplicados:
         if not titulo or not titulo.strip():
             return []
         query = """
-            SELECT id, titulo, url, base_titulo
-            FROM articulos
-            WHERE base_titulo = titulo_base(normalizar_texto(%s))
-              AND base_titulo <> ''
-              AND titulo_base(normalizar_texto(%s)) <> normalizar_texto(%s)
-            ORDER BY id DESC
-            LIMIT %s;
+            SELECT id_articulo AS id, titulo_articulo AS titulo, url_articulo AS url, base_titulo 
+            FROM duplicados.similares_series(%s, %s);
         """
-        self.cur.execute(query, (titulo, titulo, titulo, limite))
+        self.cur.execute(query, (titulo, limite))
         return self.cur.fetchall()
 
     def buscar_por_titulo_trigrama(self, titulo: str, threshold: float = 0.70, limite: int = 10):
         if not titulo or not titulo.strip():
             return []
         query = """
-            SELECT id, titulo, url, titulo_normalizado,
-                   normalizar_texto(%s) AS consulta_normalizada,
-                   similarity(titulo_normalizado, normalizar_texto(%s)) AS score
-            FROM articulos
-            WHERE titulo_normalizado %% normalizar_texto(%s)
-            ORDER BY score DESC, id
-            LIMIT %s;
+            SELECT id_articulo AS id, titulo_articulo AS titulo, url_articulo AS url, score 
+            FROM duplicados.similares_trigramas(%s, %s::numeric, %s);
         """
-        self.cur.execute("SELECT set_config('pg_trgm.similarity_threshold', %s, true)", (str(threshold),))
-        self.cur.execute(query, (titulo, titulo, titulo, limite * 2))
+        self.cur.execute(query, (titulo, threshold, limite * 2))
         return self._filtrar_divergentes(self.cur.fetchall(), titulo, limite=limite)
 
-    def buscar_por_texto_sin_headers(self, texto: str, limite: int = 1):
-        if not texto or not texto.strip():
-            return []
-        query = """
-            SELECT id, titulo, url
-            FROM articulos
-            WHERE hash_texto_sin_headers = md5(normalizar_texto(limpiar_headers(%s)))
-            ORDER BY id
-            LIMIT %s;
-        """
-        self.cur.execute(query, (texto, limite))
-        return self.cur.fetchall()
 
-    def buscar_en_embeddings(self, texto: str, titulo: str, umbral: float = 0.92, limite: int = 5, k_vecinos: int = 5):
+    def buscar_en_embeddings(self, texto: str, titulo: str, umbral: float = 0.85, limite: int = 5, k_vecinos: int = 5):
         if not texto or not texto.strip():
             return []
 
         from baco.server.services.embeddings import embedding_texto, embedding_titulo
-        self.cur.execute("SELECT limpiar_headers(%s);", (texto,))
+        self.cur.execute("SELECT public.limpiar_headers(%s);", (texto,))
         row = self.cur.fetchone()
         texto_sin_headers = ((list(row.values())[0] if isinstance(row, dict) else row[0]) or "") if row else ""
         if not texto_sin_headers.strip():
@@ -257,10 +170,20 @@ class BuscadorDuplicados:
         vec_tit = embedding_titulo(titulo) if (titulo and titulo.strip()) else None
         if vec_tit:
             str_vec_tit = "[" + ",".join(str(f) for f in vec_tit) + "]"
-            params = (str_vec_txt, k_vecinos, str_vec_tit, k_vecinos, titulo, str_vec_txt, str_vec_tit, umbral, limite * 3)
-            self.cur.execute(SQL_EMBEDDINGS_CON_TITULO, params)
+            query = """
+                SELECT id_articulo AS id, titulo_articulo AS titulo, url_articulo AS url,
+                       titulo_normalizado, consulta_normalizada, texto_norm_1000,
+                       sim_texto, sim_titulo, score_total
+                FROM duplicados.similares_embeddings_con_titulo(%s::public.vector, %s::public.vector, %s, %s::numeric, %s);
+            """
+            self.cur.execute(query, (str_vec_txt, str_vec_tit, titulo, umbral, limite * 3))
         else:
-            params = (str_vec_txt, k_vecinos, titulo, str_vec_txt, umbral, limite * 3)
-            self.cur.execute(SQL_EMBEDDINGS_SOLO_TEXTO, params)
+            query = """
+                SELECT id_articulo AS id, titulo_articulo AS titulo, url_articulo AS url,
+                       titulo_normalizado, consulta_normalizada, texto_norm_1000,
+                       sim_texto, sim_titulo, score_total
+                FROM duplicados.similares_embeddings_solo_texto(%s::public.vector, %s, %s::numeric, %s);
+            """
+            self.cur.execute(query, (str_vec_txt, titulo, umbral, limite * 3))
 
         return self._filtrar_divergentes(self.cur.fetchall(), titulo, texto=texto, limite=limite)

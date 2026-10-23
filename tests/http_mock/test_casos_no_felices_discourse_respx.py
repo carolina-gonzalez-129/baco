@@ -126,11 +126,6 @@ def test_discourse_post_stream_vacio_o_ausente_retorna_none():
         assert resultado is None
 
 
-@pytest.mark.xfail(
-    reason="Regla de negocio: cuando un artículo se borra en Discourse, debe reportarse/auditarse pero "
-           "NO borrarse físicamente de la base de datos. El código actual ejecuta DELETE FROM articulos.",
-    strict=True
-)
 @respx.mock
 def test_articulo_borrado_en_discourse_se_reporta_y_no_se_borra_de_bd(monkeypatch):
     """
@@ -138,6 +133,11 @@ def test_articulo_borrado_en_discourse_se_reporta_y_no_se_borra_de_bd(monkeypatc
     pero NO debe eliminarse de la base de datos local para preservar el histórico de conocimiento.
     """
     tema_id = 999
+    # Simulamos que /latest.json no trae actividad nueva
+    respx.get(f"{BASE_URL}/latest.json").respond(
+        200,
+        json={"topic_list": {"topics": []}}
+    )
     # Simulamos que en Discourse el post viene marcado como deleted
     respx.get(f"{BASE_URL}/posts.json").respond(
         200,

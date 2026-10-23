@@ -26,6 +26,9 @@ DOCS_PATHS = {"/docs", "/openapi.json", "/redoc"}
 
 class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         auth = request.headers.get("Authorization", "")
         api_key = request.headers.get("X-API-Key")
 
@@ -73,5 +76,5 @@ class CleanCORSMiddleware(CORSMiddleware):
 
 
 def setup_middlewares(app: FastAPI) -> None:
-    app.add_middleware(CleanCORSMiddleware, **cors_kwargs)
     app.add_middleware(SecurityMiddleware)
+    app.add_middleware(CleanCORSMiddleware, **cors_kwargs)

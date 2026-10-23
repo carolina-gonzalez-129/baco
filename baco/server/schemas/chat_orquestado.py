@@ -3,7 +3,6 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from baco.server.config_limites import TEXTO_MAX, TITULO_MAX
-from baco.server.schemas.chat import ChatResponse
 from baco.server.schemas.validacion import ValidarFormatoResponse
 
 
