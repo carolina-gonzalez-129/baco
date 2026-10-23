@@ -418,7 +418,12 @@ async def handle_esperando_metadatos(
 
     texto_fuente = req.mensaje or req.texto or req.accion
     nuevos_tags, cat_res = parsear_metadatos_mensaje(
-        req.mensaje, req.tags, req.categoria_id, texto_fallback=texto_fuente
+        req.mensaje,
+        req.tags,
+        req.categoria_id,
+        texto_fallback=texto_fuente,
+        categorias_disponibles=sesion.categorias_disponibles,
+        tags_disponibles=sesion.tags_disponibles,
     )
     if cat_res is not None:
         b.categoria_id = cat_res
@@ -427,6 +432,7 @@ async def handle_esperando_metadatos(
         b.categoria_id = sesion.categoria_id or 1
 
     b.tags = combinar_tags(b.tipo_plantilla, b.tags, nuevos_tags)
+    sesion.tags = list(b.tags)
     if len(b.tags) < 2:
         intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
         return construir_respuesta(sesion, msg_pedir_tag_adicional(b.tipo_plantilla or "", intento), [])

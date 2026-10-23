@@ -5,7 +5,8 @@
    (baco/server/schemas/chat_orquestado.py).
 
    EL BACKEND MANDA. El panel no calcula estados: refleja el
-   `estado` y las `opciones` que devuelve cada turno.
+   `estado`, `etapa`, `tags_acumulados`, `categorias_disponibles`
+   y `opciones` que devuelve cada turno.
    ============================================================= */
 window.BACO = window.BACO || {};
 
@@ -21,7 +22,7 @@ BACO.ESTADOS = {
   ESPERANDO_PLANTILLA:{ etiqueta: 'Elegir plantilla',    tono: 'proceso', paso: 3,
                         ayuda: 'Elegí qué plantilla aplicar: instructivo o soluciones.' },
   ESPERANDO_METADATOS:{ etiqueta: 'Faltan etiquetas',    tono: 'proceso', paso: 3,
-                        ayuda: 'Agregá al menos un tag temático además del tipo de plantilla.' },
+                        ayuda: 'Agregá al menos un tag temático además del tipo de plantilla y elegí la categoría.' },
   REVISION_BORRADOR:  { etiqueta: 'En revisión',         tono: 'info',    paso: 4,
                         ayuda: 'El borrador está validado. Podés editarlo, sanitizarlo, aprobarlo o rechazarlo.' },
   SUBSANANDO_BORRADOR:{ etiqueta: 'Corrigiendo',          tono: 'alerta',  paso: 4,
@@ -87,11 +88,21 @@ BACO.OPCIONES = {
 BACO.store = (function () {
   'use strict';
   const oyentes = [];
+  const ETAPAS_DEFAULT = ['Título y duplicados', 'Contenido', 'Plantilla y etiquetas', 'Revisión', 'Aprobación'];
 
   const estado = {
     session_id: null,
     flujo: 'ESPERANDO_TITULO',
+    etapa: {
+      actual: 1,
+      total: 5,
+      nombre: ETAPAS_DEFAULT[0],
+      etapas: ETAPAS_DEFAULT.slice()
+    },
     opciones: [],
+    tags_acumulados: [],
+    categorias_disponibles: [],
+    tags_disponibles: [],
     coincidencias: [],
     borrador: null,
     validacion: null,
@@ -115,7 +126,34 @@ BACO.store = (function () {
     aplicarTurno(r) {
       estado.session_id = r.session_id;
       estado.flujo = r.estado;
+      if (r.etapa) {
+        estado.etapa = {
+          actual: Number(r.etapa.actual) || 1,
+          total: Number(r.etapa.total) || 5,
+          nombre: r.etapa.nombre || '',
+          etapas: Array.isArray(r.etapa.etapas) && r.etapa.etapas.length
+            ? r.etapa.etapas.slice()
+            : ETAPAS_DEFAULT.slice()
+        };
+      } else {
+        const pasoFallback = (BACO.ESTADOS[r.estado] || {}).paso || 1;
+        estado.etapa = {
+          actual: pasoFallback,
+          total: 5,
+          nombre: ETAPAS_DEFAULT[pasoFallback - 1] || '',
+          etapas: ETAPAS_DEFAULT.slice()
+        };
+      }
       estado.opciones = r.opciones || [];
+      estado.tags_acumulados = Array.isArray(r.tags_acumulados)
+        ? r.tags_acumulados.slice()
+        : ((r.borrador && r.borrador.tags) ? r.borrador.tags.slice() : []);
+      if (Array.isArray(r.categorias_disponibles) && r.categorias_disponibles.length) {
+        estado.categorias_disponibles = r.categorias_disponibles.slice();
+      }
+      if (Array.isArray(r.tags_disponibles) && r.tags_disponibles.length) {
+        estado.tags_disponibles = r.tags_disponibles.slice();
+      }
       estado.coincidencias = r.coincidencias || [];
       estado.borrador = r.borrador || null;
       estado.validacion = r.validacion || null;
@@ -126,13 +164,22 @@ BACO.store = (function () {
         estado.form.texto = r.borrador.texto || '';
         estado.form.tags = (r.borrador.tags || []).slice();
         estado.form.categoria_id = r.borrador.categoria_id || 1;
+      } else if (estado.tags_acumulados.length) {
+        estado.form.tags = estado.tags_acumulados.slice();
       }
       notificar();
     },
 
     reiniciarLocal() {
       estado.session_id = null; estado.flujo = 'ESPERANDO_TITULO';
-      estado.opciones = []; estado.coincidencias = [];
+      estado.etapa = {
+        actual: 1,
+        total: 5,
+        nombre: ETAPAS_DEFAULT[0],
+        etapas: ETAPAS_DEFAULT.slice()
+      };
+      estado.opciones = []; estado.tags_acumulados = [];
+      estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;
       estado.form = { titulo: '', texto: '', tags: [], categoria_id: 1 };
       notificar();
@@ -140,8 +187,9 @@ BACO.store = (function () {
   };
 })();
 
-/* Porcentaje de avance del flujo, solo informativo */
+/* Porcentaje de avance del flujo, dictado por etapa del servidor */
 BACO.avance = function (s) {
-  const paso = (BACO.ESTADOS[s.flujo] || {}).paso || 1;
-  return Math.min(100, Math.round((paso / 5) * 100));
+  const actual = (s.etapa && s.etapa.actual) || (BACO.ESTADOS[s.flujo] || {}).paso || 1;
+  const total = (s.etapa && s.etapa.total) || 5;
+  return Math.min(100, Math.round((actual / total) * 100));
 };

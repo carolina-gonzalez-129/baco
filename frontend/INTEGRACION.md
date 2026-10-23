@@ -54,7 +54,11 @@ Todo lo que devolvés se refleja en la pantalla:
 
 | Campo | Qué hace el panel |
 |---|---|
-| `estado` | Decide qué campos se habilitan y qué paso se marca en el rail |
+| `estado` | Decide qué campos se habilitan y qué estado se informa |
+| `etapa` | Alimenta el stepper lateral y la barra de progreso (`actual` de `total` y nombres de `etapas`) |
+| `tags_acumulados` | Muestra en el rail lateral los tags elegidos hasta ahora y en el resumen final |
+| `categorias_disponibles` | Renderiza las categorías de la tabla `categorias` como selector y chips clickeables |
+| `tags_disponibles` | Alimenta las sugerencias de etiquetas desde la tabla `tags` |
 | `opciones` | Se renderizan como botones, abajo y en el chat |
 | `mensaje` | Va al hilo del chat |
 | `coincidencias` | Lista con el score y el tipo traducido a lenguaje común |

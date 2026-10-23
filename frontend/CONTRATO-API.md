@@ -204,22 +204,93 @@ El archivo **no se adjunta a la entrada**: se extrae el contenido y se vuelca en
 
 ---
 
-## Chat del companion
+## Chat del companion (Orquestador FSM)
 
 ### `POST /chat`
 
-```json
-{ "entrada_id": "ent_8f2a", "mensaje": "¿Cómo convierto las tablas?" }
-```
+Endpoint unificado del orquestador determinista en servidor (`baco/server/services/orquestador/`). La sesión viaja por cookie `baco_session` (httpOnly) o cabecera `X-Session-ID`.
+
+**Request (`ChatOrquestadorRequest`):**
 
 ```json
 {
-  "respuesta": "Las tablas van en Markdown dentro del cuerpo…",
-  "acciones": [{ "tipo": "aplicar_plantilla", "etiqueta": "Aplicar plantilla de instructivo", "payload": { "tipo": "instructivo" } }]
+  "mensaje": "Configurar facturación electrónica en Ventas",
+  "accion": null,
+  "titulo": null,
+  "texto": null,
+  "categoria_id": 5,
+  "tags": ["instructivo", "ventas"]
 }
 ```
 
-`acciones` es opcional: son botones que el panel renderiza dentro de la burbuja. Si el backend no manda ninguna, el chat es solo texto.
+- Tope máximo de `texto` / `mensaje`: **6687 caracteres** (`TEXTO_MAX`).
+- Tope máximo de `titulo`: **255 caracteres** (`TITULO_MAX`).
+
+**Response (`ChatOrquestadorResponse`):**
+
+```json
+{
+  "session_id": "abc123...",
+  "estado": "REVISION_BORRADOR",
+  "etapa": {
+    "actual": 4,
+    "total": 5,
+    "nombre": "Revisión",
+    "etapas": [
+      "Título y duplicados",
+      "Contenido",
+      "Plantilla y etiquetas",
+      "Revisión",
+      "Aprobación"
+    ]
+  },
+  "mensaje": "Metadatos registrados. El borrador fue validado (Listo). ¿Confirmás aprobar o rechazar?",
+  "opciones": ["aprobar", "editar", "sanitizar", "rechazar", "volver", "reiniciar"],
+  "tags_acumulados": ["instructivo", "ventas", "facturacion"],
+  "categorias_disponibles": [
+    { "id": 21, "nombre": "Contabilidad" },
+    { "id": 20, "nombre": "Ventas" },
+    { "id": 37, "nombre": "Agro" }
+  ],
+  "tags_disponibles": ["afip", "facturacion", "instructivo", "soluciones", "ventas"],
+  "coincidencias": [],
+  "borrador": {
+    "modo": "nuevo",
+    "articulo_original_id": null,
+    "articulo_original_url": null,
+    "titulo": "Configurar facturación electrónica en Ventas",
+    "texto": "Para configurar el punto de venta...",
+    "texto_original_aprobado": null,
+    "tipo_plantilla": "instructivo",
+    "categoria_id": 5,
+    "tags": ["instructivo", "ventas", "facturacion"]
+  },
+  "validacion": {
+    "valido": true,
+    "status": "Listo",
+    "titulo_sanitizado": "Configurar facturación electrónica en Ventas",
+    "texto_sanitizado": "Para configurar el punto de venta...",
+    "findings": [],
+    "resumen": { "longitud_texto": 180, "tags_count": 3 }
+  },
+  "aviso_privacidad": null
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `session_id` | `string` | Identificador de sesión activa |
+| `estado` | `EstadoFlujo` | Estado actual de la FSM (`ESPERANDO_TITULO`, `DECISION_TITULO`, `ESPERANDO_TEXTO`, `DECISION_TEXTO`, `ESPERANDO_PLANTILLA`, `ESPERANDO_METADATOS`, `REVISION_BORRADOR`, `SUBSANANDO_BORRADOR`, `APROBADO`, `RECHAZADO`) |
+| `etapa` | `EtapaFlujo` | Progreso `actual` de `total` (1 a 5), `nombre` de la etapa actual y lista ordenada `etapas` |
+| `mensaje` | `string` | Respuesta conversacional de Baco para el turno actual |
+| `opciones` | `string[]` | Acciones o botones elegibles habilitados por el servidor en este estado |
+| `tags_acumulados` | `string[]` | Etiquetas acumuladas en la sesión/borrador hasta el turno actual |
+| `categorias_disponibles` | `{id, nombre}[]` | Categorías leídas de la tabla `categorias` para mostrar como chips/selector |
+| `tags_disponibles` | `string[]` | Etiquetas leídas de la tabla `tags` para sugerencias |
+| `borrador` | `BorradorSesion \| null` | Borrador de sesión en memoria (si ya fue instanciado) |
+| `coincidencias` | `CoincidenciaArticulo[]` | Candidatos detectados en los estados de decisión de duplicados |
+| `validacion` | `ValidarFormatoResponse \| null` | Resultado de validación determinista post-duplicados |
+| `aviso_privacidad` | `string \| null` | Aviso puntual cuando se anonimizan datos sensibles en el turno |
 
 ---
 

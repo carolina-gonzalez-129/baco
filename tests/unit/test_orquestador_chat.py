@@ -36,9 +36,12 @@ TEXTO_VALIDO = (
 
 @pytest.fixture(autouse=True)
 def limpiar_sesiones():
+    from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
     SESIONES.clear()
+    limpiar_cache_catalogos()
     yield
     SESIONES.clear()
+    limpiar_cache_catalogos()
 
 
 @pytest.fixture
@@ -184,7 +187,7 @@ def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(cli
     # Rechaza también la coincidencia de texto -> pide primero tipo de plantilla (Variante C1 - Parte A)
     r_plant = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
     assert r_plant["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
-    assert r_plant["opciones"] == ["instructivo", "soluciones"]
+    assert r_plant["opciones"] == ["instructivo", "soluciones", "volver"]
 
     # Elige plantilla 'instructivo' -> pasa a ESPERANDO_METADATOS (Variante C1 - Parte B)
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
@@ -233,7 +236,11 @@ def test_camino_sin_coincidencias_plantilla_metadatos_y_rechazo_humano(client, m
     assert r4["validacion"]["valido"] is True
 
     r5 = client.post("/chat", json={"session_id": sid, "accion": "rechazar"}).json()
-    assert r5["estado"] == EstadoFlujo.RECHAZADO
+    assert r5["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert "confirmar_rechazo" in r5["opciones"]
+
+    r6 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_rechazo"}).json()
+    assert r6["estado"] == EstadoFlujo.RECHAZADO
 
 
 def test_validacion_cotas_titulo_esperando_titulo(client):
@@ -814,6 +821,160 @@ def test_ajuste_editorial_corregir_limpia_y_aprueba(client, mock_buscador):
 
     r_apr = client.post("/chat", json={"session_id": sid, "accion": "aprobar"}).json()
     assert r_apr["estado"] == EstadoFlujo.APROBADO
+
+
+def test_contrato_ampliado_etapa_tags_acumulados_y_categorias_desde_db(client, mock_buscador):
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+    mock_buscador.cur.fetchall.side_effect = [
+        [
+            {"id": 1, "nombre": "General"},
+            {"id": 5, "nombre": "Ventas"},
+            {"id": 23, "nombre": "Impuestos"},
+        ],
+        [
+            {"id": 10, "name": "afip", "slug": "afip"},
+            {"id": 11, "name": "instructivo", "slug": "instructivo"},
+            {"id": 12, "name": "ventas", "slug": "ventas"},
+        ],
+    ]
+
+    # Etapa 1 de 5: Bienvenida (ESPERANDO_TITULO)
+    r0 = client.post("/chat", json={}).json()
+    assert r0["estado"] == EstadoFlujo.ESPERANDO_TITULO
+    assert r0["etapa"]["actual"] == 1
+    assert r0["etapa"]["total"] == 5
+    assert r0["etapa"]["nombre"] == "Título y duplicados"
+    assert len(r0["etapa"]["etapas"]) == 5
+    assert r0["tags_acumulados"] == []
+    assert r0["borrador"] is None
+    assert r0["categorias_disponibles"] == [
+        {"id": 1, "nombre": "General"},
+        {"id": 5, "nombre": "Ventas"},
+        {"id": 23, "nombre": "Impuestos"},
+    ]
+    assert r0["tags_disponibles"] == ["afip", "instructivo", "ventas"]
+
+    # Etapa 2 de 5: Envía título -> ESPERANDO_TEXTO
+    r1 = client.post("/chat", json={"titulo": "Configurar Punto de Venta AFIP en Ventas"}).json()
+    assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r1["etapa"]["actual"] == 2
+    assert r1["etapa"]["nombre"] == "Contenido"
+    assert "volver" in r1["opciones"]
+
+    # Etapa 3 de 5: Envía texto -> ESPERANDO_PLANTILLA
+    r2 = client.post("/chat", json={"texto": TEXTO_VALIDO}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert r2["etapa"]["actual"] == 3
+    assert r2["etapa"]["nombre"] == "Plantilla y etiquetas"
+    assert "instructivo" in r2["opciones"]
+    assert "soluciones" in r2["opciones"]
+    assert r2["borrador"] is not None
+
+    # Sigue en Etapa 3 de 5: Elige plantilla -> ESPERANDO_METADATOS y acumula tag 'instructivo'
+    r3 = client.post("/chat", json={"accion": "instructivo"}).json()
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r3["etapa"]["actual"] == 3
+    assert r3["tags_acumulados"] == ["instructivo"]
+
+    # Etapa 4 de 5: Envía tags y categoría elegida (id=23) -> REVISION_BORRADOR
+    r4 = client.post("/chat", json={"tags": ["ventas", "afip"], "categoria_id": 23}).json()
+    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r4["etapa"]["actual"] == 4
+    assert r4["etapa"]["nombre"] == "Revisión"
+    assert r4["tags_acumulados"] == ["instructivo", "ventas", "afip"]
+    assert r4["borrador"]["categoria_id"] == 23
+    assert r4["borrador"]["tags"] == ["instructivo", "ventas", "afip"]
+    assert "aprobar" in r4["opciones"]
+
+    # Etapa 5 de 5: Aprueba -> APROBADO con resumen final
+    r5 = client.post("/chat", json={"accion": "aprobar"}).json()
+    assert r5["estado"] == EstadoFlujo.APROBADO
+    assert r5["etapa"]["actual"] == 5
+    assert r5["etapa"]["total"] == 5
+    assert r5["etapa"]["nombre"] == "Aprobación"
+    assert r5["tags_acumulados"] == ["instructivo", "ventas", "afip"]
+    assert r5["borrador"]["categoria_id"] == 23
+
+
+def test_seleccion_categoria_por_nombre_en_metadatos(client, mock_buscador):
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+    mock_buscador.cur.fetchall.side_effect = [
+        [(1, "General"), (39, "Liquidación de Haberes")],
+        [(1, "instructivo", "instructivo"), (2, "sueldos", "sueldos")],
+    ]
+
+    client.post("/chat", json={"titulo": "Configurar antigüedad acumulada en legajos"})
+    client.post("/chat", json={"texto": TEXTO_VALIDO})
+    client.post("/chat", json={"accion": "instructivo"})
+
+    # Usuario envía tag temático y el nombre de la categoría disponible
+    r_val = client.post("/chat", json={"mensaje": "sueldos, Liquidación de Haberes"}).json()
+    assert r_val["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_val["borrador"]["categoria_id"] == 39
+    assert r_val["tags_acumulados"] == ["instructivo", "sueldos"]
+
+
+def test_cache_en_memoria_reutiliza_catalogos_sin_consultar_db(client, mock_buscador):
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    # Primer turno: poblar el cache desde el cursor
+    mock_buscador.cur.fetchall.side_effect = [
+        [{"id": 1, "nombre": "General"}, {"id": 2, "nombre": "Ventas"}],
+        [{"name": "instructivo"}, {"name": "ventas"}],
+    ]
+    r1 = client.post("/chat", json={}).json()
+    assert len(r1["categorias_disponibles"]) == 2
+    assert len(r1["tags_disponibles"]) == 2
+
+    # Desactivamos el cursor para que si consulta de nuevo devuelva vacío
+    mock_buscador.cur.fetchall.side_effect = None
+    mock_buscador.cur.fetchall.return_value = []
+
+    # Nueva sesión (simulando otro usuario / otra sesión de chat)
+    c2 = client.post("/chat", json={"session_id": "sesion-distinta-123", "mensaje": "Nuevo título de prueba"}).json()
+    assert len(c2["categorias_disponibles"]) == 2
+    assert c2["categorias_disponibles"][0]["nombre"] == "General"
+    assert len(c2["tags_disponibles"]) == 2
+    assert "instructivo" in c2["tags_disponibles"]
+
+
+def test_catalogo_curado_opcion_a_y_resolucion_nombres(client, mock_buscador):
+    from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos, DICCIONARIO_OFICIAL_CATEGORIAS
+    limpiar_cache_catalogos()
+
+    # Simular lectura de BD completa con 15 registros de 'Categoría {id}'
+    filas_bd = [(cid, f"Categoría {cid}") for cid in [1, 2, 4, 19, 20, 21, 22, 23, 24, 25, 37, 39, 48, 62, 115, 128]]
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+    mock_buscador.cur.fetchall.side_effect = [
+        filas_bd,
+        [{"name": "instructivo"}, {"name": "ventas"}],
+    ]
+
+    r = client.post("/chat", json={}).json()
+    cats = r["categorias_disponibles"]
+    # Debe entregar exactamente los 21 módulos curados de la Opción A
+    assert len(cats) == 21
+    nombres = [c["nombre"] for c in cats]
+    assert "Contabilidad" in nombres
+    assert "Ventas" in nombres
+    assert "Agro" in nombres
+    assert "Compras" in nombres
+    assert "Tesorería" in nombres
+    # Ninguna categoría curada debe llamarse 'Categoría X'
+    assert not any(n.startswith("Categoría ") for n in nombres)
+
+    # Verificar que Ventas tiene ID 20 y Contabilidad tiene ID 21
+    mapa = {c["nombre"]: c["id"] for c in cats}
+    assert mapa["Ventas"] == 20
+    assert mapa["Contabilidad"] == 21
+    assert mapa["Agro"] == 37
+
+
+
 
 
 

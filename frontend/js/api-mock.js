@@ -222,13 +222,52 @@ BACO.apiMock = (function () {
     return mapa[bruto] || bruto;
   }
 
+  const ETAPAS_FLUJO = [
+    'Título y duplicados',
+    'Contenido',
+    'Plantilla y etiquetas',
+    'Revisión',
+    'Aprobación'
+  ];
+
+  const MAPA_ETAPAS = {
+    ESPERANDO_TITULO: 1,
+    DECISION_TITULO: 1,
+    ESPERANDO_TEXTO: 2,
+    DECISION_TEXTO: 2,
+    ESPERANDO_PLANTILLA: 3,
+    ESPERANDO_METADATOS: 3,
+    REVISION_BORRADOR: 4,
+    SUBSANANDO_BORRADOR: 4,
+    APROBADO: 5,
+    RECHAZADO: 5
+  };
+
   function resp(mensaje, opciones, aviso) {
     const s = sesion;
+    const actual = MAPA_ETAPAS[s.estado] || 1;
+    const tagsAcum = s.borrador
+      ? combinarTags(s.borrador.tipo_plantilla, s.borrador.tags, s.tags)
+      : combinarTags(tipoPlantilla(s.tags), s.tags);
+    const catsDisp = ((BACO.datos && BACO.datos.categorias) || []).map((c, idx) => ({
+      id: typeof c.id === 'number' ? c.id : (idx + 1),
+      nombre: c.nombre
+    }));
+    const tagsDisp = ((BACO.datos && BACO.datos.etiquetas) || []).map((e) => e.tag);
     return {
       session_id: s.session_id,
       estado: s.estado,
+      etapa: {
+        actual: actual,
+        total: ETAPAS_FLUJO.length,
+        nombre: ETAPAS_FLUJO[actual - 1],
+        etapas: ETAPAS_FLUJO.slice()
+      },
       mensaje: mensaje,
       opciones: opciones || [],
+      tags_acumulados: tagsAcum,
+      categorias_disponibles: catsDisp,
+      tags_disponibles: tagsDisp,
       coincidencias: (s.estado === 'DECISION_TITULO' || s.estado === 'DECISION_TEXTO') ? s.coincidencias : [],
       borrador: s.borrador ? JSON.parse(JSON.stringify(s.borrador)) : null,
       validacion: s.validacion || null,

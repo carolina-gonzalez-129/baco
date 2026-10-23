@@ -187,7 +187,7 @@ DO $$
 $$;
 
 GRANT USAGE ON SCHEMA public TO baco_readonly;
-GRANT SELECT ON TABLE articulos, tags, articulo_tags TO baco_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO baco_readonly;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO baco_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO baco_readonly;
 

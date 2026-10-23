@@ -14,6 +14,7 @@ from baco.server.services.orquestador.mensajes import (
 )
 from baco.server.services.orquestador.sesion import gestor_sesiones
 from baco.server.services.orquestador.validaciones import (
+    cargar_catalogos_sesion,
     construir_respuesta,
     interpretar_opcion,
 )
@@ -27,7 +28,10 @@ async def manejar_turno(
     if opcion == "reiniciar":
         gestor_sesiones.eliminar(sesion.session_id)
         sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
+        await cargar_catalogos_sesion(sesion, buscador)
         return construir_respuesta(sesion, MENSAJE_BIENVENIDA, [])
+
+    await cargar_catalogos_sesion(sesion, buscador)
 
     if fue_expirada:
         return construir_respuesta(sesion, MSG_SESION_EXPIRADA, OPCIONES_REINICIAR)
