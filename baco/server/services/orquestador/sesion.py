@@ -34,6 +34,7 @@ class SesionChat:
     intentos_correccion: int = 0
     intentos_fallidos_por_estado: Dict[str, int] = field(default_factory=dict)
     confirmando_rechazo: bool = False
+    articulos_descartados_ids: List[int] = field(default_factory=list)
 
     def registrar_fallo(self, estado_clave: Optional[str] = None) -> int:
         clave = estado_clave or self.estado.value
