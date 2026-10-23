@@ -432,3 +432,22 @@ input,textarea,select{font-family:inherit}
 .banner.aviso .cerrar{color:var(--info)}
 .btn-peligro{background:var(--stop);color:#fff}
 .btn-peligro:hover:not(:disabled){background:#A32E22}
+
+/* =============================================================
+   Stepper dinámico, tags acumulados, categorías y resumen final
+   ============================================================= */
+.railtags{display:flex;flex-wrap:wrap;gap:5px;padding:2px 8px 6px}
+.railtag{font-family:var(--mono);font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.18)}
+.railtag.tipo{background:var(--coral);border-color:var(--coral)}
+.vacio-rail{font-size:11px;color:rgba(255,255,255,.38);font-style:italic}
+
+.sugg.cat-chip{background:var(--surface-2);border:1px solid var(--rule-2);color:var(--ink-2)}
+.sugg.cat-chip:hover:not(:disabled){border-color:var(--coral);color:var(--coral-700);background:var(--coral-soft)}
+.sugg.cat-chip.on{background:var(--navy-800);border-color:var(--navy-800);color:#fff}
+.sugg:disabled{opacity:.5;cursor:not-allowed}
+
+.resumen-final{background:var(--ok-soft);border:1px solid var(--ok-line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow-1)}
+.resumen-final h3{margin:0;font-size:13.5px;font-weight:800;color:var(--ok);display:flex;align-items:center;gap:7px}
+.resumen-final .rf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px 14px;font-size:12px}
+.resumen-final .rf-k{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);display:block}
+.resumen-final .rf-v{font-weight:700;color:var(--ink)}

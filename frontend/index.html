@@ -48,6 +48,11 @@
         <div class="paso"><span class="pn">5</span> Aprobación</div>
       </div>
 
+      <h4>Tags acumulados</h4>
+      <div class="railtags" id="railTags">
+        <span class="vacio-rail">Sin etiquetas aún</span>
+      </div>
+
       <h4>Skills del agente</h4>
       <button class="navitem" id="btnPlantilla">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.5" y="2" width="11" height="12" rx="1.4" stroke="currentColor" stroke-width="1.3"/><path d="M5 5.5h6M5 8h6M5 10.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
@@ -92,6 +97,7 @@
         <div id="bannerAviso"></div>
 
         <div class="panebody scroll">
+          <div id="slotResumenFinal"></div>
           <div id="slotBorrador"></div>
           <div id="slotCoincidencias"></div>
 
@@ -131,8 +137,11 @@
               </div>
               <div class="suggrow" id="suggRow"></div>
 
-              <label class="flabel" for="fCategoria" style="margin-top:14px">ID de categoría</label>
-              <input class="input corto" id="fCategoria" type="number" min="1" value="1">
+              <label class="flabel" for="fCategoria" style="margin-top:14px">Categoría</label>
+              <select class="input sel" id="fCategoria">
+                <option value="1">Seleccionar categoría...</option>
+              </select>
+              <div class="suggrow" id="catChipsRow"></div>
             </div>
           </div>
 

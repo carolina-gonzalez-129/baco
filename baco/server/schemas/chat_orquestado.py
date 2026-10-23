@@ -39,6 +39,21 @@ class CoincidenciaArticulo(BaseModel):
     )
 
 
+class CategoriaOpcion(BaseModel):
+    id: int = Field(..., description="ID de la categoría en la tabla 'categorias'.")
+    nombre: str = Field(..., description="Nombre de la categoría en la tabla 'categorias'.")
+
+
+class EtapaFlujo(BaseModel):
+    actual: int = Field(..., ge=1, description="Número de etapa actual (n de N).")
+    total: int = Field(default=5, ge=1, description="Cantidad total de etapas del flujo (N).")
+    nombre: str = Field(..., description="Nombre descriptivo de la etapa actual.")
+    etapas: List[str] = Field(
+        default_factory=list,
+        description="Lista ordenada de todas las etapas del flujo para el stepper."
+    )
+
+
 class BorradorSesion(BaseModel):
     modo: Literal["nuevo", "enriquecimiento"]
     articulo_original_id: Optional[int] = None
@@ -54,7 +69,7 @@ class BorradorSesion(BaseModel):
 class ChatOrquestadorRequest(BaseModel):
     session_id: Optional[str] = Field(
         default=None,
-        description="DEPRECADO: El ID de sesión es gestionado exclusivamente por el servidor mediante cookie 'baco_session' o cabecera 'X-Session-ID'. Cualquier valor enviado en este campo del cuerpo será ignorado."
+        description="El ID de sesión es gestionado exclusivamente por el servidor mediante cookie 'baco_session' o cabecera 'X-Session-ID'. Cualquier valor enviado en este campo del cuerpo será ignorado."
     )
     mensaje: Optional[str] = Field(
         default=None,
@@ -99,10 +114,26 @@ class ChatOrquestadorRequest(BaseModel):
 class ChatOrquestadorResponse(BaseModel):
     session_id: str
     estado: EstadoFlujo
+    etapa: EtapaFlujo = Field(
+        ...,
+        description="Etapa actual del flujo (n de N) y listado de etapas para el stepper."
+    )
     mensaje: str
     opciones: List[str] = Field(
         default_factory=list,
         description="Botones o acciones válidas en el estado actual."
+    )
+    tags_acumulados: List[str] = Field(
+        default_factory=list,
+        description="Etiquetas acumuladas en la sesión o borrador hasta el momento."
+    )
+    categorias_disponibles: List[CategoriaOpcion] = Field(
+        default_factory=list,
+        description="Categorías elegibles provenientes de la tabla 'categorias' (id y nombre)."
+    )
+    tags_disponibles: List[str] = Field(
+        default_factory=list,
+        description="Etiquetas disponibles provenientes de la tabla 'tags'."
     )
     coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list)
     borrador: Optional[BorradorSesion] = None

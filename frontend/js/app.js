@@ -1,7 +1,8 @@
 /* =============================================================
    BACO — Interfaz
    -------------------------------------------------------------
-   El backend conduce el flujo: cada turno devuelve `estado` y
+   El backend conduce el flujo: cada turno devuelve `estado`,
+   `etapa`, `tags_acumulados`, `categorias_disponibles` y
    `opciones`, y el panel se acomoda a eso.
 
    · Derecha (chat) = el hilo de la conversación y los botones
@@ -43,7 +44,6 @@
      Un turno contra el backend
      ========================================================= */
   async function enviarTurno(payload, etiquetaUsuario) {
-    const s = store.get();
     const cuerpo = Object.assign({}, payload);   // la sesión la maneja la capa de API
 
     if (etiquetaUsuario) burbuja('me', esc(etiquetaUsuario));
@@ -73,11 +73,20 @@
     }
   }
 
+  function nombreCategoria(s, catId) {
+    const idNum = Number(catId);
+    const lista = s.categorias_disponibles || [];
+    const enc = lista.find((c) => Number(c.id) === idNum);
+    return enc ? enc.nombre : ('Categoría ' + esc(catId));
+  }
+
   /* =========================================================
      Render
      ========================================================= */
   function pintar(s) {
     const info = BACO.ESTADOS[s.flujo] || BACO.ESTADOS.ESPERANDO_TITULO;
+    const etapaActual = (s.etapa && s.etapa.actual) || info.paso || 1;
+    const etapaTotal = (s.etapa && s.etapa.total) || 5;
 
     const pill = $('#pillEstado');
     pill.textContent = info.etiqueta;
@@ -87,15 +96,13 @@
     const pct = BACO.avance(s);
     $('#meterFill').style.width = pct + '%';
     $('#meterFill').classList.toggle('full', s.flujo === 'APROBADO');
-    $('#meterPct').textContent = 'Paso ' + info.paso + ' de 5';
+    $('#meterPct').textContent = 'Etapa ' + etapaActual + ' de ' + etapaTotal;
 
     $('#sesion').textContent = s.session_id ? 'sesión ' + s.session_id.slice(0, 8) : '';
 
-    /* resalta el paso actual en el rail */
-    Array.prototype.forEach.call(document.querySelectorAll('#pasos .paso'), (nodo, i) => {
-      nodo.classList.toggle('on', i + 1 === info.paso);
-      nodo.classList.toggle('hecho', i + 1 < info.paso);
-    });
+    /* Stepper dinámico dictado por s.etapa */
+    pintarStepper(s, etapaActual);
+    pintarTagsAcumuladosRail(s);
 
     /* campos activos según el estado */
     const act = BACO.CAMPOS_ACTIVOS[s.flujo] || {};
@@ -108,9 +115,14 @@
     $('#campoTags').classList.toggle('activo', !!act.tags);
     $('#tagBox').classList.toggle('off', !act.tags);
 
-    /* Contadores. El mínimo solo se muestra mientras falta llegar:
-       una vez alcanzado, "85/15" se leía como si estuviera pasado
-       de un límite. */
+    if ($('#fTitulo').value !== s.form.titulo && document.activeElement !== $('#fTitulo')) {
+      $('#fTitulo').value = s.form.titulo;
+    }
+    if ($('#fCuerpo').value !== s.form.texto && document.activeElement !== $('#fCuerpo')) {
+      $('#fCuerpo').value = s.form.texto;
+    }
+
+    /* Contadores */
     contador($('#contTitulo'), s.form.titulo.length, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
     contador($('#contTexto'),  s.form.texto.length,  cfg.MIN_TEXTO,  'caracteres', cfg.MAX_TEXTO);
     contador($('#contTags'),   s.form.tags.length,   cfg.MIN_TAGS,   'etiquetas', cfg.MAX_TAGS);
@@ -121,7 +133,6 @@
     if (acc) {
       btn.hidden = false;
       btn.disabled = s.enviando || !listoParaEnviar(s, acc.campo);
-      /* En revisión, el botón dice si hay algo pendiente de guardar */
       btn.textContent = (acc.campo === 'todo' && !hayCambios(s))
         ? 'Sin cambios para guardar'
         : acc.label;
@@ -132,10 +143,113 @@
     }
 
     pintarTags(s);
+    pintarCategorias(s, !!act.categoria && !s.enviando);
+    pintarResumenFinal(s);
     pintarBorrador(s);
     pintarCoincidencias(s);
     pintarValidacion(s);
     pintarOpciones(s);
+  }
+
+  function pintarStepper(s, etapaActual) {
+    const cont = $('#pasos');
+    if (!cont) return;
+    const nombres = (s.etapa && Array.isArray(s.etapa.etapas) && s.etapa.etapas.length)
+      ? s.etapa.etapas
+      : ['Título y duplicados', 'Contenido', 'Plantilla y etiquetas', 'Revisión', 'Aprobación'];
+
+    if (cont.children.length !== nombres.length) {
+      cont.innerHTML = '';
+      nombres.forEach((nom, idx) => {
+        cont.appendChild(el('div', 'paso', '<span class="pn">' + (idx + 1) + '</span> ' + esc(nom)));
+      });
+    }
+
+    Array.prototype.forEach.call(cont.querySelectorAll('.paso'), (nodo, i) => {
+      const n = i + 1;
+      const completado = (s.flujo === 'APROBADO') ? true : (n < etapaActual);
+      const activo = (s.flujo !== 'APROBADO') && (n === etapaActual);
+      nodo.classList.toggle('on', activo);
+      nodo.classList.toggle('hecho', completado);
+    });
+  }
+
+  function pintarTagsAcumuladosRail(s) {
+    const rail = $('#railTags');
+    if (!rail) return;
+    const lista = (s.tags_acumulados && s.tags_acumulados.length)
+      ? s.tags_acumulados
+      : (s.form.tags || []);
+    if (!lista.length) {
+      rail.innerHTML = '<span class="vacio-rail">Sin etiquetas aún</span>';
+      return;
+    }
+    const plantilla = s.borrador && s.borrador.tipo_plantilla;
+    rail.innerHTML = lista.map((t) => {
+      const esTipo = (t === plantilla || t === 'instructivo' || t === 'soluciones');
+      return '<span class="railtag' + (esTipo ? ' tipo' : '') + '">' + esc(t) + '</span>';
+    }).join('');
+  }
+
+  function pintarCategorias(s, habilitado) {
+    const sel = $('#fCategoria');
+    const chipsRow = $('#catChipsRow');
+    if (!sel || !chipsRow) return;
+
+    const cats = (s.categorias_disponibles && s.categorias_disponibles.length)
+      ? s.categorias_disponibles
+      : [{ id: Number(s.form.categoria_id) || 1, nombre: 'Categoría ' + (Number(s.form.categoria_id) || 1) }];
+
+    const actualId = Number(s.form.categoria_id) || 1;
+    const tieneActual = cats.some((c) => Number(c.id) === actualId);
+    const opcionesSelect = tieneActual
+      ? cats
+      : [{ id: actualId, nombre: 'Categoría ' + actualId }].concat(cats);
+
+    sel.innerHTML = opcionesSelect.map((c) =>
+      '<option value="' + esc(c.id) + '"' + (Number(c.id) === actualId ? ' selected' : '') + '>' +
+      esc(c.nombre) + '</option>'
+    ).join('');
+    sel.value = String(actualId);
+
+    chipsRow.innerHTML = '';
+    if (!s.categorias_disponibles || !s.categorias_disponibles.length) return;
+
+    chipsRow.appendChild(el('span', 'cap', 'Categorías'));
+    s.categorias_disponibles.forEach((c) => {
+      const activo = Number(c.id) === actualId;
+      const chip = el('button', 'sugg cat-chip' + (activo ? ' on' : ''), esc(c.nombre));
+      chip.type = 'button';
+      chip.disabled = !habilitado;
+      chip.onclick = () => {
+        store.setForm({ categoria_id: Number(c.id) });
+      };
+      chipsRow.appendChild(chip);
+    });
+  }
+
+  function pintarResumenFinal(s) {
+    const slot = $('#slotResumenFinal');
+    if (!slot) return;
+    if (s.flujo !== 'APROBADO' || !s.borrador) {
+      slot.innerHTML = '';
+      return;
+    }
+    const b = s.borrador;
+    const tags = (s.tags_acumulados && s.tags_acumulados.length) ? s.tags_acumulados : (b.tags || []);
+    const etapaTxt = (s.etapa ? (s.etapa.actual + ' de ' + s.etapa.total + ' (' + s.etapa.nombre + ')') : '5 de 5 (Aprobación)');
+    slot.innerHTML =
+      '<div class="resumen-final">' +
+        '<h3><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.8 8.2l2.6 2.6 5.4-5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        'Resumen final de la carga</h3>' +
+        '<div class="rf-grid">' +
+          '<div><span class="rf-k">Progreso</span><span class="rf-v">Etapa ' + esc(etapaTxt) + '</span></div>' +
+          '<div><span class="rf-k">Modo</span><span class="rf-v">' + esc(b.modo) + '</span></div>' +
+          '<div><span class="rf-k">Plantilla</span><span class="rf-v">' + esc(b.tipo_plantilla || '—') + '</span></div>' +
+          '<div><span class="rf-k">Categoría</span><span class="rf-v">' + esc(nombreCategoria(s, b.categoria_id)) + '</span></div>' +
+          '<div><span class="rf-k">Tags acumulados</span><span class="rf-v">' + (tags.map(esc).join(' · ') || '—') + '</span></div>' +
+        '</div>' +
+      '</div>';
   }
 
   /* Pinta un contador: mientras falta, "12 / 15 mín."; cuando ya
@@ -164,9 +278,6 @@
     if (campo === 'titulo') return s.form.titulo.trim().length >= cfg.MIN_TITULO;
     if (campo === 'texto')  return s.form.texto.trim().length >= cfg.MIN_TEXTO;
     if (campo === 'tags')   return s.form.tags.length >= cfg.MIN_TAGS;
-
-    /* "Guardar cambios" solo tiene sentido si hay algo distinto de
-       lo que el backend ya tiene. Si no, invita a reenviar lo mismo. */
     if (campo === 'todo') return hayCambios(s);
     return true;
   }
@@ -201,16 +312,28 @@
 
     const row = $('#suggRow'); row.innerHTML = '';
     if (input.disabled) return;
-    const cands = BACO.datos.etiquetas
-      .filter((e) => !e.es_tipo_documentacion && s.form.tags.indexOf(e.tag) === -1)
-      .sort((a, b) => b.usos - a.usos).slice(0, 5);
+
+    let cands = [];
+    if (s.tags_disponibles && s.tags_disponibles.length) {
+      cands = s.tags_disponibles
+        .filter((t) => t !== 'instructivo' && t !== 'soluciones' && s.form.tags.indexOf(t) === -1)
+        .slice(0, 8);
+    } else if (BACO.datos && BACO.datos.etiquetas) {
+      cands = BACO.datos.etiquetas
+        .filter((e) => !e.es_tipo_documentacion && s.form.tags.indexOf(e.tag) === -1)
+        .sort((a, b) => b.usos - a.usos)
+        .slice(0, 5)
+        .map((e) => e.tag);
+    }
+
     if (!cands.length) return;
     row.appendChild(el('span', 'cap', 'Sugeridas'));
-    cands.forEach((e) => {
-      const b = el('button', 'sugg', '+ ' + esc(e.tag));
+    cands.forEach((tagStr) => {
+      const b = el('button', 'sugg', '+ ' + esc(tagStr));
+      b.type = 'button';
       b.onclick = () => {
         if (s.form.tags.length >= cfg.MAX_TAGS) { toast('Máximo ' + cfg.MAX_TAGS + ' etiquetas'); return; }
-        store.setForm({ tags: s.form.tags.concat([e.tag]) });
+        store.setForm({ tags: s.form.tags.concat([tagStr]) });
       };
       row.appendChild(b);
     });
@@ -229,7 +352,7 @@
           ? '<span class="bdet">sobre <a href="' + esc(b.articulo_original_url) + '" target="_blank" rel="noopener">#' + b.articulo_original_id + '</a></span>'
           : '<span class="bdet">sin artículo de origen</span>') +
         (b.tipo_plantilla ? '<span class="bchip">' + esc(b.tipo_plantilla) + '</span>' : '') +
-        '<span class="bdet">categoría ' + esc(b.categoria_id) + '</span>' +
+        '<span class="bdet">' + esc(nombreCategoria(s, b.categoria_id)) + '</span>' +
       '</div>';
   }
 
@@ -291,7 +414,7 @@
       h += '<div class="checks">';
       orden.forEach((f) => {
         const cl = (BACO.SEVERIDAD[f.severity] || { clase: 'info' }).clase;
-        const irA = { texto: 'fCuerpo', titulo: 'fTitulo', tags: 'tagInput' }[f.field];
+        const irA = { texto: 'fCuerpo', titulo: 'fTitulo', tags: 'tagInput', categoria_id: 'fCategoria' }[f.field];
         h += '<div class="check ' + cl + (irA ? ' clickable' : '') + '"' +
           (irA ? ' data-ir="' + irA + '" title="Ir al campo"' : '') + '>' +
           '<span class="ic">' + ics[cl] + '</span>' +
@@ -306,8 +429,6 @@
     }
     slot.innerHTML = h + '</div>';
 
-    /* Cada hallazgo lleva al campo que señala: sin esto el usuario
-       lee "campo: texto" y no sabe qué hacer con eso. */
     slot.querySelectorAll('.check.clickable').forEach((nodo) => {
       nodo.onclick = () => {
         const campo = $('#' + nodo.dataset.ir);
@@ -373,7 +494,12 @@
 
     if (acc.campo === 'titulo') return enviarTurno({ titulo: s.form.titulo }, s.form.titulo);
     if (acc.campo === 'texto')  return enviarTurno({ texto: s.form.texto }, 'Envié el contenido (' + s.form.texto.length + ' caracteres)');
-    if (acc.campo === 'tags')   return enviarTurno({ tags: s.form.tags, categoria_id: s.form.categoria_id }, s.form.tags.join(', '));
+    if (acc.campo === 'tags') {
+      return enviarTurno(
+        { tags: s.form.tags, categoria_id: s.form.categoria_id },
+        s.form.tags.join(', ') + ' · ' + nombreCategoria(s, s.form.categoria_id)
+      );
+    }
     return enviarTurno({
       titulo: s.form.titulo, texto: s.form.texto,
       tags: s.form.tags, categoria_id: s.form.categoria_id
@@ -403,8 +529,6 @@
     }
   }
 
-  /* Las dos skills tienen endpoint propio y el backend toma el
-     borrador de la sesión: no hace falta mandarle nada. */
   function aplicarPlantilla() {
     invocarAgente('aplicarPlantilla', 'Aplicar la plantilla al borrador');
   }
@@ -418,13 +542,20 @@
     const s = store.get();
     try {
       const b = await api.borradorAprobado();
+      const tagsFinales = (s.tags_acumulados && s.tags_acumulados.length)
+        ? s.tags_acumulados
+        : (b.tags || []);
+      const etapaFinal = s.etapa
+        ? ('Etapa ' + s.etapa.actual + ' de ' + s.etapa.total + ' · ' + s.etapa.nombre)
+        : 'Etapa 5 de 5 · Aprobación';
       $('#recap').innerHTML =
+        '<div class="r"><span class="k">Progreso</span><span class="v">' + esc(etapaFinal) + '</span></div>' +
         '<div class="r"><span class="k">Modo</span><span class="v">' + esc(b.modo) + '</span></div>' +
         (b.articulo_original_id ? '<div class="r"><span class="k">Sobre</span><span class="v">#' + b.articulo_original_id + '</span></div>' : '') +
         '<div class="r"><span class="k">Título</span><span class="v">' + esc(b.titulo) + '</span></div>' +
         '<div class="r"><span class="k">Plantilla</span><span class="v">' + esc(b.tipo_plantilla || '—') + '</span></div>' +
-        '<div class="r"><span class="k">Categoría</span><span class="v">' + esc(b.categoria_id) + '</span></div>' +
-        '<div class="r"><span class="k">Etiquetas</span><span class="v">' + (b.tags || []).map(esc).join(' · ') + '</span></div>';
+        '<div class="r"><span class="k">Categoría</span><span class="v">' + esc(nombreCategoria(s, b.categoria_id)) + '</span></div>' +
+        '<div class="r"><span class="k">Etiquetas</span><span class="v">' + tagsFinales.map(esc).join(' · ') + '</span></div>';
       $('#overlay').hidden = false;
     } catch (e) { mostrarError(e); }
   }
@@ -464,14 +595,15 @@
     $('#chatInput').value = ''; $('#chatInput').style.height = 'auto';
 
     const s = store.get();
-    /* En los estados que esperan un dato, el chat alimenta el flujo */
     if (s.flujo === 'ESPERANDO_TITULO')  return enviarTurno({ titulo: v }, v);
     if (s.flujo === 'ESPERANDO_TEXTO')   return enviarTurno({ texto: v }, v);
-    if (s.flujo === 'ESPERANDO_METADATOS' || s.flujo === 'ESPERANDO_PLANTILLA' ||
+    if (s.flujo === 'ESPERANDO_METADATOS') {
+      return enviarTurno({ mensaje: v, categoria_id: s.form.categoria_id }, v);
+    }
+    if (s.flujo === 'ESPERANDO_PLANTILLA' ||
         s.flujo === 'DECISION_TITULO' || s.flujo === 'DECISION_TEXTO') {
       return enviarTurno({ mensaje: v }, v);
     }
-    /* En el resto, es una consulta libre al agente */
     invocarAgente({ prompt: v }, v);
   }
 
@@ -498,9 +630,6 @@
     if (rb) rb.onclick = reintentar;
   }
 
-  /* Repite el último pedido que falló, sin que el usuario tenga
-     que rehacer el paso. Es lo que más va a hacer falta cuando el
-     backend esté detrás de un túnel que se cae cada tanto. */
   function reintentar() {
     const f = ultimoFallo;
     ultimoFallo = null;
@@ -510,8 +639,6 @@
     else invocarAgente(f.metodo, f.etiqueta);
   }
 
-  /* Aviso de privacidad: el backend anonimizó datos solo y lo informa.
-     No es un error, así que va en su propia franja, no en la roja. */
   function mostrarAviso(texto) {
     const b = $('#bannerAviso');
     b.innerHTML = '<div class="banner aviso">' +
@@ -588,7 +715,6 @@
       $('#btnPreview').classList.add('sel'); $('#btnEditor').classList.remove('sel');
     };
 
-    /* subir documento → vuelca el texto en el editor */
     $('#btnSubir').onclick = () => $('#fileInput').click();
     $('#fileInput').addEventListener('change', (e) => {
       const f = e.target.files[0];
@@ -633,7 +759,6 @@
     });
   }
 
-  /* Precarga un título largo para no tipear en la demo */
   function cargarEjemplo() {
     const s = store.get();
     if (s.flujo === 'ESPERANDO_TITULO') {

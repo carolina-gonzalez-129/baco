@@ -3,7 +3,6 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/GeminiAgente.iml" filepath="$PROJECT_DIR$/GeminiAgente.iml" />
-      <module fileurl="file://$PROJECT_DIR$/skills/skills.iml" filepath="$PROJECT_DIR$/skills/skills.iml" />
     </modules>
   </component>
 </project>

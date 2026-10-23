@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
+    CategoriaOpcion,
     CoincidenciaArticulo,
     EstadoFlujo,
 )
@@ -28,6 +29,8 @@ class SesionChat:
     coincidencias: List[CoincidenciaArticulo] = field(default_factory=list)
     borrador: Optional[BorradorSesion] = None
     validacion: Optional[ValidarFormatoResponse] = None
+    categorias_disponibles: List[CategoriaOpcion] = field(default_factory=list)
+    tags_disponibles: List[str] = field(default_factory=list)
     intentos_correccion: int = 0
     intentos_fallidos_por_estado: Dict[str, int] = field(default_factory=dict)
     confirmando_rechazo: bool = False

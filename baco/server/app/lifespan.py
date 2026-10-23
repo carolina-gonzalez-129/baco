@@ -19,6 +19,14 @@ async def lifespan(app: FastAPI):
     cfg.db_ro_pool = pool
     app.state.db_ro_pool = pool
     try:
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    from baco.server.services.orquestador.validaciones import precargar_catalogos_cache_sync
+                    precargar_catalogos_cache_sync(cur)
+        except Exception:
+            pass
+
         from baco.server.services.embeddings import get_model_titulo, get_model_texto, embedding_titulo, embedding_texto
         get_model_titulo()
         get_model_texto()
