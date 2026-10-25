@@ -111,6 +111,8 @@ def test_agente_deriva_texto_limpio_si_esta_vacio_sin_filtrar_urls():
         return (
             "## Guía con medios embebidos\n\n"
             "### Pasos a seguir\n\n"
+            "[[recurso:rec_1]]\n\n"
+            "[[recurso:rec_2]]\n\n"
             "Texto formateado por el modelo cumpliendo con la longitud mínima requerida."
         )
 
