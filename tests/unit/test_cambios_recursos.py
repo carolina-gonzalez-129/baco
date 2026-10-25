@@ -99,3 +99,72 @@ def test_reordenar_sin_renumerar_ids_y_orden_dado_por_posicion_en_texto():
     assert recursos["rec_3"].orden == 0
     assert recursos["rec_2"].orden == 1
     assert recursos["rec_1"].orden == 2
+
+def test_marcador_escrito_a_mano_por_persona_es_rechazado_sin_borrado_silencioso():
+    """Cambio 3: rechaza marcadores escritos a mano por la persona sin borrado silencioso."""
+    from pydantic import ValidationError
+
+    # 1. En BorradorSesion: si texto_limpio contiene un marcador no registrado en recursos, falla con ValidationError
+    with pytest.raises(ValidationError) as exc_info:
+        BorradorSesion(
+            modo="nuevo",
+            titulo="Instructivo con marcador manual",
+            texto_limpio="Paso 1: Abrir ventana.\n\n[[recurso:rec_manual_persona]]\n\nPaso 2: Guardar.",
+            recursos={},
+        )
+    err_str = str(exc_info.value)
+    assert "[[recurso:rec_manual_persona]]" in err_str
+    assert "no puede ser escrito manualmente" in err_str or "no referencian ningún recurso" in err_str
+
+    # 2. Si hay recursos pero el marcador inventado no existe entre ellos, también es rechazado
+    rec_existente = Recurso(id="rec_1", tipo="imagen", nombre="img1.png", orden=0)
+    with pytest.raises(ValidationError) as exc_info2:
+        BorradorSesion(
+            modo="nuevo",
+            titulo="Instructivo con recurso válido y otro inventado",
+            texto_limpio="[[recurso:rec_1]] y luego [[recurso:rec_fantasma]]",
+            recursos={"rec_1": rec_existente},
+        )
+    err_str2 = str(exc_info2.value)
+    assert "[[recurso:rec_fantasma]]" in err_str2
+
+
+def test_marcador_valido_referenciando_recurso_existente_es_preservado():
+    """Cambio 3: cada marcador válido que referencia un recurso existente se preserva intacto."""
+    r1 = Recurso(id="rec_1", tipo="imagen", nombre="captura.png", referencia="https://bc.finneg.com/c.png", orden=0)
+    r2 = Recurso(id="rec_2", tipo="video", nombre="tutorial.mp4", referencia="https://youtube.com/v", orden=1)
+    recursos = {"rec_1": r1, "rec_2": r2}
+
+    texto = "Paso 1: Ver captura [[recurso:rec_1]].\n\nPaso 2: Ver video explicativo [[recurso:rec_2]]."
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo="Guía con recursos existentes",
+        texto_limpio=texto,
+        recursos=recursos,
+    )
+
+    # Ambos marcadores deben permanecer exactamente en su lugar (nada de borrado)
+    assert borrador.texto_limpio == texto
+    assert "[[recurso:rec_1]]" in borrador.texto_limpio
+    assert "[[recurso:rec_2]]" in borrador.texto_limpio
+
+
+def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recursos():
+    """Riesgo 4: borrador.texto coincide siempre con componer_texto_publicable y es de solo lectura."""
+    from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+
+    r1 = Recurso(id="rec_1", tipo="imagen", nombre="captura.png", referencia="https://bc.finneg.com/c.png", orden=0)
+    texto = "Configuración del sistema:\n\n[[recurso:rec_1]]\n\nFin del proceso."
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo="Instructivo",
+        texto_limpio=texto,
+        recursos={"rec_1": r1},
+    )
+
+    # Coincide exactamente con componer_texto_publicable
+    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
+
+    # Es propiedad derivada: no se puede reasignar directamente
+    with pytest.raises(AttributeError):
+        borrador.texto = "Intento de sobreescritura directa"

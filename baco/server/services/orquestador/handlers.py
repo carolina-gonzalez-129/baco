@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 from typing import Callable, Coroutine, Dict
 from starlette.concurrency import run_in_threadpool
 
@@ -430,6 +431,17 @@ async def handle_esperando_texto(
 
     texto_limpio, recursos = extraer_recursos_y_texto_limpio(texto_raw)
 
+    marcadores_usuario = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", texto_limpio)
+    marcadores_invalidos = [m for m in marcadores_usuario if m not in recursos]
+    if marcadores_invalidos:
+        intento = sesion.registrar_fallo("MARCADORES_MANUALES")
+        msg = (
+            f"El texto contiene marcadores no válidos ({', '.join(f'[[recurso:{m}]]' for m in marcadores_invalidos)}). "
+            f"Los recursos multimedia deben adjuntarse mediante enlaces o subida de archivos, "
+            f"no escribiendo marcadores manualmente."
+        )
+        return construir_respuesta(sesion, msg, ["volver"])
+
     if len(texto_limpio) < TEXTO_MIN:
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
         return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
@@ -732,6 +744,15 @@ async def handle_revision_borrador(
             txt_nuevo = texto_edicion.strip()
             txt_nuevo_limpio, nuevos_recursos = extraer_recursos_y_texto_limpio(txt_nuevo)
             recursos_combinados = fusionar_recursos(b.recursos, nuevos_recursos)
+
+            marcadores_edit = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", txt_nuevo_limpio)
+            marcadores_invalidos = [m for m in marcadores_edit if m not in recursos_combinados]
+            if marcadores_invalidos:
+                msg = (
+                    f"El texto contiene marcadores no válidos ({', '.join(f'[[recurso:{m}]]' for m in marcadores_invalidos)}). "
+                    f"Cada marcador debe referenciar un recurso multimedia existente."
+                )
+                return construir_respuesta(sesion, msg, ops_actuales)
             # texto_limpio es solo texto: no hay marcadores que verificar ni restaurar
             txt_verif, adv = txt_nuevo_limpio, []
             err_txt = validar_longitud_maxima(txt_verif, TEXTO_MAX, "texto")

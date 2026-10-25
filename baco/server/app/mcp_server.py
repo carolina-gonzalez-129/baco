@@ -26,8 +26,74 @@ mcp = FastMCP(name="baco-mcp")
  #cuando ya esten bien falta corregir los schemas ya creados, dsps quizas metodos como \list o discovery, idk
 
 
-#tool buscar duplicados
-# tool validar formato
+def _buscar_duplicados_db(
+    titulo: Optional[str] = None,
+    borrador: Optional[str] = None,
+    limite: int = 3
+) -> BuscarDuplicadosToolOutput:
+    titulo_limpio = (titulo or "").strip()
+    borrador_limpio = (borrador or "").strip()
+    if not titulo_limpio and not borrador_limpio:
+        return BuscarDuplicadosToolOutput(
+            decision_sugerida="crear_nuevo",
+            hay_duplicados=False,
+            mensaje="No se proporcionó ni título ni borrador para contrastar.",
+            url_principal=None,
+            articulos_similares=[]
+        )
+
+    with get_ro_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            buscador = BuscadorDuplicados(cur)
+            resultado = buscador.evaluar_coincidencias(
+                titulo=titulo_limpio,
+                headers=True,
+                texto=borrador_limpio if borrador_limpio else None,
+                limite=limite
+            )
+
+    articulos = []
+    for c in resultado.get("coincidencias", []):
+        if c.get("id") and c.get("titulo"):
+            articulos.append(
+                ArticuloSimilarTool(
+                    id=c["id"],
+                    titulo=c["titulo"],
+                    url=c.get("url", f"https://bc.finneg.com/t/{c['id']}"),
+                    score=c.get("score_total")
+                )
+            )
+
+    hay_duplicados = bool(resultado.get("encontrado"))
+    decision_sugerida = "proponer_mejora_existente" if (hay_duplicados or len(articulos) > 0) else "crear_nuevo"
+
+    return BuscarDuplicadosToolOutput(
+        decision_sugerida=decision_sugerida,
+        hay_duplicados=hay_duplicados,
+        mensaje=resultado.get("mensaje", ""),
+        url_principal=resultado.get("link"),
+        articulos_similares=articulos
+    )
+
+
+@mcp.tool(
+    name="buscar_duplicados",
+    description=(
+        "Herramienta de SOLO LECTURA. Busca artículos duplicados o semánticamente similares "
+        "en la Base de Conocimiento a partir de un título, un borrador o ambos. "
+        "Devuelve artículos similares existentes y una recomendación ('crear_nuevo' o 'proponer_mejora_existente') "
+        "para que el agente decida si redacta un artículo nuevo o propone mejorar uno existente."
+    )
+)
+async def buscar_duplicados(
+    titulo: Optional[str] = None,
+    borrador: Optional[str] = None,
+    limite: int = 3
+) -> BuscarDuplicadosToolOutput:
+    """Busca artículos similares por título o borrador (solo lectura) para decidir si crear nuevo o mejorar existente."""
+    return await asyncio.to_thread(_buscar_duplicados_db, titulo, borrador, limite)
+
+
 @mcp.tool(
     name="validar_formato",
     description=(

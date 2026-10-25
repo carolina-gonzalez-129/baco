@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from baco.server.app.api import get_baco_agent, get_buscador_duplicados
 from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
+from baco.server.schemas.recurso import Recurso
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
     EstadoFlujo,
@@ -130,7 +131,7 @@ def test_contenido_adicional_no_modifica_texto_limpio():
         modo="enriquecimiento",
         articulo_original_id=789,
         titulo="Configuración",
-        texto=texto_limpio_original,
+        recursos={"rec_1": Recurso(id="rec_1", tipo="imagen", nombre="img", orden=0)},
         texto_limpio=texto_limpio_original,
     )
     sesion.texto_limpio = texto_limpio_original

@@ -249,12 +249,10 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
     assert resp_del.status_code == 200
     assert resp_del.json() == {"status": "ok", "eliminado": "rec_1"}
 
-    # 3. Verificar que 'rec_1' desapareció de recursos y su marcador de texto_limpio
+    # 3. Invariante 7: eliminar un recurso de recursos no altera texto_limpio
     assert "rec_1" not in sesion.borrador.recursos
-    assert "[[recurso:rec_1]]" not in sesion.borrador.texto_limpio
-    # 'rec_2' debe permanecer intacto
     assert "rec_2" in sesion.borrador.recursos
-    assert "[[recurso:rec_2]]" in sesion.borrador.texto_limpio
+    assert sesion.borrador.texto_limpio == texto_limpio
 
     # 4. Intentar eliminar recurso inexistente debe devolver 404
     resp_del_404 = client.delete("/chat/recursos/rec_inexistente", headers={"X-Session-ID": sid})
@@ -319,13 +317,15 @@ def test_subida_recurso_rechazada_en_fase_1(client):
     )
 
     archivo_falso = io.BytesIO(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR...")
-    resp = client.post(
-        "/chat/recursos",
-        headers={"X-Session-ID": sid},
-        files={"file": ("captura.png", archivo_falso, "image/png")},
-    )
-    assert resp.status_code == 403
-    assert "deshabilitada en esta fase" in resp.json()["detail"]
+    with patch("baco.server.app.api.PERMITIR_SUBIDA_RECURSOS", False), \
+         patch("baco.server.services.orquestador.recursos_service.PERMITIR_SUBIDA_RECURSOS", False):
+        resp = client.post(
+            "/chat/recursos",
+            headers={"X-Session-ID": sid},
+            files={"file": ("captura.png", archivo_falso, "image/png")},
+        )
+        assert resp.status_code == 403
+        assert "deshabilitada en esta fase" in resp.json()["detail"]
 
 
 # =========================================================================
@@ -369,9 +369,10 @@ def test_subida_recursos_con_flag_activo(client):
         assert data_rec["mime_type"] == "image/png"
         assert Path(data_rec["referencia"]).exists()
 
-        # Verificar que el marcador fue anexado al texto_limpio de la sesión
+        # Invariante 7: Subir un recurso NO altera texto_limpio
         ses = SESIONES[sid]
-        assert "[[recurso:rec_1]]" in ses.borrador.texto_limpio
+        assert "rec_1" in ses.borrador.recursos
+        assert ses.borrador.texto_limpio == "Texto base"
 
         # 2. Subida inválida por MIME spoofing: extensión .png con contenido de script/ejecutable
         exe_bytes = b"MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff"
