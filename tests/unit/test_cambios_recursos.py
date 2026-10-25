@@ -252,3 +252,62 @@ def test_skill_plantillas_con_reintento_exitoso_acepta_segunda_respuesta():
     assert mock_baco.call_count == 2
     assert resultado == respuesta_buena
     assert "Se descartó" not in resultado
+
+def test_componer_texto_publicable_sustituye_marcadores_inline_sin_seccion_final_recursos():
+    """Cambio 4: componer_texto_publicable sustituye cada marcador por su Markdown
+
+    en la posición exacta, sin sección ## Recursos al final.
+    """
+    from baco.server.services.orquestador.recursos_service import (
+        componer_texto_publicable,
+        extraer_recursos_y_texto_limpio,
+    )
+
+    texto_con_pasos = (
+        "### Paso 1: Configurar impuestos\n"
+        "Acceder al módulo correspondiente.\n\n"
+        "![Captura Impuestos](https://bc.finneg.com/impuestos.png)\n\n"
+        "### Paso 2: Video demostrativo\n"
+        "https://www.youtube.com/watch?v=tutorial_demo\n\n"
+        "### Paso 3: Descarga de constancia AFIP\n"
+        "[constancia.pdf|attachment](https://bc.finneg.com/constancia.pdf)"
+    )
+
+    texto_limpio, recursos = extraer_recursos_y_texto_limpio(texto_con_pasos)
+
+    # Creamos el borrador
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo="Guía Fiscal",
+        texto_limpio=texto_limpio,
+        recursos=recursos,
+    )
+
+    publicable = borrador.texto
+
+    # 1. NO existe sección ## Recursos al final
+    assert "## Recursos" not in publicable
+
+    # 2. Cada recurso está sustituido en su posición exacta junto a su paso
+    bloques = [b.strip() for b in publicable.split("\n\n") if b.strip()]
+
+    # Paso 1 contiene la imagen de impuestos
+    idx_p1 = next(i for i, b in enumerate(bloques) if "Paso 1" in b)
+    assert "![Captura Impuestos](https://bc.finneg.com/impuestos.png)" in bloques[idx_p1] or (
+        idx_p1 + 1 < len(bloques) and "![Captura Impuestos](https://bc.finneg.com/impuestos.png)" in bloques[idx_p1 + 1]
+    )
+
+    # Paso 2 contiene el video
+    idx_p2 = next(i for i, b in enumerate(bloques) if "Paso 2" in b)
+    assert "https://www.youtube.com/watch?v=tutorial_demo" in bloques[idx_p2] or (
+        idx_p2 + 1 < len(bloques) and "https://www.youtube.com/watch?v=tutorial_demo" in bloques[idx_p2 + 1]
+    )
+
+    # Paso 3 contiene el adjunto
+    idx_p3 = next(i for i, b in enumerate(bloques) if "Paso 3" in b)
+    assert "[constancia.pdf|attachment](https://bc.finneg.com/constancia.pdf)" in bloques[idx_p3] or (
+        idx_p3 + 1 < len(bloques) and "[constancia.pdf|attachment](https://bc.finneg.com/constancia.pdf)" in bloques[idx_p3 + 1]
+    )
+
+    # 3. Ningún marcador [[recurso:...]] sobrevive en el texto publicable
+    assert "[[recurso:" not in publicable

@@ -11,7 +11,11 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
     ItemContenidoAdicional,
 )
-from baco.server.schemas.recurso import Recurso
+from baco.server.schemas.recurso import (
+    ConfirmarBloquesRequest,
+    ConfirmarBloquesResponse,
+    Recurso,
+)
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
 from baco.server.services.agente_service import (
@@ -30,7 +34,9 @@ from baco.server.services.orquestador.recursos_service import (
     RecursoDuplicadoError,
     RecursoInvalidoError,
     SubidaRecursosDeshabilitadaError,
+    componer_texto_publicable,
     crear_recurso_desde_url,
+    derivar_desde_bloques,
     guardar_recurso_temporal_sesion,
 )
 
@@ -212,6 +218,73 @@ def auditar_semantica(
     _, borrador = sesion_valida
     dictamen = ejecutar_skill_validador(borrador, baco)
     return ChatResponse(response=dictamen)
+
+
+@router.post(
+    "/chat/bloques",
+    response_model=ConfirmarBloquesResponse,
+    summary="Recibe una lista de bloques y deriva texto_limpio con marcadores [[R1]], [[R2]]... y recursos por separado",
+)
+def confirmar_bloques(
+    body: ConfirmarBloquesRequest,
+    baco_session: Optional[str] = Cookie(default=None),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+) -> ConfirmarBloquesResponse:
+    # No se loguea el body para preservar datos sensibles
+    sid = body.session_id or extraer_session_id(baco_session, x_session_id)
+    if not sid:
+        raise HTTPException(
+            status_code=400,
+            detail="Falta identificar la sesión (X-Session-ID, cookie baco_session o session_id en el cuerpo).",
+        )
+
+    sesion = gestor_sesiones.obtener_sesion(sid)
+    if not sesion:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existe la sesión '{sid}' o la sesión expiró.",
+        )
+
+    recursos_previos = sesion.borrador.recursos if sesion.borrador else sesion.recursos
+
+    try:
+        texto_limpio, recursos, aviso = derivar_desde_bloques(
+            body.bloques, recursos_previos=recursos_previos
+        )
+    except RecursoInvalidoError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if not sesion.borrador:
+        sesion.borrador = BorradorSesion(
+            modo="nuevo",
+            titulo=sesion.titulo or "Artículo",
+            texto_limpio=texto_limpio,
+            recursos=recursos,
+            categoria_id=sesion.categoria_id,
+            tags=list(sesion.tags),
+        )
+    else:
+        sesion.borrador.texto_limpio = texto_limpio
+        sesion.borrador.recursos = recursos
+        sesion.borrador.orden_multimedia = [r.orden for r in sorted(recursos.values(), key=lambda x: x.orden)]
+        sesion.borrador.posiciones = list(sesion.borrador.orden_multimedia)
+        if sesion.borrador.conforme:
+            sesion.borrador.conforme = False
+            sesion.borrador.conforme_en = None
+            sesion.borrador.conformidad_invalidada = True
+
+    sesion.texto_limpio = texto_limpio
+    sesion.texto = sesion.borrador.texto
+    sesion.recursos = recursos
+    sesion.orden_multimedia = list(sesion.borrador.orden_multimedia)
+
+    return ConfirmarBloquesResponse(
+        session_id=sid,
+        texto_limpio=texto_limpio,
+        recursos=sorted(recursos.values(), key=lambda r: r.orden),
+        aviso=aviso,
+        borrador=sesion.borrador,
+    )
 
 
 @router.get(
