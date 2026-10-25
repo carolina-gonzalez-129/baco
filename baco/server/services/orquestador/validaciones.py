@@ -742,8 +742,8 @@ def avanzar_a_metadatos_o_revision(
     sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
-    if b.categoria_id is None:
-        b.categoria_id = sesion.categoria_id or 1
+    if b.categoria_id is None and sesion.categoria_id is not None:
+        b.categoria_id = sesion.categoria_id
 
     plantilla = b.tipo_plantilla or extraer_tipo_plantilla(b.tags)
     if plantilla:
@@ -756,7 +756,7 @@ def avanzar_a_metadatos_o_revision(
             sesion, msg_pedir_plantilla(prefijo), OPCIONES_PLANTILLAS, aviso_privacidad=aviso_privacidad
         )
 
-    if len(b.tags) < 2:
+    if len(b.tags) < 2 or b.categoria_id is None:
         sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
         return construir_respuesta(
             sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), ["volver"], aviso_privacidad=aviso_privacidad

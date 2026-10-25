@@ -222,7 +222,7 @@ def test_camino_sin_coincidencias_plantilla_metadatos_y_rechazo_humano(client, m
     r3 = client.post("/chat", json={"session_id": sid, "mensaje": "soluciones"}).json()
     assert r3["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
-    r4 = client.post("/chat", json={"session_id": sid, "tags": ["cobranzas", "bancos"]}).json()
+    r4 = client.post("/chat", json={"session_id": sid, "tags": ["cobranzas", "bancos"], "categoria_id": 1}).json()
     assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r4["borrador"]["modo"] == "nuevo"
     assert r4["borrador"]["tipo_plantilla"] == "soluciones"
@@ -268,7 +268,7 @@ def test_edicion_borrador_con_longitud_invalida_no_rompe_y_muestra_bloqueante(cl
     mock_buscador.evaluar_texto.return_value = None
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "mensaje": "instructivo"})
-    r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "ventas"]}).json()
+    r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "ventas"], "categoria_id": 1}).json()
     assert r_val["estado"] == EstadoFlujo.REVISION_BORRADOR
 
     # Editamos el borrador con un título inválido (< 15 caracteres)
@@ -798,13 +798,22 @@ def test_metadatos_tags_en_texto_y_categoria_default(client, mock_buscador):
     r_plant = client.post("/chat", json={"session_id": sid, "texto": "instructivo"}).json()
     assert r_plant["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
-    # Envía tags mediante 'texto' separados por coma, sin categoría
+    # Envía tags mediante 'texto' separados por coma, sin categoría: no debe avanzar silenciosamente a REVISION_BORRADOR
     r_meta = client.post("/chat", json={"session_id": sid, "texto": "contabilidad, balances"}).json()
-    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_meta["borrador"]["categoria_id"] == 1
+    assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "categoría" in r_meta["mensaje"].lower()
+    assert r_meta["borrador"]["categoria_id"] is None
     assert "contabilidad" in r_meta["borrador"]["tags"]
     assert "balances" in r_meta["borrador"]["tags"]
     assert "instructivo" in r_meta["borrador"]["tags"]
+
+    # Al ingresar la categoría requerida, avanza a REVISION_BORRADOR
+    r_cat = client.post("/chat", json={"session_id": sid, "categoria_id": 5}).json()
+    assert r_cat["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_cat["borrador"]["categoria_id"] == 5
+    assert "contabilidad" in r_cat["borrador"]["tags"]
+    assert "balances" in r_cat["borrador"]["tags"]
+    assert "instructivo" in r_cat["borrador"]["tags"]
 
 
 def test_ajuste_editorial_confirmar_aprueba(client, mock_buscador):
@@ -817,7 +826,7 @@ def test_ajuste_editorial_confirmar_aprueba(client, mock_buscador):
 
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "afip"]}).json()
+    r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "afip"], "categoria_id": 5}).json()
 
     assert r_val["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_val["validacion"]["status"] == "Listo con ajustes sugeridos"
@@ -839,7 +848,7 @@ def test_ajuste_editorial_corregir_limpia_y_aprueba(client, mock_buscador):
 
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "afip"]}).json()
+    r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "afip"], "categoria_id": 5}).json()
     assert r_val["validacion"]["status"] == "Listo con ajustes sugeridos"
 
     # Corrige el título redundante
@@ -1512,4 +1521,64 @@ def test_metadatos_heredados_rechazar_y_volver_permite_reconsiderar(client, mock
     assert r_volver["aviso_metadatos_heredados"] is not None
     assert "aceptar" in r_volver["opciones"]
     assert "rechazar" in r_volver["opciones"]
+
+
+def test_solicitar_categoria_en_formulario_desde_chat(client, mock_buscador):
+    """Verifica que en ESPERANDO_METADATOS el chat indique seleccionar la categoría desde el menú desplegable en el formulario."""
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    r1 = client.post("/chat", json={"mensaje": "Nueva Guía de Facturación Electrónica"}).json()
+    sid = r1["session_id"]
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
+    r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+
+    assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "menú desplegable en el formulario de la izquierda" in r_meta["mensaje"]
+    assert "etiquetas temáticas" in r_meta["mensaje"]
+
+    r_rev = client.post("/chat", json={"session_id": sid, "categoria_id": 4, "tags": ["facturacion", "afip"]}).json()
+    assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_rev["borrador"]["categoria_id"] == 4
+    assert "facturacion" in r_rev["borrador"]["tags"]
+
+
+def test_nueva_entrada_sin_duplicados_sin_categoria_es_bloqueante(client, mock_buscador):
+    """Verifica que para una entrada nueva sin duplicados la categoría ausente no se asigne a 1 por omisión y sea bloqueante."""
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    # 1. Iniciar conversación con título sin duplicados
+    r1 = client.post("/chat", json={"mensaje": "Procedimiento de Alta y Configuración Inicial"}).json()
+    sid = r1["session_id"]
+    assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r1["borrador"] is None
+
+    # 2. Enviar texto válido
+    r2 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert r2["borrador"] is not None
+    assert r2["borrador"]["categoria_id"] is None
+
+    # 3. Elegir plantilla
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r3["borrador"]["categoria_id"] is None
+    assert "instructivo" in r3["borrador"]["tags"]
+
+    # 4. Enviar sólo tags temáticos sin categoría: la categoría no debe auto-asignarse a 1 y debe exigir la categoría
+    r4 = client.post("/chat", json={"session_id": sid, "tags": ["configuracion", "alta"]}).json()
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r4["borrador"]["categoria_id"] is None
+    assert "categoría" in r4["mensaje"].lower()
+    assert "configuracion" in r4["borrador"]["tags"]
+    assert "alta" in r4["borrador"]["tags"]
+
+    # 5. Proveer la categoría desbloquea el flujo hacia revisión
+    r5 = client.post("/chat", json={"session_id": sid, "categoria_id": 2}).json()
+    assert r5["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r5["borrador"]["categoria_id"] == 2
+    assert r5["validacion"]["valido"] is True
+
+
 

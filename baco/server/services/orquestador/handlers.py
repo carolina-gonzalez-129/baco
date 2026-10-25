@@ -48,7 +48,9 @@ from baco.server.services.orquestador.mensajes import (
     msg_error_longitud_maxima,
     msg_error_longitud_minima,
     msg_opcion_invalida,
+    msg_pedir_categoria,
     msg_pedir_tag_adicional,
+    msg_pedir_tags_y_categoria,
     msg_texto_vacio,
     prefijo_borrador_creado,
     prefijo_borrador_enriquecido,
@@ -632,8 +634,8 @@ async def handle_esperando_plantilla(
 
     b.tipo_plantilla = plantilla
     b.tags = combinar_tags(plantilla, b.tags, req.tags or [])
-    if b.categoria_id is None:
-        b.categoria_id = sesion.categoria_id or 1
+    if b.categoria_id is None and sesion.categoria_id is not None:
+        b.categoria_id = sesion.categoria_id
     return avanzar_a_metadatos_o_revision(sesion)
 
 
@@ -667,14 +669,26 @@ async def handle_esperando_metadatos(
     if cat_res is not None:
         b.categoria_id = cat_res
 
-    if b.categoria_id is None:
-        b.categoria_id = sesion.categoria_id or 1
+    if b.categoria_id is None and sesion.categoria_id is not None:
+        b.categoria_id = sesion.categoria_id
 
     b.tags = combinar_tags(b.tipo_plantilla, b.tags, nuevos_tags)
     sesion.tags = list(b.tags)
-    if len(b.tags) < 2:
+    if b.categoria_id is not None:
+        sesion.categoria_id = b.categoria_id
+
+    tags_faltan = len(b.tags) < 2
+    cat_falta = b.categoria_id is None
+
+    if tags_faltan or cat_falta:
         intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
-        return construir_respuesta(sesion, msg_pedir_tag_adicional(b.tipo_plantilla or "", intento), [])
+        if tags_faltan and cat_falta:
+            msg = msg_pedir_tags_y_categoria(b.tipo_plantilla or "", intento)
+        elif cat_falta:
+            msg = msg_pedir_categoria(intento)
+        else:
+            msg = msg_pedir_tag_adicional(b.tipo_plantilla or "", intento)
+        return construir_respuesta(sesion, msg, ["volver"])
 
     sesion.limpiar_fallos("ESPERANDO_METADATOS")
     msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)

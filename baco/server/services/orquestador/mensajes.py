@@ -178,6 +178,24 @@ VARIANTES_TAGS_FALTANTES = [
 ]
 
 
+VARIANTES_CATEGORIA_FALTANTE = [
+    "¡Casi listo! Por favor seleccioná la categoría del artículo desde el menú desplegable en el formulario de la izquierda.",
+    "Falta definir la categoría: elegí la opción que corresponda desde el menú desplegable del formulario de la izquierda para continuar.",
+]
+
+
+def msg_pedir_categoria(intento: int = 0) -> str:
+    return VARIANTES_CATEGORIA_FALTANTE[intento % len(VARIANTES_CATEGORIA_FALTANTE)]
+
+
+def msg_pedir_tags_y_categoria(plantilla: str = "", intento: int = 0) -> str:
+    art = f"el {plantilla}" if plantilla else "el artículo"
+    return (
+        f"Necesitamos al menos dos etiquetas temáticas para clasificar {art} "
+        "y que selecciones la categoría desde el menú desplegable en el formulario de la izquierda."
+    )
+
+
 def msg_pedir_tag_adicional(plantilla: str = "", intento: int = 0) -> str:
     return VARIANTES_TAGS_FALTANTES[intento % len(VARIANTES_TAGS_FALTANTES)]
 
@@ -189,8 +207,8 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
         f"{prefijo}Asignamos el formato '{plantilla}'. "
-        "Para clasificar el artículo, escribí al menos una etiqueta temática "
-        "(por ejemplo: ventas, facturacion) y, si lo conocés, el número de categoría."
+        "Para clasificar el artículo, ingresá al menos dos etiquetas temáticas "
+        "(por ejemplo: ventas, facturación) y seleccioná la categoría desde el menú desplegable en el formulario de la izquierda."
     )
 
 
@@ -239,7 +257,9 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
     if est == EstadoFlujo.ESPERANDO_METADATOS:
         plantilla = (sesion.borrador.tipo_plantilla if sesion.borrador else "") or ""
         return (
-            f"[Placeholder] Necesitamos al menos dos etiquetas temáticas (ejemplo: ventas, afip) para clasificar el {plantilla}. Podés escribir las etiquetas separadas por coma o tocar 'volver' para cambiar de plantilla.",
+            f"[Placeholder] Necesitamos al menos dos etiquetas temáticas para clasificar el {plantilla} "
+            "y que selecciones la categoría desde el menú desplegable en el formulario de la izquierda. "
+            "Podés escribir las etiquetas acá o tocar 'volver' para cambiar de plantilla.",
             ["volver"],
         )
     if est in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR):
