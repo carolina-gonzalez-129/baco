@@ -129,6 +129,553 @@
   let ultimoFallo = null;   // para poder reintentar la llamada que falló
 
   /* =========================================================
+     Editor de Bloques (Vanilla JS, Estado Único)
+     ========================================================= */
+  const MAX_ARCHIVO_BYTES = 10 * 1024 * 1024; // 10 MB
+  const MAX_TOTAL_RECURSOS_BYTES = 50 * 1024 * 1024; // 50 MB
+  let bloqueSeq = 1;
+  const genId = () => 'b_' + Date.now() + '_' + (bloqueSeq++);
+
+  const estadoEditor = {
+    bloques: [
+      { id: genId(), tipo: 'texto', contenido: '' }
+    ],
+    modo: 'edicion',
+    enviando: false,
+    menuAbiertoPos: null
+  };
+
+  let sesionCargadaId = null;
+  let selectorTargetPos = null;
+  let selectorTargetTipo = null;
+  const textareasMap = new Map();
+
+  function formatearBytes(bytes) {
+    if (bytes == null || isNaN(bytes)) return '';
+    if (bytes < 1024) return bytes + ' B';
+    const kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + ' KB';
+    const mb = kb / 1024;
+    return mb.toFixed(1) + ' MB';
+  }
+
+  function calcularTamanioTotalRecursos() {
+    return estadoEditor.bloques.reduce((acc, b) => {
+      if (b.tipo === 'recurso' && b.recurso && typeof b.recurso.tamanio === 'number') {
+        return acc + b.recurso.tamanio;
+      }
+      return acc;
+    }, 0);
+  }
+
+  function componerTextoDesdeBloques() {
+    const partes = [];
+    estadoEditor.bloques.forEach((b) => {
+      if (b.tipo === 'texto') {
+        const cont = (b.contenido || '').trim();
+        if (cont) partes.push(cont);
+      } else if (b.tipo === 'recurso' && b.recurso) {
+        const r = b.recurso;
+        const ref = r.url || r.referencia || '';
+        const nom = r.nombre || 'Recurso';
+        if (r.tipo === 'imagen') {
+          partes.push('![' + nom + '](' + ref + ')');
+        } else if (r.tipo === 'documento' || r.tipo === 'archivo') {
+          partes.push('[' + nom + '|attachment](' + ref + ')');
+        } else {
+          partes.push('[' + nom + '](' + ref + ')');
+        }
+      }
+    });
+    return partes.join('\n\n');
+  }
+
+  function sincronizarTextoConStore() {
+    const compuesto = componerTextoDesdeBloques();
+    store.setForm({ texto: compuesto });
+    const fc = $('#fCuerpo');
+    if (fc) fc.value = compuesto;
+  }
+
+  function crearDivisor(pos, deshabilitado) {
+    const div = document.createElement('div');
+    div.className = 'bloque-divider';
+
+    const line = document.createElement('div');
+    line.className = 'bloque-divider-line';
+    div.appendChild(line);
+
+    const btnPlus = document.createElement('button');
+    btnPlus.type = 'button';
+    btnPlus.className = 'btn-agregar-bloque';
+    btnPlus.textContent = '+';
+    btnPlus.setAttribute('data-accion', 'toggle-menu');
+    btnPlus.setAttribute('data-pos', String(pos));
+    btnPlus.title = 'Agregar multimedia';
+    if (deshabilitado) btnPlus.disabled = true;
+    div.appendChild(btnPlus);
+
+    if (estadoEditor.menuAbiertoPos === pos && !deshabilitado) {
+      const menu = document.createElement('div');
+      menu.className = 'menu-agregar-bloque';
+
+      const opciones = [
+        { tipo: 'imagen', icono: '🖼️', etiqueta: 'Imagen' },
+        { tipo: 'video', icono: '🎬', etiqueta: 'Video' },
+        { tipo: 'archivo', icono: '📎', etiqueta: 'Archivo' }
+      ];
+
+      opciones.forEach((opt) => {
+        const btnOpt = document.createElement('button');
+        btnOpt.type = 'button';
+        btnOpt.className = 'menu-opcion-btn';
+        btnOpt.setAttribute('data-accion', 'abrir-selector');
+        btnOpt.setAttribute('data-tipo', opt.tipo);
+        btnOpt.setAttribute('data-pos', String(pos));
+
+        const spanIco = document.createElement('span');
+        spanIco.textContent = opt.icono;
+        btnOpt.appendChild(spanIco);
+
+        const spanTxt = document.createElement('span');
+        spanTxt.textContent = opt.etiqueta;
+        btnOpt.appendChild(spanTxt);
+
+        menu.appendChild(btnOpt);
+      });
+
+      div.appendChild(menu);
+    }
+
+    return div;
+  }
+
+  function crearItemTexto(b, deshabilitado) {
+    const item = document.createElement('div');
+    item.className = 'bloque-texto-item';
+    item.setAttribute('data-id', b.id);
+
+    let textarea = textareasMap.get(b.id);
+    if (!textarea) {
+      textarea = document.createElement('textarea');
+      textarea.className = 'bloque-textarea';
+      textarea.setAttribute('data-id', b.id);
+      textarea.placeholder = 'Escribí el texto acá en formato Markdown...';
+      textareasMap.set(b.id, textarea);
+    }
+    textarea.disabled = deshabilitado;
+    if (document.activeElement !== textarea && textarea.value !== (b.contenido || '')) {
+      textarea.value = b.contenido || '';
+    }
+
+    item.appendChild(textarea);
+    return item;
+  }
+
+  function crearItemRecurso(b, idx, total, deshabilitado) {
+    const item = document.createElement('div');
+    item.className = 'bloque-recurso-item' + (b.cargando ? ' cargando' : '');
+    item.setAttribute('data-id', b.id);
+
+    // 1. Botón 'x' a la izquierda para eliminar
+    const btnX = document.createElement('button');
+    btnX.type = 'button';
+    btnX.className = 'bloque-eliminar-btn';
+    btnX.textContent = '×';
+    btnX.setAttribute('data-accion', 'eliminar-bloque');
+    btnX.setAttribute('data-id', b.id);
+    btnX.title = 'Eliminar recurso';
+    if (b.cargando || deshabilitado) btnX.disabled = true;
+    item.appendChild(btnX);
+
+    // 2. Icono o miniatura
+    const r = b.recurso || {};
+    const tipo = r.tipo || 'otro';
+    const url = b.previewUrl || r.url || r.referencia || '';
+
+    if (tipo === 'imagen' && url) {
+      const img = document.createElement('img');
+      img.className = 'bloque-recurso-mini';
+      img.src = url;
+      img.alt = r.nombre || 'Imagen';
+      img.loading = 'lazy';
+      item.appendChild(img);
+    } else {
+      const ico = document.createElement('span');
+      ico.className = 'bloque-recurso-icono';
+      ico.textContent = tipo === 'video' ? '🎬' : (tipo === 'documento' || tipo === 'archivo' ? '📄' : '📎');
+      item.appendChild(ico);
+    }
+
+    // 3. Info del recurso
+    const info = document.createElement('div');
+    info.className = 'bloque-recurso-info';
+
+    const nom = document.createElement('span');
+    nom.className = 'bloque-recurso-nombre';
+    nom.textContent = r.nombre || 'Recurso sin nombre';
+    info.appendChild(nom);
+
+    const meta = document.createElement('span');
+    meta.className = 'bloque-recurso-meta';
+    if (b.cargando) {
+      meta.textContent = 'Subiendo recurso…';
+    } else {
+      const tipoLabel = tipo === 'imagen' ? 'Imagen' : (tipo === 'video' ? 'Video' : 'Archivo');
+      const tamLabel = r.tamanio ? ' · ' + formatearBytes(r.tamanio) : '';
+      meta.textContent = tipoLabel + tamLabel;
+    }
+    info.appendChild(meta);
+    item.appendChild(info);
+
+    // 4. Botones subir / bajar
+    const mover = document.createElement('div');
+    mover.className = 'bloque-recurso-mover';
+
+    const btnSubir = document.createElement('button');
+    btnSubir.type = 'button';
+    btnSubir.className = 'bloque-btn-mover';
+    btnSubir.textContent = '↑';
+    btnSubir.setAttribute('data-accion', 'subir-bloque');
+    btnSubir.setAttribute('data-id', b.id);
+    btnSubir.title = 'Subir';
+    if (idx === 0 || b.cargando || deshabilitado) btnSubir.disabled = true;
+    mover.appendChild(btnSubir);
+
+    const btnBajar = document.createElement('button');
+    btnBajar.type = 'button';
+    btnBajar.className = 'bloque-btn-mover';
+    btnBajar.textContent = '↓';
+    btnBajar.setAttribute('data-accion', 'bajar-bloque');
+    btnBajar.setAttribute('data-id', b.id);
+    btnBajar.title = 'Bajar';
+    if (idx === total - 1 || b.cargando || deshabilitado) btnBajar.disabled = true;
+    mover.appendChild(btnBajar);
+
+    item.appendChild(mover);
+
+    return item;
+  }
+
+  function renderBloques() {
+    const cont = $('#contenedorBloques');
+    if (!cont) return;
+
+    const s = store.get();
+    const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
+    const deshabilitado = !act.texto || s.enviando || estadoEditor.enviando;
+
+    const frag = document.createDocumentFragment();
+    const total = estadoEditor.bloques.length;
+
+    // Limpiar map de textareas para bloques eliminados
+    const idsValidos = new Set(estadoEditor.bloques.map((b) => b.id));
+    for (const id of textareasMap.keys()) {
+      if (!idsValidos.has(id)) textareasMap.delete(id);
+    }
+
+    // Divisor inicial (posición 0)
+    frag.appendChild(crearDivisor(0, deshabilitado));
+
+    estadoEditor.bloques.forEach((b, idx) => {
+      if (b.tipo === 'texto') {
+        frag.appendChild(crearItemTexto(b, deshabilitado));
+      } else if (b.tipo === 'recurso') {
+        frag.appendChild(crearItemRecurso(b, idx, total, deshabilitado));
+      }
+      // Divisor posterior (posición idx + 1)
+      frag.appendChild(crearDivisor(idx + 1, deshabilitado));
+    });
+
+    cont.replaceChildren(frag);
+
+    // Botón Confirmar siempre visible, deshabilitado mientras espera
+    const btnConfirmar = $('#btnConfirmarBloques');
+    if (btnConfirmar) {
+      btnConfirmar.disabled = deshabilitado;
+      btnConfirmar.textContent = estadoEditor.enviando ? 'Confirmando…' : 'Confirmar';
+    }
+  }
+
+  function insertarBloqueRecurso(nuevoBloque, pos) {
+    if (pos == null || pos < 0 || pos > estadoEditor.bloques.length) {
+      pos = estadoEditor.bloques.length;
+    }
+    estadoEditor.bloques.splice(pos, 0, nuevoBloque);
+
+    if (pos + 1 >= estadoEditor.bloques.length || estadoEditor.bloques[pos + 1].tipo !== 'texto') {
+      estadoEditor.bloques.splice(pos + 1, 0, { id: genId(), tipo: 'texto', contenido: '' });
+    }
+    if (pos === 0 || estadoEditor.bloques[pos - 1].tipo !== 'texto') {
+      estadoEditor.bloques.splice(pos, 0, { id: genId(), tipo: 'texto', contenido: '' });
+    }
+  }
+
+  function eliminarBloque(id) {
+    const idx = estadoEditor.bloques.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const b = estadoEditor.bloques[idx];
+    if (b.previewUrl) {
+      URL.revokeObjectURL(b.previewUrl);
+    }
+    estadoEditor.bloques.splice(idx, 1);
+
+    if (!estadoEditor.bloques.length) {
+      estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: '' });
+    }
+    renderBloques();
+    sincronizarTextoConStore();
+  }
+
+  function moverBloque(id, direccion) {
+    const idx = estadoEditor.bloques.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const targetIdx = direccion === 'subir' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= estadoEditor.bloques.length) return;
+
+    const temp = estadoEditor.bloques[idx];
+    estadoEditor.bloques[idx] = estadoEditor.bloques[targetIdx];
+    estadoEditor.bloques[targetIdx] = temp;
+
+    renderBloques();
+    sincronizarTextoConStore();
+  }
+
+  function abrirSelectorParaTipo(tipo, pos) {
+    const input = $('#inputSelectorBloque');
+    if (!input) return;
+    selectorTargetTipo = tipo;
+    selectorTargetPos = pos;
+
+    if (tipo === 'imagen') {
+      input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    } else if (tipo === 'video') {
+      input.accept = 'video/mp4,video/webm,video/ogg';
+    } else if (tipo === 'archivo') {
+      input.accept = '.pdf,.doc,.docx,.odt,.txt,.xlsx,.pptx,.zip';
+    } else {
+      input.accept = '*/*';
+    }
+
+    input.value = '';
+    input.click();
+  }
+
+  function validarYSubirArchivo(file, tipoMenu, pos) {
+    if (!file) return;
+
+    const nombre = (file.name || '').toLowerCase();
+    const mime = (file.type || '').toLowerCase();
+    if (nombre.endsWith('.svg') || mime === 'image/svg+xml') {
+      toast('No se permiten archivos SVG por motivos de seguridad.');
+      return;
+    }
+
+    if (file.size > MAX_ARCHIVO_BYTES) {
+      toast('El archivo supera el tamaño máximo permitido de 10 MB.');
+      return;
+    }
+
+    const totalActual = calcularTamanioTotalRecursos();
+    if (totalActual + file.size > MAX_TOTAL_RECURSOS_BYTES) {
+      toast('El tamaño acumulado de los recursos superaría el límite de 50 MB.');
+      return;
+    }
+
+    let tipoRecurso = 'otro';
+    if (tipoMenu === 'imagen' || mime.startsWith('image/')) {
+      tipoRecurso = 'imagen';
+    } else if (tipoMenu === 'video' || mime.startsWith('video/')) {
+      tipoRecurso = 'video';
+    } else if (tipoMenu === 'archivo' || mime.startsWith('application/') || mime.startsWith('text/')) {
+      tipoRecurso = 'documento';
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    const bloqueId = genId();
+    const nuevoBloque = {
+      id: bloqueId,
+      tipo: 'recurso',
+      cargando: true,
+      previewUrl: previewUrl,
+      recurso: {
+        id: bloqueId,
+        tipo: tipoRecurso,
+        nombre: file.name,
+        url: previewUrl,
+        tamanio: file.size,
+        mime: file.type
+      }
+    };
+
+    insertarBloqueRecurso(nuevoBloque, pos);
+    renderBloques();
+
+    subirArchivoRecurso(file, bloqueId, previewUrl);
+  }
+
+  async function subirArchivoRecurso(file, bloqueId, previewUrl) {
+    try {
+      let res = null;
+      if (typeof api.subirRecursoMultimedia === 'function') {
+        res = await api.subirRecursoMultimedia(file);
+      }
+      const b = estadoEditor.bloques.find((x) => x.id === bloqueId);
+      if (!b) {
+        URL.revokeObjectURL(previewUrl);
+        return;
+      }
+      b.cargando = false;
+      if (res && (res.referencia || res.url)) {
+        b.recurso.url = res.referencia || res.url;
+        if (res.id) b.recurso.id = res.id;
+      }
+      toast('Recurso subido correctamente');
+      renderBloques();
+      sincronizarTextoConStore();
+    } catch (err) {
+      URL.revokeObjectURL(previewUrl);
+      const idx = estadoEditor.bloques.findIndex((x) => x.id === bloqueId);
+      if (idx !== -1) estadoEditor.bloques.splice(idx, 1);
+      toast('Error al subir: ' + (err.message || 'Error'));
+      renderBloques();
+    }
+  }
+
+  async function confirmarBloques() {
+    if (estadoEditor.enviando) return;
+    const s = store.get();
+    if (s.enviando) return;
+
+    const subiendo = estadoEditor.bloques.some((b) => b.cargando);
+    if (subiendo) {
+      toast('Esperá a que terminen de subirse los archivos');
+      return;
+    }
+
+    const payloadBloques = [];
+    estadoEditor.bloques.forEach((b) => {
+      if (b.tipo === 'texto') {
+        payloadBloques.push({
+          tipo: 'texto',
+          contenido: b.contenido || ''
+        });
+      } else if (b.tipo === 'recurso' && b.recurso) {
+        payloadBloques.push({
+          tipo: 'recurso',
+          recurso: {
+            url: b.recurso.url || b.recurso.referencia || '',
+            nombre: b.recurso.nombre || '',
+            tipo: b.recurso.tipo || 'otro'
+          }
+        });
+      }
+    });
+
+    estadoEditor.enviando = true;
+    renderBloques();
+
+    try {
+      const res = await api.confirmarBloques(payloadBloques);
+      estadoEditor.enviando = false;
+
+      if (res) {
+        if (res.texto_limpio != null) {
+          store.setForm({ texto: res.texto_limpio });
+          const fc = $('#fCuerpo');
+          if (fc) fc.value = res.texto_limpio;
+        }
+        if (res.borrador) {
+          store.set({ borrador: res.borrador });
+        } else if (res.recursos) {
+          store.actualizarRecursos(res.recursos);
+        }
+        toast(res.aviso || 'Bloques confirmados correctamente');
+      }
+      renderBloques();
+    } catch (err) {
+      estadoEditor.enviando = false;
+      renderBloques();
+      toast('Error al confirmar bloques: ' + (err.message || 'Error'));
+    }
+  }
+
+  function sincronizarBloquesDesdeStore(s) {
+    if (!s) return;
+    const sesionCambio = s.session_id !== sesionCargadaId;
+    if (sesionCambio) {
+      sesionCargadaId = s.session_id;
+      estadoEditor.bloques.forEach((b) => {
+        if (b.previewUrl) URL.revokeObjectURL(b.previewUrl);
+      });
+      textareasMap.clear();
+
+      const textoLimpio = (s.borrador && s.borrador.texto_limpio) || (s.form && s.form.texto) || '';
+      const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
+
+      if (textoLimpio && /\[\[R\d+\]\]/.test(textoLimpio)) {
+        const partes = textoLimpio.split(/(\[\[R\d+\]\])/g);
+        const nuevosBloques = [];
+        partes.forEach((p) => {
+          const match = p.match(/^\[\[R(\d+)\]\]$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            const r = recs[num - 1] || { id: 'rec_' + num, nombre: 'Recurso ' + num, tipo: 'otro', url: '' };
+            nuevosBloques.push({
+              id: genId(),
+              tipo: 'recurso',
+              cargando: false,
+              recurso: {
+                id: r.id || ('rec_' + num),
+                tipo: r.tipo || 'otro',
+                nombre: r.nombre || ('Recurso ' + num),
+                url: r.referencia || r.url || ''
+              }
+            });
+          } else {
+            nuevosBloques.push({
+              id: genId(),
+              tipo: 'texto',
+              contenido: p
+            });
+          }
+        });
+        estadoEditor.bloques = nuevosBloques.length ? nuevosBloques : [{ id: genId(), tipo: 'texto', contenido: '' }];
+      } else if (textoLimpio) {
+        const nuevosBloques = [{ id: genId(), tipo: 'texto', contenido: textoLimpio }];
+        recs.forEach((r, i) => {
+          nuevosBloques.push({
+            id: genId(),
+            tipo: 'recurso',
+            cargando: false,
+            recurso: {
+              id: r.id || ('rec_' + (i + 1)),
+              tipo: r.tipo || 'otro',
+              nombre: r.nombre || ('Recurso ' + (i + 1)),
+              url: r.referencia || r.url || ''
+            }
+          });
+          nuevosBloques.push({ id: genId(), tipo: 'texto', contenido: '' });
+        });
+        estadoEditor.bloques = nuevosBloques;
+      } else {
+        estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: '' }];
+      }
+      renderBloques();
+    } else {
+      const editorVacio = estadoEditor.bloques.length === 1 &&
+        estadoEditor.bloques[0].tipo === 'texto' &&
+        !estadoEditor.bloques[0].contenido.trim();
+      const textoLimpio = s.borrador && s.borrador.texto_limpio;
+
+      if (editorVacio && textoLimpio) {
+        sesionCargadaId = null;
+        sincronizarBloquesDesdeStore(s);
+      }
+    }
+  }
+
+  /* =========================================================
      Arranque
      ========================================================= */
   async function iniciar() {
@@ -289,7 +836,7 @@
                 ? 'El texto debe tener al menos ' + cfg.MIN_TEXTO + ' caracteres'
                 : (textoLargo ? 'El texto supera el máximo de ' + cfg.MAX_TEXTO + ' caracteres' : ''))
             : (btn.disabled && acc.campo === 'tags'
-                ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del display.' : ''))
+                ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del desplegable.' : ''))
                 : ''));
     } else {
       btn.hidden = true;
@@ -305,14 +852,20 @@
     pintarOpciones(s);
     pintarImagenesDetectadas(s);
 
+    sincronizarBloquesDesdeStore(s);
+    renderBloques();
+
     if (!$('#preview').hidden) {
       $('#preview').innerHTML = renderMd(textoVistaPrevia(s));
     }
   }
 
-  /* Vista previa = texto_limpio en edición + sección "Recursos" (solo para mostrar, no se guarda) */
+  /* Vista previa reactiva a partir de los bloques del editor */
   function textoVistaPrevia(s) {
-    return BACO.panelMultimedia.componerVistaPrevia(s.form.texto, BACO.panelMultimedia.lista(s), s);
+    if (estadoEditor && estadoEditor.bloques && estadoEditor.bloques.length) {
+      return componerTextoDesdeBloques();
+    }
+    return (s && s.form && s.form.texto) || '';
   }
 
   function pintarStepper(s, etapaActual) {
@@ -366,8 +919,14 @@
 
     const actualId = (s.form.categoria_id && Number(s.form.categoria_id) > 1) ? Number(s.form.categoria_id) : null;
 
-    let selHtml = '<option value=""' + (!actualId ? ' selected' : '') + ' disabled>Elegí una categoría del display…</option>';
-    cats.forEach((c) => {
+    let selHtml = '<option value=""' + (!actualId ? ' selected' : '') + ' disabled>Elegí una categoría del desplegable…</option>';
+    
+    // Ordenar alfabéticamente para facilitar la navegación en las 165 opciones
+    const catsOrdenadas = [...cats].sort((a, b) =>
+      (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
+    );
+
+    catsOrdenadas.forEach((c) => {
       const selected = actualId && Number(c.id) === actualId;
       selHtml += '<option value="' + esc(c.id) + '"' + (selected ? ' selected' : '') + '>' + esc(c.nombre) + '</option>';
     });
@@ -377,17 +936,27 @@
     chipsRow.innerHTML = '';
     if (!cats.length) return;
 
-    chipsRow.appendChild(el('span', 'cap', 'Categorías'));
-    cats.forEach((c) => {
-      const activo = actualId && Number(c.id) === actualId;
-      const chip = el('button', 'sugg cat-chip' + (activo ? ' on' : ''), esc(c.nombre));
-      chip.type = 'button';
-      chip.disabled = !habilitado;
-      chip.onclick = () => {
-        store.setForm({ categoria_id: Number(c.id) });
-      };
-      chipsRow.appendChild(chip);
-    });
+    // Mostrar como chips rápidos solo las categorías principales/frecuentes
+    const IDS_CHIPS_FRECUENTES = new Set([
+      20, 21, 24, 22, 23, 19, 37, 39, 25, 26, 28, 29, 33, 40, 48, 62, 63, 65, 81, 82, 83
+    ]);
+    const catsChips = cats.length > 25
+      ? cats.filter((c) => IDS_CHIPS_FRECUENTES.has(Number(c.id)))
+      : cats;
+
+    if (catsChips.length) {
+      chipsRow.appendChild(el('span', 'cap', 'Sugeridas'));
+      catsChips.forEach((c) => {
+        const activo = actualId && Number(c.id) === actualId;
+        const chip = el('button', 'sugg cat-chip' + (activo ? ' on' : ''), esc(c.nombre));
+        chip.type = 'button';
+        chip.disabled = !habilitado;
+        chip.onclick = () => {
+          store.setForm({ categoria_id: Number(c.id) });
+        };
+        chipsRow.appendChild(chip);
+      });
+    }
   }
 
   function pintarAvisoMetadatosHeredados(s) {
@@ -967,13 +1536,9 @@
   }
 
   function pintarRecursosDetectados(s) {
-    /* 1. Mini panel de carga multimedia: fuente = s.borrador.multimedia.
-          Solo en pestaña Editor. Oculto en Vista previa. */
     BACO.panelMultimedia.pintar($('#panelMultimedia'), s);
-    if ($('#preview') && !$('#preview').hidden) {
-      const pm = $('#panelMultimedia');
-      if (pm) { pm.hidden = true; pm.innerHTML = ''; }
-    }
+    const pm = $('#panelMultimedia');
+    if (pm) { pm.hidden = true; pm.innerHTML = ''; }
 
     const bar = $('#editorImgBar');
     if (!bar) return;
@@ -1630,24 +2195,95 @@
 
     $('#btnPrincipal').onclick = enviarPrincipal;
 
-    conectarEventosMultimedia();
+    const contBloques = $('#contenedorBloques');
+    if (contBloques) {
+      contBloques.addEventListener('click', (e) => {
+        const targetAccion = e.target.closest('[data-accion]');
+        if (!targetAccion) return;
+
+        const accion = targetAccion.getAttribute('data-accion');
+        const id = targetAccion.getAttribute('data-id');
+        const posStr = targetAccion.getAttribute('data-pos');
+        const pos = posStr != null ? parseInt(posStr, 10) : null;
+        const tipo = targetAccion.getAttribute('data-tipo');
+
+        if (accion === 'toggle-menu') {
+          e.stopPropagation();
+          estadoEditor.menuAbiertoPos = estadoEditor.menuAbiertoPos === pos ? null : pos;
+          renderBloques();
+        } else if (accion === 'abrir-selector') {
+          e.stopPropagation();
+          estadoEditor.menuAbiertoPos = null;
+          renderBloques();
+          abrirSelectorParaTipo(tipo, pos);
+        } else if (accion === 'eliminar-bloque') {
+          e.stopPropagation();
+          eliminarBloque(id);
+        } else if (accion === 'subir-bloque') {
+          e.stopPropagation();
+          moverBloque(id, 'subir');
+        } else if (accion === 'bajar-bloque') {
+          e.stopPropagation();
+          moverBloque(id, 'bajar');
+        }
+      });
+
+      contBloques.addEventListener('input', (e) => {
+        if (e.target && e.target.classList.contains('bloque-textarea')) {
+          const id = e.target.getAttribute('data-id');
+          const b = estadoEditor.bloques.find((x) => x.id === id);
+          if (b) {
+            b.contenido = e.target.value;
+            sincronizarTextoConStore();
+          }
+        }
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      if (estadoEditor.menuAbiertoPos !== null && !e.target.closest('.bloque-divider')) {
+        estadoEditor.menuAbiertoPos = null;
+        renderBloques();
+      }
+    });
+
+    const inputSelector = $('#inputSelectorBloque');
+    if (inputSelector) {
+      inputSelector.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) {
+          validarYSubirArchivo(f, selectorTargetTipo, selectorTargetPos);
+        }
+        e.target.value = '';
+      });
+    }
+
+    const btnConfBloques = $('#btnConfirmarBloques');
+    if (btnConfBloques) {
+      btnConfBloques.onclick = confirmarBloques;
+    }
+
     if ($('#btnConfirmarTexto')) {
       $('#btnConfirmarTexto').onclick = confirmarTexto;
     }
     $('#btnEditor').onclick = () => {
-      $('#fCuerpo').hidden = false;
+      $('#editorBloquesWrapper').hidden = false;
+      $('#fCuerpo').hidden = true;
       $('#preview').hidden = true;
       $('#btnEditor').classList.add('sel');
       $('#btnPreview').classList.remove('sel');
-      pintarImagenesDetectadas(store.get());
+      estadoEditor.modo = 'edicion';
+      renderBloques();
     };
     $('#btnPreview').onclick = () => {
-      store.setForm({ texto: $('#fCuerpo').value });
+      sincronizarTextoConStore();
       $('#preview').innerHTML = renderMd(textoVistaPrevia(store.get()));
+      $('#editorBloquesWrapper').hidden = true;
       $('#fCuerpo').hidden = true;
       $('#preview').hidden = false;
       $('#btnPreview').classList.add('sel');
       $('#btnEditor').classList.remove('sel');
+      estadoEditor.modo = 'preview';
       const bar = $('#editorImgBar'); if (bar) bar.hidden = true;
       const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.innerHTML = ''; }
     };
@@ -1663,9 +2299,17 @@
       }
       const lector = new FileReader();
       lector.onload = () => {
+        const s = store.get();
         const nuevo = (s.form.texto.trim() ? s.form.texto + '\n\n' : '') + lector.result;
         store.setForm({ texto: nuevo });
         $('#fCuerpo').value = nuevo;
+        if (estadoEditor.bloques.length && estadoEditor.bloques[estadoEditor.bloques.length - 1].tipo === 'texto') {
+          const ult = estadoEditor.bloques[estadoEditor.bloques.length - 1];
+          ult.contenido = (ult.contenido.trim() ? ult.contenido + '\n\n' : '') + lector.result;
+        } else {
+          estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: String(lector.result) });
+        }
+        renderBloques();
         toast('Documento volcado en el editor');
       };
       lector.readAsText(f);
@@ -1710,6 +2354,8 @@
       const c = BACO.datos.ejemplo.cuerpo;
       $('#fCuerpo').value = c;
       store.setForm({ texto: c });
+      estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: c }];
+      renderBloques();
       toast('Contenido de ejemplo cargado en el editor. Tocá "Confirmar texto" cuando estés listo.');
     } else {
       toast('El ejemplo se carga en los pasos de título y contenido');
