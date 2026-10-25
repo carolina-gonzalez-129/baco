@@ -993,22 +993,21 @@ def test_catalogo_curado_opcion_a_y_resolucion_nombres(client, mock_buscador):
 
     r = client.post("/chat", json={}).json()
     cats = r["categorias_disponibles"]
-    # Debe entregar exactamente los 21 módulos curados de la Opción A
-    assert len(cats) == 21
+    # Debe entregar las 165 categorías oficiales completas
+    assert len(cats) == 165
     nombres = [c["nombre"] for c in cats]
     assert "Contabilidad" in nombres
     assert "Ventas" in nombres
     assert "Agro" in nombres
     assert "Compras" in nombres
     assert "Tesorería" in nombres
-    # Ninguna categoría curada debe llamarse 'Categoría X'
-    assert not any(n.startswith("Categoría ") for n in nombres)
 
-    # Verificar que Ventas tiene ID 20 y Contabilidad tiene ID 21
-    mapa = {c["nombre"]: c["id"] for c in cats}
-    assert mapa["Ventas"] == 20
-    assert mapa["Contabilidad"] == 21
-    assert mapa["Agro"] == 37
+    # Verificar mapeo de IDs y resolución con el diccionario oficial
+    mapa = {c["id"]: c["nombre"] for c in cats}
+    assert mapa[20] == "Ventas"
+    assert mapa[21] == "Contabilidad"
+    assert mapa[37] == "Agro"
+    assert mapa[165] == "Novedades de Tecnología"
 
 
 def test_actualizar_serie_toma_nuevo_titulo_de_entrada(client, mock_buscador):

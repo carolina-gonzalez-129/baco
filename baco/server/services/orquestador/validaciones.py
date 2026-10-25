@@ -217,11 +217,17 @@ CATEGORIAS_CURADAS_OPCION_A: List[CategoriaOpcion] = [
 ]
 
 
+CATALOGO_OFICIAL_165_CATEGORIAS: List[CategoriaOpcion] = [
+    CategoriaOpcion(id=cid, nombre=DICCIONARIO_OFICIAL_CATEGORIAS.get(cid, f"Categoría {cid}"))
+    for cid in range(1, 166)
+]
+
+
 def _consultar_categorias_y_tags_sync(cur: Any) -> Tuple[List[CategoriaOpcion], List[str]]:
     categorias: List[CategoriaOpcion] = []
     tags: List[str] = []
     if cur is None:
-        return list(CATEGORIAS_CURADAS_OPCION_A), tags
+        return list(CATALOGO_OFICIAL_165_CATEGORIAS), tags
 
     conn = getattr(cur, "connection", None)
 
@@ -267,11 +273,15 @@ def _consultar_categorias_y_tags_sync(cur: Any) -> Tuple[List[CategoriaOpcion], 
                 except Exception:
                     pass
 
-    # Si vino la lista completa de la BD (más de 10 elementos),
-    # presentamos la lista curada de los 21 módulos clave acordados en la Opción A.
+    # Si vino la lista de la BD (más de 10 elementos),
+    # completamos con el catálogo oficial de las 165 categorías para garantizar que estén todas disponibles.
     # Si vino una lista acotada de un mock/test (len <= 10), respetamos el fixture del test.
     if len(categorias) > 10:
-        categorias = list(CATEGORIAS_CURADAS_OPCION_A)
+        mapa_existente = {c.id: c.nombre for c in categorias}
+        categorias = [
+            CategoriaOpcion(id=cid, nombre=mapa_existente.get(cid, DICCIONARIO_OFICIAL_CATEGORIAS.get(cid, f"Categoría {cid}")))
+            for cid in range(1, 166)
+        ]
 
     try:
         cur.execute("SELECT id, name, slug FROM public.tags ORDER BY name;")
@@ -338,7 +348,7 @@ async def cargar_catalogos_sesion(sesion: SesionChat, buscador: Optional[Buscado
             if _CACHE_CATEGORIAS and not sesion.categorias_disponibles:
                 sesion.categorias_disponibles = list(_CACHE_CATEGORIAS)
             elif not sesion.categorias_disponibles:
-                sesion.categorias_disponibles = list(CATEGORIAS_CURADAS_OPCION_A)
+                sesion.categorias_disponibles = list(CATALOGO_OFICIAL_165_CATEGORIAS)
             if _CACHE_TAGS and not sesion.tags_disponibles:
                 sesion.tags_disponibles = list(_CACHE_TAGS)
         else:
@@ -350,7 +360,7 @@ async def cargar_catalogos_sesion(sesion: SesionChat, buscador: Optional[Buscado
             elif _CACHE_CATEGORIAS and not sesion.categorias_disponibles:
                 sesion.categorias_disponibles = list(_CACHE_CATEGORIAS)
             elif not sesion.categorias_disponibles:
-                sesion.categorias_disponibles = list(CATEGORIAS_CURADAS_OPCION_A)
+                sesion.categorias_disponibles = list(CATALOGO_OFICIAL_165_CATEGORIAS)
 
             if tags_db:
                 _CACHE_TAGS = tags_db
