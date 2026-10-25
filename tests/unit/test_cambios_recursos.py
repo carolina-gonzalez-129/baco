@@ -168,3 +168,87 @@ def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recur
     # Es propiedad derivada: no se puede reasignar directamente
     with pytest.raises(AttributeError):
         borrador.texto = "Intento de sobreescritura directa"
+
+def test_verificar_marcadores_detecta_faltante_sobrante_repetido_y_reordenado():
+    """Cambio 2: verificar_marcadores valida coincidencia exacta en cantidad, IDs y orden."""
+    from baco.server.services.agente_service import verificar_marcadores
+
+    texto_in = "Paso 1: [[recurso:rec_1]]\n\nPaso 2: [[recurso:rec_2]]"
+
+    # 1. Coincidencia exacta -> True
+    valido, esp, obt = verificar_marcadores(texto_in, "Texto format\n\n[[recurso:rec_1]]\n\n[[recurso:rec_2]]")
+    assert valido is True
+    assert esp == ["[[recurso:rec_1]]", "[[recurso:rec_2]]"]
+    assert obt == ["[[recurso:rec_1]]", "[[recurso:rec_2]]"]
+
+    # 2. Faltante -> False
+    valido_faltante, _, obt_faltante = verificar_marcadores(texto_in, "Solo [[recurso:rec_1]]")
+    assert valido_faltante is False
+    assert obt_faltante == ["[[recurso:rec_1]]"]
+
+    # 3. Sobrante / Inventado -> False
+    valido_sobrante, _, _ = verificar_marcadores(texto_in, "[[recurso:rec_1]] [[recurso:rec_2]] [[recurso:rec_extra]]")
+    assert valido_sobrante is False
+
+    # 4. Repetido -> False
+    valido_repetido, _, _ = verificar_marcadores(texto_in, "[[recurso:rec_1]] [[recurso:rec_2]] [[recurso:rec_2]]")
+    assert valido_repetido is False
+
+    # 5. Reordenado -> False
+    valido_reordenado, _, _ = verificar_marcadores(texto_in, "[[recurso:rec_2]] primero y luego [[recurso:rec_1]]")
+    assert valido_reordenado is False
+
+
+def test_skill_plantillas_con_marcador_inventado_por_modelo_descarta_tras_reintento():
+    """Cambio 2: si el modelo inventa o mueve marcadores, se reintenta 1 vez; si persiste se descarta."""
+    from unittest.mock import MagicMock
+    from baco.server.services.agente_service import ejecutar_skill_plantillas
+
+    texto_original = "Paso 1: Configurar cuenta.\n\n[[recurso:rec_1]]\n\nPaso 2: Verificar saldos."
+    r1 = Recurso(id="rec_1", tipo="imagen", nombre="img.png", referencia="https://bc.finneg.com/1.png", orden=0)
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo="Instructivo Contable",
+        texto_limpio=texto_original,
+        recursos={"rec_1": r1},
+        tipo_plantilla="instructivo",
+    )
+
+    # El modelo devuelve respuesta con marcador inventado [[recurso:rec_inventado_llm]] en ambos intentos
+    mock_baco = MagicMock(return_value="## Instructivo\nPaso 1\n[[recurso:rec_1]]\n[[recurso:rec_inventado_llm]]")
+    resultado = ejecutar_skill_plantillas("ses_step5_test", borrador, mock_baco)
+
+    # Debe haber llamado 2 veces (intento original + 1 reintento)
+    assert mock_baco.call_count == 2
+    # El resultado debe conservar el borrador anterior intacto y avisar del descarte
+    assert texto_original in resultado
+    assert "Se descartó la respuesta de la skill" in resultado
+    assert "no coinciden exactamente" in resultado
+
+
+def test_skill_plantillas_con_reintento_exitoso_acepta_segunda_respuesta():
+    """Cambio 2: si el modelo corrige los marcadores en el reintento, se acepta la respuesta."""
+    from unittest.mock import MagicMock, patch
+    from baco.server.services.agente_service import ejecutar_skill_plantillas
+
+    texto_original = "Paso 1: Configuración.\n\n[[recurso:rec_1]]\n\nPaso 2: Finalización."
+    r1 = Recurso(id="rec_1", tipo="imagen", nombre="img.png", referencia="https://bc.finneg.com/1.png", orden=0)
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo="Instructivo Contable",
+        texto_limpio=texto_original,
+        recursos={"rec_1": r1},
+        tipo_plantilla="instructivo",
+    )
+
+    # Intento 1: omitió el marcador. Intento 2 (reintento): lo conservó correctamente.
+    respuesta_mala = "## Instructivo\nTexto sin marcador maquetado con estilo formal."
+    respuesta_buena = "## Instructivo Oficial\nPaso 1 maquetado.\n\n[[recurso:rec_1]]\n\nPaso 2 maquetado."
+
+    mock_baco = MagicMock(side_effect=[respuesta_mala, respuesta_buena])
+    with patch("baco.server.services.agente_service.actualizar_borrador_texto"):
+        resultado = ejecutar_skill_plantillas("ses_retry_ok", borrador, mock_baco)
+
+    assert mock_baco.call_count == 2
+    assert resultado == respuesta_buena
+    assert "Se descartó" not in resultado
