@@ -74,7 +74,7 @@ uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
 | Endpoint | Qué hace |
 |---|---|
 | `POST /chat` | Un turno del orquestador |
-| `GET /chat/borrador` | Borrador aprobado y sanitizado de la sesión activa |
+| `GET /chat/borrador` | Borrador en conformidad y sanitizado de la sesión activa |
 | `POST /chat/aplicar-plantilla` | Skill *plantillas* sobre el borrador de la sesión |
 | `POST /chat/auditar-semantica` | Skill *validador* sobre el borrador de la sesión |
 
@@ -112,7 +112,7 @@ Cada error trae un botón **Reintentar** que repite el pedido sin hacerte rehace
 
 ## Lo que todavía no existe del lado del backend
 
-- **No hay endpoint de publicación.** El flujo termina en `APROBADO`.
+- **No hay endpoint de publicación.** El flujo termina en `CONFORMIDAD_USUARIO`.
 - **No hay catálogo** de categorías ni etiquetas; la categoría es un ID numérico. Caro dejó anotado en su código que habría que agregar un desplegable con los nombres.
 - **Solo dos plantillas**: `instructivo` y `soluciones`.
 - **No procesa PDF ni Word.** El botón de subir lee `.txt` y `.md` en el navegador.

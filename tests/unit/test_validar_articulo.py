@@ -115,34 +115,42 @@ def test_falta_tag_de_plantilla_es_bloqueante():
     )
 
 
-def test_deteccion_cuit_es_bloqueante():
+def test_deteccion_cuit_es_autosanitizante_y_avisa():
     articulo = ArticuloSchema(
         id=16,
         titulo="Configuración de Cliente",
         categoria_id=5,
         tags=[Tag(name="instructivo"), Tag(name="ventas")],
-        texto=TEXTO_VALIDO_LARGO + " Para el cliente con CUIT 30-12345678-9 configurar alícuota."
+        texto=TEXTO_VALIDO_LARGO + " Para el cliente con CUIT 20-30405060-9 configurar alícuota."
     )
     res = validar_texto_y_estructura_post_duplicados(articulo)
-    assert res["status"] == "Pendiente"
+    assert res["status"] == "Listo con sugerencias"
+    assert "[CUIT_OCULTO]" in res["texto_sanitizado"]
+    assert "20-30405060-9" not in res["texto_sanitizado"]
+    assert "[CUIT_OCULTO]" in articulo.texto
+    assert "20-30405060-9" not in articulo.texto
     assert any(
-        f["severity"] == "Bloqueante" and "cuit" in f["description"].lower()
+        f["severity"] == "Sugerencia" and "preservarte" in f["description"].lower()
         for f in res["findings"]
     )
 
 
-def test_deteccion_email_es_bloqueante():
+def test_deteccion_email_es_autosanitizante_y_avisa():
     articulo = ArticuloSchema(
         id=17,
         titulo="Configuración de Correo",
         categoria_id=5,
         tags=[Tag(name="instructivo"), Tag(name="ventas")],
-        texto=TEXTO_VALIDO_LARGO + " Contactar a soporte@empresa.com para habilitar la opción."
+        texto=TEXTO_VALIDO_LARGO + " Contactar a juan.perez@empresa.com para habilitar la opción."
     )
     res = validar_texto_y_estructura_post_duplicados(articulo)
-    assert res["status"] == "Pendiente"
+    assert res["status"] == "Listo con sugerencias"
+    assert "usuario@ejemplo.com" in res["texto_sanitizado"]
+    assert "juan.perez@empresa.com" not in res["texto_sanitizado"]
+    assert "usuario@ejemplo.com" in articulo.texto
+    assert "juan.perez@empresa.com" not in articulo.texto
     assert any(
-        f["severity"] == "Bloqueante" and "correo" in f["description"].lower()
+        f["severity"] == "Sugerencia" and "preservarte" in f["description"].lower()
         for f in res["findings"]
     )
 

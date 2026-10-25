@@ -39,6 +39,10 @@ class ValidarFormatoResponse(BaseModel):
         default=None,
         description="Cuerpo sanitizado deterministamente (CUITs reales y correos reemplazados por ejemplos seguros)."
     )
+    aviso_privacidad: Optional[str] = Field(
+        default=None,
+        description="Aviso de privacidad y protección de datos si se sanitizaron PIIs."
+    )
     findings: List[FindingSchema] = Field(
         default_factory=list,
         description="Listado de observaciones, alertas bloqueantes o sugerencias"

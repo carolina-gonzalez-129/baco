@@ -33,7 +33,7 @@ El backend conduce. Cada turno devuelve un `estado` y una lista de `opciones`, y
 ```
 ESPERANDO_TITULO → DECISION_TITULO → ESPERANDO_TEXTO → DECISION_TEXTO
        → ESPERANDO_PLANTILLA → ESPERANDO_METADATOS → REVISION_BORRADOR
-       → APROBADO / RECHAZADO
+       → CONFORMIDAD_USUARIO / RECHAZADO
 ```
 
 Desde la versión del 22/10 **se puede volver atrás en cada paso**: el backend ofrece la opción *volver* y el panel la muestra como botón. Ya no es un camino de una sola dirección.
@@ -43,8 +43,8 @@ Desde la versión del 22/10 **se puede volver atrás en cada paso**: el backend 
 | 1 | Título | 15 a 255 caracteres |
 | 2 | Contenido | 20 a 6687 caracteres |
 | 3 | Plantilla (`instructivo` o `soluciones`) y etiquetas | 2 a 5 etiquetas |
-| 4 | Revisión: editar, sanitizar, aprobar o rechazar | sin hallazgos bloqueantes |
-| 5 | Aprobado | — |
+| 4 | Revisión: editar, sanitizar, confirmar conformidad o rechazar | sin hallazgos bloqueantes |
+| 5 | Conformidad | — |
 
 En los pasos que esperan un dato, **el chat también sirve para contestar**: lo que escribas ahí alimenta el flujo. En los demás, es una consulta libre al agente.
 
@@ -77,7 +77,7 @@ La regla que hace barata la integración: **la UI no conoce `fetch` ni URLs**. L
 - Sanitizado de datos sensibles (CUITs, correos)
 - Skills del agente desde el menú: aplicar plantilla y auditar
 - Vista previa de Markdown
-- Modal con el borrador aprobado y sanitizado
+- Modal con el borrador en conformidad y sanitizado
 - Errores con código y explicación de qué hacer
 
 ## Para probar
@@ -95,5 +95,5 @@ El backend quedó bastante distinto de lo que habíamos propuesto en `CONTRATO-A
 | CRUD de entradas con varios endpoints | Un solo `POST /chat` que hace avanzar una máquina de estados |
 | El panel manejaba el estado | El backend manda; el panel refleja |
 | Análisis asincrónico con polling | Validación sincrónica en cada turno |
-| Endpoint de publicación | No existe todavía: el flujo termina en `APROBADO` |
+| Endpoint de publicación | No existe todavía: el flujo termina en `CONFORMIDAD_USUARIO` |
 | Catálogos de categorías y etiquetas | No hay; la categoría es un ID numérico |

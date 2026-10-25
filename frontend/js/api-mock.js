@@ -27,7 +27,7 @@ BACO.apiMock = (function () {
     SERIE_DECISION:       ['actualizar', 'descartar', 'volver'],
     ENRIQUECER_CONTINUAR: ['enriquecer', 'continuar', 'volver'],
     PLANTILLAS:           ['instructivo', 'soluciones', 'volver'],
-    REVISION_VALIDO:      ['aprobar', 'editar', 'sanitizar', 'rechazar', 'volver', 'reiniciar'],
+    REVISION_VALIDO:      ['conforme', 'editar', 'sanitizar', 'rechazar', 'volver', 'reiniciar'],
     REVISION_BLOQUEANTE:  ['editar', 'sanitizar', 'rechazar', 'volver', 'reiniciar'],
     REINICIAR:            ['reiniciar']
   };
@@ -91,13 +91,21 @@ BACO.apiMock = (function () {
   /* ---------------------------------------------------------
      Sanitización y validación
      --------------------------------------------------------- */
-  const RE_CUIT = /\b\d{2}-?\d{8}-?\d\b/;
+  const RE_CUIT = /\b(?:20|23|24|27)-?\d{8}-?\d\b/;
+  const RE_CUIL_CONTEXTO = /(?:\b(?:cuil|cuit)(?:\s+(?:nro|n[uú]mero))?[\s:=#]+)(?:20|23|24|27)[-.\s]?\d{8}[-.\s]?\d\b/i;
   const RE_MAIL = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/;
 
   function sanitizar(texto, titulo) {
     let t = String(texto || ''), cambios = [];
-    if (RE_CUIT.test(t)) { t = t.replace(new RegExp(RE_CUIT.source, 'g'), '20-12345678-9'); cambios.push('CUIT'); }
-    if (RE_MAIL.test(t)) { t = t.replace(new RegExp(RE_MAIL.source, 'g'), 'ejemplo@empresa.com'); cambios.push('correo electrónico'); }
+    if (RE_CUIL_CONTEXTO.test(t)) {
+      t = t.replace(new RegExp(RE_CUIL_CONTEXTO.source, 'gi'), function(m) {
+        var sep = m.match(/^[\s\S]*?[\s:=#]+/i);
+        return (sep ? sep[0] : '') + '[CUIT_OCULTO]';
+      });
+      cambios.push('CUIT/CUIL');
+    }
+    if (RE_CUIT.test(t)) { t = t.replace(new RegExp(RE_CUIT.source, 'g'), '[CUIT_OCULTO]'); cambios.push('CUIT'); }
+    if (RE_MAIL.test(t)) { t = t.replace(new RegExp(RE_MAIL.source, 'g'), 'usuario@ejemplo.com'); cambios.push('correo electrónico'); }
     let ti = String(titulo || '').replace(/^(c[oó]mo|como)\s+/i, '').trim();
     if (ti) ti = ti.charAt(0).toUpperCase() + ti.slice(1);
     return { texto_sanitizado: t, titulo_sanitizado: ti, cambios: cambios };
@@ -105,14 +113,30 @@ BACO.apiMock = (function () {
 
   function avisoPrivacidad(cambios) {
     if (!cambios.length) return null;
-    return 'Detecté ' + cambios.join(' y ') + ' en el contenido y lo reemplacé por datos de ejemplo. ' +
+    return 'Por seguridad, se detectaron y reemplazaron automáticamente datos personales (' + cambios.join(' y ') + ') por valores genéricos para preservarte. ' +
       'Revisá que el reemplazo no haya cambiado el sentido del texto.';
   }
 
   function validar(b) {
+    b = b || {};
     const findings = [];
-    const titulo = b.titulo || '', texto = b.texto || '', tags = b.tags || [];
+    let titulo = b.titulo || '', texto = b.texto || '', tags = b.tags || [];
     const L = lim();
+
+    // Autosanitización inmediata
+    const limpio = sanitizar(texto, titulo);
+    if (limpio.cambios.length > 0) {
+      b.texto = limpio.texto_sanitizado;
+      b.titulo = limpio.titulo_sanitizado;
+      texto = limpio.texto_sanitizado;
+      titulo = limpio.titulo_sanitizado;
+      findings.push({
+        severity: 'Sugerencia',
+        field: 'texto',
+        description: 'Por seguridad, se detectaron y reemplazaron automáticamente datos personales (' + limpio.cambios.join(', ') + ') por marcadores genéricos para preservarte.',
+        action: 'Revisar que el contenido conserve el sentido técnico tras el reemplazo automático.'
+      });
+    }
 
     if (titulo.length < L.MIN_TITULO || titulo.length > L.MAX_TITULO) {
       findings.push({ severity: 'Bloqueante', field: 'titulo',
@@ -129,15 +153,10 @@ BACO.apiMock = (function () {
         description: 'El texto supera los ' + L.MAX_TEXTO + ' caracteres (actual: ' + texto.length + ').',
         action: 'Dividir el artículo o resumirlo.' });
     }
-    if (RE_CUIT.test(texto) || RE_MAIL.test(texto)) {
-      findings.push({ severity: 'Bloqueante', field: 'texto',
-        description: 'Se detectaron datos sensibles reales en el cuerpo.',
-        action: 'Sanitizar el borrador para reemplazarlos por ejemplos genéricos.' });
-    }
     if (/\[Indicar[^\]]*\]/i.test(texto)) {
       findings.push({ severity: 'Bloqueante', field: 'texto',
         description: 'Quedaron marcadores pendientes del tipo [Indicar...] sin completar.',
-        action: 'Completar o quitar los marcadores a mano antes de aprobar.' });
+        action: 'Completar o quitar los marcadores a mano antes de dar conformidad.' });
     }
     if (tags.length > L.MAX_TAGS) {
       findings.push({ severity: 'Bloqueante', field: 'tags',
@@ -160,13 +179,17 @@ BACO.apiMock = (function () {
         action: 'Agregar «Ruta> Menú > ...» para orientar al lector.' });
     }
     if (tags.length < L.MIN_TAGS) {
-      findings.push({ severity: 'Ajuste', field: 'tags',
+      findings.push({ severity: 'Bloqueante', field: 'tags',
         description: 'El artículo tiene menos de ' + L.MIN_TAGS + ' etiquetas.',
-        action: 'Agregar al menos un tag temático adicional.' });
+        action: 'Agregar al menos ' + L.MIN_TAGS + ' etiquetas requeridas.' });
+    }
+    if (!b.categoria_id || Number(b.categoria_id) <= 1) {
+      findings.push({ severity: 'Bloqueante', field: 'categoria_id',
+        description: 'El artículo debe tener asignada una categoría principal (no puede quedar "Sin categoría").',
+        action: 'Seleccionar una categoría del catálogo oficial.' });
     }
 
     const bloqueantes = findings.filter((f) => f.severity === 'Bloqueante').length;
-    const limpio = sanitizar(texto, titulo);
     return {
       valido: bloqueantes === 0,
       fase: 'fase_2_texto_y_estructura',
@@ -209,10 +232,12 @@ BACO.apiMock = (function () {
       'si': 'enriquecer', 'sí': 'enriquecer', '1': 'enriquecer', 'enriquecer': 'enriquecer',
       'actualizar': 'actualizar', 'actualizo': 'actualizar',
       'no': 'descartar', '2': 'descartar', 'descartar': 'descartar', 'continuar': 'continuar',
-      'aprobar': 'aprobar', 'apruebo': 'aprobar', 'confirmar': 'aprobar', 'omitir': 'aprobar',
+      'confirmar_texto': 'confirmar_texto', 'confirmar texto': 'confirmar_texto',
+      'conforme': 'conforme', 'estoy conforme': 'conforme', 'aprobar': 'conforme', 'apruebo': 'conforme', 'confirmar': 'conforme', 'omitir': 'conforme',
+      'copiar borrador': 'copiar_borrador', 'copiar_borrador': 'copiar_borrador', 'copiar': 'copiar_borrador',
       'rechazar': 'rechazar', 'rechazo': 'rechazar', 'cancelar': 'rechazar',
       'confirmar_rechazo': 'confirmar_rechazo', 'confirmar rechazo': 'confirmar_rechazo',
-      'sanitizar': 'sanitizar', 'editar': 'editar', 'corregir': 'editar',
+      'sanitizar': 'sanitizar', 'editar': 'editar', 'corregir': 'editar', 'seguir editando': 'editar', 'seguir_editando': 'editar',
       'reiniciar': 'reiniciar', 'cambiar tema': 'reiniciar',
       'volver': 'volver', 'atras': 'volver', 'atrás': 'volver', 'regresar': 'volver', 'anterior': 'volver',
       'ayuda': 'ayuda', 'opciones': 'ayuda', '?': 'ayuda',
@@ -227,7 +252,7 @@ BACO.apiMock = (function () {
     'Contenido',
     'Plantilla y etiquetas',
     'Revisión',
-    'Aprobación'
+    'Conformidad'
   ];
 
   const MAPA_ETAPAS = {
@@ -239,6 +264,7 @@ BACO.apiMock = (function () {
     ESPERANDO_METADATOS: 3,
     REVISION_BORRADOR: 4,
     SUBSANANDO_BORRADOR: 4,
+    CONFORMIDAD_USUARIO: 5,
     APROBADO: 5,
     RECHAZADO: 5
   };
@@ -318,9 +344,9 @@ BACO.apiMock = (function () {
         '\nPodés editar el borrador acá mismo, o sanitizarlo si lo que sobra son datos sensibles.',
         ops: OPS.REVISION_BLOQUEANTE };
     }
-    const obs = detalle ? '\nAdemás te dejo algunas sugerencias:\n' + detalle + '\n' : ' ';
+    const obs = detalle ? '\nAdemás te dejo algunas sugerencias:\n' + detalle + '\n\n' : '\n\n';
     return { msg: (prefijo || '') + 'El borrador quedó validado (' + v.status + ').' + obs +
-      '¿Lo aprobamos para publicación?', ops: OPS.REVISION_VALIDO };
+      'Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. Esto registra tu conformidad; no lo publica.', ops: OPS.REVISION_VALIDO };
   }
 
   function avanzar(prefijo, aviso) {
@@ -343,6 +369,14 @@ BACO.apiMock = (function () {
     }
     marcar();
     const r = validarBorrador(prefijo);
+    if (b.metadatos_anteriores && !b.metadatos_heredados_revisados) {
+      const catNom = b.metadatos_anteriores.categoria_nombre || ('Categoría ' + b.metadatos_anteriores.categoria_id);
+      const tagsStr = (b.metadatos_anteriores.tags || []).join(', ') || 'ninguna';
+      const avisoMeta = 'El artículo en su versión anterior tenía asociada la categoría "' + catNom + '" y las etiquetas: [' + tagsStr + ']. ' +
+        'Podés tocar "Aceptar" para conservar estos metadatos o "Rechazar" si preferís definirlos manualmente.';
+      const ops = ['aceptar', 'rechazar'].concat(r.ops.filter((o) => o !== 'aceptar' && o !== 'rechazar'));
+      return resp(avisoMeta + '\n\n' + r.msg, ops, aviso);
+    }
     return resp(r.msg, r.ops, aviso);
   }
 
@@ -397,7 +431,7 @@ BACO.apiMock = (function () {
           }
           marcar();
           sesion.estado = 'ESPERANDO_TEXTO';
-          return resp('No encontré nada parecido por título. Contame el contenido del artículo.', ['volver']);
+          return resp('No encontré nada parecido por título. Contame el contenido del artículo.', ['confirmar_texto', 'volver']);
         }
 
         /* ---- DECISION_TITULO ---- */
@@ -405,18 +439,43 @@ BACO.apiMock = (function () {
           if (opcion === 'enriquecer' || opcion === 'actualizar') {
             const el = sesion.coincidencias[0];
             const art = BACO.datos.baseConocimiento.find((a) => a.id_externo === el.id) || {};
-            const textoIni = String(req.texto || el.texto_original || sesion.texto || '').trim();
+            let textoIni = String(req.texto || el.texto_original || art.extracto || sesion.texto || '').trim();
+            if (textoIni.length < L.MIN_TEXTO) {
+              textoIni = 'Pasos para la configuración del artículo:\n1. Acceder al menú principal.\n2. Verificar parámetros del sistema.\n3. Guardar cambios y confirmar.';
+            }
             const tagsIni = req.tags != null ? req.tags : (art.etiquetas || sesion.tags);
             const esSerie = el.tipo_coincidencia === 'serie' || opcion === 'actualizar';
             const tituloFinal = (sesion.titulo || req.titulo || el.titulo).trim();
-            sesion.borrador = { modo: 'enriquecimiento', articulo_original_id: el.id, articulo_original_url: el.url,
-              titulo: tituloFinal, texto: textoIni, texto_original_aprobado: el.texto_original || null,
+            const nomCat = art.categoria || 'Ventas';
+            const metaAnt = { categoria_id: art.categoria_id || 5, categoria_nombre: nomCat, tags: tagsIni.slice() };
+            sesion.borrador = {
+              modo: 'enriquecimiento',
+              articulo_original_id: el.id,
+              articulo_original_url: el.url,
+              titulo: tituloFinal,
+              texto: textoIni,
+              texto_limpio: textoIni,
+              recursos: {},
+              orden_multimedia: [],
+              posiciones: [],
+              multimedia: [],
+              texto_original_aprobado: el.texto_original || null,
               tipo_plantilla: tipoPlantilla(tagsIni),
-              categoria_id: req.categoria_id || sesion.categoria_id, tags: tagsIni };
-            if (!textoIni || textoIni.length < L.MIN_TEXTO) {
+              categoria_id: req.categoria_id || sesion.categoria_id || 5,
+              tags: tagsIni,
+              metadatos_anteriores: metaAnt,
+              metadatos_heredados_revisados: false,
+              contenido_adicional: []
+            };
+            sesion.texto_en_edicion = textoIni;
+            const textoEnviado = String(req.texto || '').trim();
+            if (!textoEnviado) {
               marcar();
               sesion.estado = 'ESPERANDO_TEXTO';
-              return resp('Vamos a enriquecer el artículo #' + el.id + '. Escribí el texto que querés sumarle (mínimo ' + L.MIN_TEXTO + ' caracteres).', ['volver']);
+              const msgCarga = esSerie
+                ? 'Cargué el contenido de la última entrega de la serie (#' + el.id + ' - "' + el.titulo + '"). Tenés total libertad para trabajar sobre él: podés modificar lo que haya cambiado, eliminar lo que no aplique o adicionar novedades. Cuando esté listo, tocá "Confirmar texto".'
+                : 'Cargué el texto del artículo #' + el.id + ' ("' + el.titulo + '"). Podés revisarlo, modificar explicaciones, eliminar secciones obsoletas o adicionar nuevos pasos. Cuando esté listo, tocá "Confirmar texto".';
+              return resp(msgCarga, ['confirmar_texto', 'descartar', 'volver']);
             }
             return avanzar('Armé el borrador sobre #' + el.id + '. ');
           }
@@ -441,7 +500,7 @@ BACO.apiMock = (function () {
               return avanzar('Listo, descartamos la coincidencia y seguimos con tu contenido propio. ');
             }
             sesion.estado = 'ESPERANDO_TEXTO';
-            return resp('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['volver']);
+            return resp('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['confirmar_texto', 'volver']);
           }
           const esSerie = sesion.coincidencias[0] && sesion.coincidencias[0].tipo_coincidencia === 'serie';
           return resp('Elegí una opción para seguir.', esSerie ? OPS.SERIE_DECISION : OPS.ENRIQUECER_DESCARTAR);
@@ -449,14 +508,31 @@ BACO.apiMock = (function () {
 
         /* ---- ESPERANDO_TEXTO ---- */
         if (sesion.estado === 'ESPERANDO_TEXTO') {
-          const textoIn = String(req.texto || req.mensaje || '').trim();
-          if (!textoIn) return resp('Me falta el contenido del artículo para seguir.', ['volver']);
+          const opsTexto = (sesion.borrador && sesion.borrador.modo === 'enriquecimiento')
+            ? ['confirmar_texto', 'descartar', 'volver']
+            : ['confirmar_texto', 'volver'];
+
+          const esConfirmacion = opcion === 'confirmar_texto' ||
+            (req.accion && ['confirmar_texto', 'confirmar texto', 'confirmar'].includes(String(req.accion).trim().toLowerCase()));
+          if (!esConfirmacion) {
+            const frag = String(req.texto != null ? req.texto : (req.mensaje || '')).trim();
+            if (!frag) return resp('Perfecto, ahora necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos.', opsTexto);
+            sesion.texto_en_edicion = req.texto != null ? frag : ((sesion.texto_en_edicion ? sesion.texto_en_edicion + '\n\n' : '') + frag);
+            if (sesion.texto_en_edicion.length > L.MAX_TEXTO) {
+              return resp('El artículo supera los ' + L.MAX_TEXTO + ' caracteres. Dividilo o resumilo.', opsTexto);
+            }
+            return resp('Guardé tu texto en edición (' + sesion.texto_en_edicion.length + ' / ' + L.MAX_TEXTO + ' caracteres). Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá "Confirmar texto".', opsTexto);
+          }
+
+          const textoIn = String(req.texto != null ? req.texto : (sesion.texto_en_edicion || req.mensaje || '')).trim();
+          if (!textoIn) return resp('Perfecto, ahora necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes.', ['volver']);
           if (textoIn.length < L.MIN_TEXTO) {
             return resp('El contenido es muy corto: necesito al menos ' + L.MIN_TEXTO + ' caracteres.', ['volver']);
           }
           if (textoIn.length > L.MAX_TEXTO) {
             return resp('El artículo supera los ' + L.MAX_TEXTO + ' caracteres. Dividilo o resumilo.', ['descartar', 'reiniciar']);
           }
+          sesion.texto_en_edicion = '';
 
           const limpio = sanitizar(textoIn, sesion.titulo);
           const aviso = avisoPrivacidad(limpio.cambios);
@@ -498,10 +574,16 @@ BACO.apiMock = (function () {
             const art = BACO.datos.baseConocimiento.find((a) => a.id_externo === el.id) || {};
             const tagsIni = req.tags != null ? req.tags : (art.etiquetas || sesion.tags);
             const tituloFinal = (sesion.titulo || req.titulo || el.titulo).trim();
+            const nomCat = art.categoria || 'Ventas';
+            const metaAnt = { categoria_id: art.categoria_id || 5, categoria_nombre: nomCat, tags: tagsIni.slice() };
+            let textoIni = String(req.texto || el.texto_original || art.extracto || sesion.texto || '').trim();
             sesion.borrador = { modo: 'enriquecimiento', articulo_original_id: el.id, articulo_original_url: el.url,
-              titulo: tituloFinal, texto: String(req.texto || sesion.texto || '').trim(),
+              titulo: tituloFinal, texto: textoIni, texto_limpio: textoIni,
+              recursos: {}, orden_multimedia: [], posiciones: [], multimedia: [],
               texto_original_aprobado: el.texto_original || null,
-              tipo_plantilla: tipoPlantilla(tagsIni), categoria_id: req.categoria_id || sesion.categoria_id, tags: tagsIni };
+              tipo_plantilla: tipoPlantilla(tagsIni), categoria_id: req.categoria_id || sesion.categoria_id || 5, tags: tagsIni,
+              metadatos_anteriores: metaAnt, metadatos_heredados_revisados: false,
+              contenido_adicional: [] };
             return avanzar('Armé el borrador de enriquecimiento sobre #' + el.id + '. ');
           }
           if (opcion === 'continuar' || opcion === 'descartar') {
@@ -588,6 +670,22 @@ BACO.apiMock = (function () {
             return resp(r.msg, r.ops, aviso);
           }
 
+          if (opcion === 'aceptar' || opcion === 'aceptar_metadatos') {
+            b.metadatos_heredados_revisados = true;
+            const r = validarBorrador('Se confirmaron los metadatos de la versión anterior. ');
+            return resp(r.msg, r.ops);
+          }
+
+          if (opcion === 'rechazar_metadatos' || (opcion === 'rechazar' && b.metadatos_anteriores && !b.metadatos_heredados_revisados)) {
+            b.metadatos_heredados_revisados = true;
+            b.categoria_id = null;
+            b.tags = [];
+            sesion.categoria_id = null;
+            sesion.tags = [];
+            const r = validarBorrador('Se descartaron los metadatos heredados. ');
+            return resp(r.msg, r.ops);
+          }
+
           if (opcion === 'editar') {
             const ops = (sesion.validacion && sesion.validacion.valido) ? OPS.REVISION_VALIDO : OPS.REVISION_BLOQUEANTE;
             return resp('Editá los campos que quieras en el panel de la izquierda y guardá los cambios: vuelvo a validar.', ops);
@@ -602,15 +700,15 @@ BACO.apiMock = (function () {
             return resp('Descarté el borrador. Cuando quieras empezamos otro.', OPS.REINICIAR);
           }
 
-          if (opcion === 'aprobar') {
+          if (opcion === 'conforme' || opcion === 'aprobar') {
             if (!sesion.validacion || !sesion.validacion.valido) {
-              const r = validarBorrador('Todavía no puedo aprobarlo, quedan observaciones bloqueantes. ');
+              const r = validarBorrador('Todavía no podemos avanzar, quedan observaciones bloqueantes. ');
               return resp(r.msg, r.ops);
             }
             const limpio = sanitizar(b.texto, b.titulo);
             b.titulo = limpio.titulo_sanitizado; b.texto = limpio.texto_sanitizado;
-            sesion.estado = 'APROBADO';
-            return resp('Listo: "' + b.titulo + '" quedó aprobado para publicación.', OPS.REINICIAR);
+            sesion.estado = 'CONFORMIDAD_USUARIO';
+            return resp('✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedó listo. Todavía no está publicado: la aprobación y publicación final las hace un administrador. Podés copiar el borrador y cargarlo en la Base de Conocimiento.', ['copiar_borrador', 'reiniciar']);
           }
 
           const r = validarBorrador('');
@@ -621,13 +719,17 @@ BACO.apiMock = (function () {
       });
     },
 
-    borradorAprobado() {
+    borradorConforme() {
       return responder(() => {
-        if (!sesion || sesion.estado !== 'APROBADO' || !sesion.borrador) {
-          throw err('HTTP_404', 'No hay un borrador aprobado en esta sesión, o la sesión expiró.');
+        if (!sesion || (sesion.estado !== 'CONFORMIDAD_USUARIO' && sesion.estado !== 'APROBADO') || !sesion.borrador) {
+          throw err('HTTP_404', 'No hay un borrador en conformidad en esta sesión, o la sesión expiró.');
         }
         return JSON.parse(JSON.stringify(sesion.borrador));
       }, 200);
+    },
+
+    borradorAprobado() {
+      return this.borradorConforme();
     },
 
     aplicarPlantilla() {
@@ -647,6 +749,221 @@ BACO.apiMock = (function () {
         return { response: '### Dictamen del validador\n\nEstado: **' + v.status + '**\n\n' +
           (lineas.length ? lineas.join('\n') : 'Sin observaciones.') };
       }, cfg().LATENCIA_AGENTE_MS);
+    },
+
+    agregarContenidoAdicional(contenido, tipo = 'texto') {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        if (sesion.borrador.modo !== 'enriquecimiento' && !sesion.borrador.articulo_original_id) {
+          throw err('ESTADO_INVALIDO', 'El contenido adicional solo está permitido en actualizar o enriquecer.');
+        }
+        sesion.borrador.contenido_adicional = sesion.borrador.contenido_adicional || [];
+        const nuevo = {
+          id: 'ca_' + Math.random().toString(36).substr(2, 8),
+          tipo: tipo || 'texto',
+          contenido: String(contenido || ''),
+          posicion: sesion.borrador.contenido_adicional.length
+        };
+        sesion.borrador.contenido_adicional.push(nuevo);
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return nuevo;
+      }, 100);
+    },
+
+    eliminarContenidoAdicional(itemId) {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        const items = sesion.borrador.contenido_adicional || [];
+        const originalLen = items.length;
+        sesion.borrador.contenido_adicional = items.filter((it) => it.id !== itemId);
+        if (sesion.borrador.contenido_adicional.length === originalLen) {
+          throw err('NO_ENCONTRADO', 'No se encontró el ítem.');
+        }
+        sesion.borrador.contenido_adicional.forEach((it, idx) => { it.posicion = idx; });
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return { status: 'ok', eliminado: itemId };
+      }, 100);
+    },
+
+    modificarContenidoAdicional(itemId, contenido, tipo = 'texto') {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        const items = sesion.borrador.contenido_adicional || [];
+        const item = items.find((it) => it.id === itemId);
+        if (!item) throw err('NO_ENCONTRADO', 'No se encontró el ítem.');
+        item.contenido = String(contenido || '');
+        if (tipo) item.tipo = tipo;
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return item;
+      }, 100);
+    },
+
+    reordenarContenidoAdicional(ordenIds) {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        const items = sesion.borrador.contenido_adicional || [];
+        const mapa = {};
+        items.forEach((it) => { mapa[it.id] = it; });
+        const nuevos = [];
+        (ordenIds || []).forEach((id) => {
+          if (mapa[id]) { nuevos.push(mapa[id]); delete mapa[id]; }
+        });
+        Object.values(mapa).forEach((it) => nuevos.push(it));
+        nuevos.forEach((it, idx) => { it.posicion = idx; });
+        sesion.borrador.contenido_adicional = nuevos;
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return nuevos;
+      }, 100);
+    },
+
+    obtenerContenidoAdicional() {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) return [];
+        return sesion.borrador.contenido_adicional || [];
+      }, 100);
+    },
+
+    /* Gestión atómica de recursos multimedia (independiente de flujos) */
+    obtenerRecursos() {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) return [];
+        const recs = sesion.borrador.recursos || {};
+        return Object.values(recs).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+      }, 50);
+    },
+
+    eliminarRecurso(recursoId) {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay borrador activo.');
+        const recs = sesion.borrador.recursos || {};
+        let targetId = recursoId;
+        if (typeof recursoId === 'number' || (/^\d+$/.test(recursoId) && !recs[recursoId])) {
+          const sorted = Object.values(recs).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+          const idx = parseInt(recursoId, 10);
+          if (idx >= 0 && idx < sorted.length) targetId = sorted[idx].id;
+        }
+        if (!recs[targetId]) throw err('NO_ENCONTRADO', 'Recurso no encontrado.');
+        delete recs[targetId];
+        const items = Object.values(recs).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        items.forEach((r, i) => { r.orden = i; });
+        sesion.borrador.orden_multimedia = items.map((_, i) => i);
+        sesion.borrador.posiciones = items.map((_, i) => i);
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return { status: 'ok', eliminado: targetId };
+      }, 50);
+    },
+
+    reordenarMultimedia(fromIndexOrVector, toIndex) {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay borrador activo.');
+        const recs = sesion.borrador.recursos || {};
+        let items = Object.values(recs).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        if (typeof fromIndexOrVector === 'number' && typeof toIndex === 'number') {
+          if (fromIndexOrVector < 0 || fromIndexOrVector >= items.length || toIndex < 0 || toIndex >= items.length) {
+            throw err('VALIDACION', 'Índices fuera de rango.');
+          }
+          const moved = items.splice(fromIndexOrVector, 1)[0];
+          items.splice(toIndex, 0, moved);
+        } else if (Array.isArray(fromIndexOrVector)) {
+          if (fromIndexOrVector.length > 0 && typeof fromIndexOrVector[0] === 'number') {
+            const mapped = [];
+            fromIndexOrVector.forEach(idx => { if (items[idx]) mapped.push(items[idx]); });
+            items.forEach(r => { if (!mapped.includes(r)) mapped.push(r); });
+            items = mapped;
+          } else {
+            const map = {};
+            items.forEach(r => { map[r.id] = r; });
+            const mapped = [];
+            fromIndexOrVector.forEach(id => { if (map[id]) { mapped.push(map[id]); delete map[id]; } });
+            Object.values(map).forEach(r => mapped.push(r));
+            items = mapped;
+          }
+        }
+        items.forEach((r, i) => { r.orden = i; });
+        const newRecs = {};
+        items.forEach(r => { newRecs[r.id] = r; });
+        sesion.borrador.recursos = newRecs;
+        sesion.borrador.orden_multimedia = items.map((_, i) => i);
+        sesion.borrador.posiciones = items.map((_, i) => i);
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return items;
+      }, 50);
+    },
+
+    agregarRecursoMultimedia(recurso) {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay borrador activo.');
+        sesion.borrador.recursos = sesion.borrador.recursos || {};
+        const recs = sesion.borrador.recursos;
+        let items = Object.values(recs).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        const rec = Object.assign({
+          id: 'rec_' + Math.random().toString(36).substr(2, 8),
+          tipo: 'imagen',
+          nombre: 'recurso',
+          referencia: '',
+          tamano_bytes: 0
+        }, recurso);
+        const pos = typeof recurso.posicion === 'number' ? recurso.posicion : null;
+        if (pos === null || pos < 0 || pos >= items.length) {
+          items.push(rec);
+        } else {
+          items.splice(pos, 0, rec);
+        }
+        items.forEach((r, i) => { r.orden = i; });
+        const newRecs = {};
+        items.forEach(r => { newRecs[r.id] = r; });
+        sesion.borrador.recursos = newRecs;
+        sesion.borrador.orden_multimedia = items.map((_, i) => i);
+        sesion.borrador.posiciones = items.map((_, i) => i);
+        if (sesion.borrador.conforme) {
+          sesion.borrador.conforme = false;
+          sesion.borrador.conforme_en = null;
+          sesion.borrador.conformidad_invalidada = true;
+          if (sesion.estado === 'CONFORMIDAD_USUARIO') sesion.estado = 'REVISION_BORRADOR';
+        }
+        return rec;
+      }, 50);
+    },
+
+    subirRecursoMultimedia(file, posicion) {
+      return this.agregarRecursoMultimedia({
+        nombre: (file && file.name) || 'archivo_adjunto',
+        referencia: 'https://bc-dev.finneg.com/uploads/default/original/mock/' + ((file && file.name) || 'archivo.png'),
+        tipo: (file && file.type && file.type.startsWith('image/')) ? 'imagen' : 'documento',
+        origen: 'subido',
+        tamano_bytes: (file && file.size) || 1024,
+        posicion: posicion
+      });
     },
 
     sesionActual() { return sesion ? sesion.session_id : null; },

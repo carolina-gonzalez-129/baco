@@ -17,6 +17,7 @@ from baco.server.services.validar_articulo import (
     validar_texto_y_estructura_post_duplicados,
 )
 from baco.server.services.orquestador.mensajes import (
+    MSG_ANTES_DE_CONFORME,
     OPCIONES_PLANTILLAS,
     OPCIONES_REVISION_BLOQUEANTE,
     OPCIONES_REVISION_VALIDO,
@@ -25,14 +26,14 @@ from baco.server.services.orquestador.mensajes import (
     msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
-from baco.server.services.orquestador.sesion import SesionChat
+from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
 
 ETAPAS_FLUJO: List[str] = [
     "Título y duplicados",
     "Contenido",
     "Plantilla y etiquetas",
     "Revisión",
-    "Aprobación",
+    "Conformidad",
 ]
 
 MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
@@ -44,8 +45,8 @@ MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
     EstadoFlujo.ESPERANDO_METADATOS: (3, "Plantilla y etiquetas"),
     EstadoFlujo.REVISION_BORRADOR: (4, "Revisión"),
     EstadoFlujo.SUBSANANDO_BORRADOR: (4, "Revisión"),
-    EstadoFlujo.APROBADO: (5, "Aprobación"),
-    EstadoFlujo.RECHAZADO: (5, "Aprobación"),
+    EstadoFlujo.CONFORMIDAD_USUARIO: (5, "Conformidad"),
+    EstadoFlujo.RECHAZADO: (5, "Conformidad"),
 }
 
 
@@ -614,10 +615,14 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "si": "enriquecer", "sí": "enriquecer", "1": "enriquecer", "enriquecer": "enriquecer",
         "actualizar": "actualizar", "actualizo": "actualizar",
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
-        "aprobar": "aprobar", "apruebo": "aprobar", "confirmar": "aprobar", "confirmado": "aprobar", "omitir": "aprobar",
+        "confirmar_texto": "confirmar_texto", "confirmar texto": "confirmar_texto",
+        "conforme": "conforme", "estoy conforme": "conforme", "estoy_conforme": "conforme", "aprobar": "conforme", "apruebo": "conforme", "confirmar": "conforme", "confirmado": "conforme", "omitir": "conforme",
+        "aceptar": "aceptar_metadatos", "acepto": "aceptar_metadatos", "aceptar_metadatos": "aceptar_metadatos", "aceptar metadatos": "aceptar_metadatos", "conservar": "aceptar_metadatos", "conservar metadatos": "aceptar_metadatos",
+        "rechazar_metadatos": "rechazar_metadatos", "rechazar metadatos": "rechazar_metadatos",
+        "copiar borrador": "copiar_borrador", "copiar_borrador": "copiar_borrador", "copiar": "copiar_borrador",
         "rechazar": "rechazar", "rechazo": "rechazar", "cancelar": "rechazar",
         "confirmar_rechazo": "confirmar_rechazo", "confirmar rechazo": "confirmar_rechazo", "si, rechazar": "confirmar_rechazo", "sí, rechazar": "confirmar_rechazo",
-        "sanitizar": "sanitizar", "editar": "editar", "corregir": "editar", "enviar_correccion": "editar", "correccion": "editar",
+        "sanitizar": "sanitizar", "editar": "editar", "corregir": "editar", "enviar_correccion": "editar", "correccion": "editar", "seguir editando": "editar", "seguir_editando": "editar",
         "reiniciar": "reiniciar", "cambiar tema": "reiniciar", "cambiar de tema": "reiniciar",
         "volver": "volver", "atras": "volver", "atrás": "volver", "regresar": "volver", "anterior": "volver",
         "ayuda": "ayuda", "opciones": "ayuda", "que hago": "ayuda", "qué hago": "ayuda", "?": "ayuda", "instrucciones": "ayuda",
@@ -632,6 +637,7 @@ def construir_respuesta(
     mensaje: str,
     opciones: List[str],
     aviso_privacidad: Optional[str] = None,
+    aviso_metadatos_heredados: Optional[str] = None,
 ) -> ChatOrquestadorResponse:
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
@@ -644,18 +650,21 @@ def construir_respuesta(
         tags_disponibles=list(sesion.tags_disponibles),
         coincidencias=sesion.coincidencias if sesion.estado in (EstadoFlujo.DECISION_TITULO, EstadoFlujo.DECISION_TEXTO) else [],
         borrador=sesion.borrador,
+        multimedia_habilitada=multimedia_habilitada(sesion),
         validacion=sesion.validacion,
         aviso_privacidad=aviso_privacidad,
+        aviso_metadatos_heredados=aviso_metadatos_heredados,
     )
 
 
 def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[str]]:
     b = sesion.borrador
+    texto_eval = (b.texto_limpio if (b and b.texto_limpio) else (b.texto if b else ""))
     try:
         articulo = ArticuloSchema(
             id=b.articulo_original_id or 0,
             titulo=b.titulo,
-            texto=b.texto,
+            texto=texto_eval,
             categoria_id=b.categoria_id,
             tags=[Tag(name=t) for t in b.tags],
             url=b.articulo_original_url,
@@ -674,7 +683,7 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
             valido=False,
             status="Pendiente",
             findings=findings,
-            resumen={"longitud_texto": len(b.texto or ""), "tags_count": len(b.tags or [])},
+            resumen={"longitud_texto": len(texto_eval or ""), "tags_count": len(b.tags or [])},
         )
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
         detalle = "\n".join(f"- [{f['severity']}] {f['field']}: {f['description']}" for f in findings)
@@ -686,11 +695,17 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
 
     res = validar_texto_y_estructura_post_duplicados(articulo)
     valido = res["status"] != "Pendiente"
+    if res.get("texto_sanitizado"):
+        b.texto_limpio = res["texto_sanitizado"]
+        b.texto = res["texto_sanitizado"]
+    if res.get("titulo_sanitizado"):
+        b.titulo = res["titulo_sanitizado"]
     sesion.validacion = ValidarFormatoResponse(
         valido=valido,
         status=res["status"],
         titulo_sanitizado=res.get("titulo_sanitizado"),
         texto_sanitizado=res.get("texto_sanitizado"),
+        aviso_privacidad=res.get("aviso_privacidad"),
         findings=res.get("findings", []),
         resumen={"longitud_texto": res["longitud_texto"], "tags_count": res["tags_count"]},
     )
@@ -712,15 +727,14 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in ajustes)
         return (
             f"{prefijo}El borrador supera los requisitos técnicos mínimos pero presenta {len(ajustes)} observación(es) "
-            f"editoriales que requieren ajuste humano:\n{detalle}\n"
-            "Podés enviar la corrección correspondiente o confirmar para aprobarlo tal cual está.",
+            f"editoriales que requieren ajuste humano:\n{detalle}\n\n{MSG_ANTES_DE_CONFORME}",
             OPCIONES_REVISION_VALIDO,
         )
 
     obs = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in sugerencias)
-    detalle_sug = f"\nSugerencias:\n{obs}\n" if obs else " "
+    detalle_sug = f"\nSugerencias:\n{obs}\n\n" if obs else "\n\n"
     return (
-        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}¿Confirmás aprobar o rechazar?",
+        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}{MSG_ANTES_DE_CONFORME}",
         OPCIONES_REVISION_VALIDO,
     )
 
@@ -747,6 +761,28 @@ def avanzar_a_metadatos_o_revision(
         sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
         return construir_respuesta(
             sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), ["volver"], aviso_privacidad=aviso_privacidad
+        )
+
+    # Si hay metadatos heredados de una versión anterior y todavía no fueron confirmados/revisados:
+    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
+            DICCIONARIO_OFICIAL_CATEGORIAS.get(b.metadatos_anteriores.get("categoria_id"), f"Categoría {b.metadatos_anteriores.get('categoria_id')}")
+            if b.metadatos_anteriores.get("categoria_id") else "Sin categoría"
+        )
+        tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
+        aviso_meta = (
+            f"El artículo en su versión anterior tenía asociada la categoría '{cat_nom}' y las etiquetas: [{tags_str}]. "
+            "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
+        )
+        msg_val, ops_val = validar_borrador(sesion, prefijo)
+        mensaje_completo = f"{aviso_meta}\n\n{msg_val}" if not msg_val.startswith(aviso_meta) else msg_val
+        ops = ["aceptar", "rechazar"] + [o for o in ops_val if o not in ("aceptar", "rechazar")]
+        return construir_respuesta(
+            sesion,
+            mensaje_completo,
+            ops,
+            aviso_privacidad=aviso_privacidad,
+            aviso_metadatos_heredados=aviso_meta,
         )
 
     msg, ops = validar_borrador(sesion, prefijo)

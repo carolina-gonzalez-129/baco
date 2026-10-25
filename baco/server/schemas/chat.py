@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(
         default=None,
-        description="ID de la sesión del orquestador. Si la sesión está en estado APROBADO, se inyecta automáticamente su borrador sanitizado."
+        description="ID de la sesión del orquestador. Si la sesión está en estado CONFORMIDAD_USUARIO, se inyecta automáticamente su borrador sanitizado."
     )
     prompt: str = Field(
         ...,
@@ -48,19 +48,19 @@ class ChatRequest(BaseModel):
     @model_validator(mode="after")
     def validar_tipo_plantilla_no_inferida(self):
         if self.session_id:
-            from baco.server.services.orquestador import obtener_borrador_aprobado
-            borrador_aprobado = obtener_borrador_aprobado(self.session_id)
-            if borrador_aprobado is not None:
+            from baco.server.services.orquestador import obtener_borrador_conforme
+            borrador_conforme = obtener_borrador_conforme(self.session_id)
+            if borrador_conforme is not None:
                 if not self.borrador:
-                    self.borrador = borrador_aprobado.texto
+                    self.borrador = borrador_conforme.texto
                 if not self.titulo:
-                    self.titulo = borrador_aprobado.titulo
+                    self.titulo = borrador_conforme.titulo
                 if not self.tags:
-                    self.tags = borrador_aprobado.tags
-                if not self.tipo_plantilla and borrador_aprobado.tipo_plantilla:
-                    self.tipo_plantilla = borrador_aprobado.tipo_plantilla
-                if not self.categoria and borrador_aprobado.categoria_id:
-                    self.categoria = str(borrador_aprobado.categoria_id)
+                    self.tags = borrador_conforme.tags
+                if not self.tipo_plantilla and borrador_conforme.tipo_plantilla:
+                    self.tipo_plantilla = borrador_conforme.tipo_plantilla
+                if not self.categoria and borrador_conforme.categoria_id:
+                    self.categoria = str(borrador_conforme.categoria_id)
 
         if not self.session_id and self.skill == "plantillas" and not self.tipo_plantilla:
             raise ValueError(

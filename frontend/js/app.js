@@ -22,11 +22,107 @@
   const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const hora = () => new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  function clasificarRecurso(url, altOrText, isExplicitImg, isAttachment) {
+    const u = String(url || '').toLowerCase();
+    const t = String(altOrText || '').toLowerCase();
+
+    if (isExplicitImg || /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(u)) {
+      return {
+        tipo: 'imagen',
+        etiqueta: 'Imagen',
+        icono: '🖼️',
+        claseBadge: 'eib-badge-img',
+        url: url,
+        titulo: altOrText || 'Imagen'
+      };
+    }
+
+    if (
+      u.includes('docs.google.com/presentation') ||
+      /\.(ppt|pptx|odp)(\?.*)?$/i.test(u) ||
+      u.includes('slideshare') ||
+      t.includes('diapositiva') ||
+      t.includes('presentación') ||
+      t.includes('presentacion') ||
+      t.includes('slides')
+    ) {
+      return {
+        tipo: 'slides',
+        etiqueta: 'Diapositivas',
+        icono: '📊',
+        claseBadge: 'eib-badge-slides',
+        url: url,
+        titulo: altOrText || 'Presentación / Diapositivas'
+      };
+    }
+
+    if (
+      u.includes('docs.google.com/document') ||
+      /\.(pdf|doc|docx|odt)(\?.*)?$/i.test(u) ||
+      t.includes('documento') ||
+      t.includes('docs') ||
+      t.includes('guía') ||
+      t.includes('guia') ||
+      t.includes('manual')
+    ) {
+      return {
+        tipo: 'doc',
+        etiqueta: u.includes('docs.google.com') ? 'Google Docs' : 'Documento',
+        icono: '📄',
+        claseBadge: 'eib-badge-doc',
+        url: url,
+        titulo: altOrText || 'Documento'
+      };
+    }
+
+    if (
+      u.includes('youtube.com') ||
+      u.includes('youtu.be') ||
+      u.includes('vimeo.com') ||
+      u.includes('loom.com') ||
+      /\.(mp4|webm|mov|avi)(\?.*)?$/i.test(u) ||
+      t.includes('video') ||
+      t.includes('tutorial')
+    ) {
+      return {
+        tipo: 'video',
+        etiqueta: 'Video',
+        icono: '🎬',
+        claseBadge: 'eib-badge-video',
+        url: url,
+        titulo: altOrText || 'Video tutorial'
+      };
+    }
+
+    if (isAttachment || u.includes('/uploads/')) {
+      return {
+        tipo: 'adjunto',
+        etiqueta: 'Adjunto',
+        icono: '📎',
+        claseBadge: 'eib-badge-adjunto',
+        url: url,
+        titulo: altOrText || 'Archivo adjunto'
+      };
+    }
+
+    return {
+      tipo: 'enlace',
+      etiqueta: 'Enlace',
+      icono: '🔗',
+      claseBadge: 'eib-badge-link',
+      url: url,
+      titulo: altOrText || url
+    };
+  }
+
   const nl2br = (s) => {
     let txt = esc(s);
-    // Renderizar imágenes markdown en las burbujas de chat
     txt = txt.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g, '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>');
-    txt = txt.replace(/\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g, '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📄 $1</a>');
+    txt = txt.replace(/\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g, '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📎 $1</a>');
+    txt = txt.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, (match, title, url) => {
+      const rec = clasificarRecurso(url, title, false, false);
+      return '<a class="chat-link" href="' + url + '" target="_blank" rel="noopener">' + rec.icono + ' ' + title + ' ↗</a>';
+    });
     return txt.replace(/\n/g, '<br>');
   };
   let tToast = null;
@@ -53,7 +149,10 @@
     const cuerpo = Object.assign({}, payload);   // la sesión la maneja la capa de API
 
     if (etiquetaUsuario) burbuja('me', esc(etiquetaUsuario));
-    const esperando = burbuja('bot', '<div class="typing"><i></i><i></i><i></i></div>');
+    const htmlEspera = (cuerpo && cuerpo.accion === 'confirmar_texto')
+      ? '<div class="typing-wrap"><div class="typing"><i></i><i></i><i></i></div><span class="typing-lbl">Baco está buscando…</span></div>'
+      : '<div class="typing"><i></i><i></i><i></i></div>';
+    const esperando = burbuja('bot', htmlEspera);
     store.set({ enviando: true, error: null });
 
     try {
@@ -68,7 +167,7 @@
 
       decir(nl2br(r.mensaje), r.opciones);
 
-      if (r.estado === 'APROBADO') mostrarAprobado();
+      if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO') mostrarConforme();
     } catch (e) {
       esperando.remove();
       store.set({ enviando: false });
@@ -81,6 +180,7 @@
 
   function nombreCategoria(s, catId) {
     const idNum = Number(catId);
+    if (!idNum || idNum <= 1) return 'Sin categoría';
     const lista = s.categorias_disponibles || [];
     const enc = lista.find((c) => Number(c.id) === idNum);
     return enc ? enc.nombre : ('Categoría ' + esc(catId));
@@ -101,7 +201,7 @@
 
     const pct = BACO.avance(s);
     $('#meterFill').style.width = pct + '%';
-    $('#meterFill').classList.toggle('full', s.flujo === 'APROBADO');
+    $('#meterFill').classList.toggle('full', s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO');
     $('#meterPct').textContent = 'Etapa ' + etapaActual + ' de ' + etapaTotal;
 
     $('#sesion').textContent = s.session_id ? 'sesión ' + s.session_id.slice(0, 8) : '';
@@ -118,7 +218,33 @@
     $('#fCategoria').disabled = !act.categoria || s.enviando;
     $('#campoTitulo').classList.toggle('activo', !!act.titulo);
     $('#campoTexto').classList.toggle('activo', !!act.texto);
-    $('#campoTags').classList.toggle('activo', !!act.tags);
+
+    /* Visibilidad y activación de campoTags:
+       - No se muestra en los pasos de título ni contenido (ESPERANDO_TITULO, DECISION_TITULO, ESPERANDO_TEXTO, DECISION_TEXTO).
+       - En modo enriquecer / actualizar: se oculta si ya cuenta con categoría válida (>1) y tags (>=2).
+         Solo se muestra si requiere completar categoría o tags en la etapa post-texto.
+       - En alta nueva: se muestra en la etapa post-texto.
+    */
+    const b = s.borrador;
+    const esEnriquecerOActualizar = b && (b.modo === 'enriquecimiento' || b.modo === 'actualizar' || b.articulo_original_id != null);
+    const tagsValidos = (s.form.tags || []).length >= cfg.MIN_TAGS;
+    const catValida = Number(s.form.categoria_id) > 1;
+    const etapaPostTexto = s.flujo !== 'ESPERANDO_TITULO' && s.flujo !== 'DECISION_TITULO' && s.flujo !== 'ESPERANDO_TEXTO' && s.flujo !== 'DECISION_TEXTO';
+
+    let mostrarCampoTags = false;
+    if (etapaPostTexto) {
+      if (esEnriquecerOActualizar) {
+        mostrarCampoTags = !catValida || !tagsValidos;
+      } else {
+        mostrarCampoTags = true;
+      }
+    }
+
+    const campoTags = $('#campoTags');
+    if (campoTags) {
+      campoTags.hidden = !mostrarCampoTags;
+      campoTags.classList.toggle('activo', mostrarCampoTags && !!act.tags);
+    }
     $('#tagBox').classList.toggle('off', !act.tags);
 
     if ($('#fTitulo').value !== s.form.titulo && document.activeElement !== $('#fTitulo')) {
@@ -130,8 +256,18 @@
 
     /* Contadores */
     contador($('#contTitulo'), s.form.titulo.length, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
-    contador($('#contTexto'),  s.form.texto.length,  cfg.MIN_TEXTO,  'caracteres', cfg.MAX_TEXTO);
+    contadorTexto($('#contTexto'), $('#avisoMaxTexto'), s.form.texto.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
     contador($('#contTags'),   s.form.tags.length,   cfg.MIN_TAGS,   'etiquetas', cfg.MAX_TAGS);
+
+    const enEsperandoTexto = s.flujo === 'ESPERANDO_TEXTO';
+    const compMeta = $('#chatComposerMeta');
+    const chatIn = $('#chatInput');
+    if (compMeta) {
+      compMeta.hidden = true;
+    }
+    if (chatIn) {
+      chatIn.placeholder = 'Respondé acá o preguntale algo a BACO…';
+    }
 
     /* botón principal */
     const acc = BACO.ACCION_PRINCIPAL[s.flujo];
@@ -142,8 +278,19 @@
       btn.textContent = (acc.campo === 'todo' && !hayCambios(s))
         ? 'Sin cambios para guardar'
         : acc.label;
+      const textoCorto = s.form.texto.trim().length < cfg.MIN_TEXTO;
+      const textoLargo = s.form.texto.length > cfg.MAX_TEXTO;
+      const tagsFaltan = (s.form.tags || []).length < cfg.MIN_TAGS;
+      const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
       btn.title = btn.disabled && acc.campo === 'todo'
-        ? 'Editá algún campo para habilitar el guardado' : '';
+        ? 'Editá algún campo para habilitar el guardado'
+        : (btn.disabled && acc.campo === 'texto'
+            ? (textoCorto
+                ? 'El texto debe tener al menos ' + cfg.MIN_TEXTO + ' caracteres'
+                : (textoLargo ? 'El texto supera el máximo de ' + cfg.MAX_TEXTO + ' caracteres' : ''))
+            : (btn.disabled && acc.campo === 'tags'
+                ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del display.' : ''))
+                : ''));
     } else {
       btn.hidden = true;
     }
@@ -152,14 +299,20 @@
     pintarCategorias(s, !!act.categoria && !s.enviando);
     pintarResumenFinal(s);
     pintarBorrador(s);
+    pintarAvisoMetadatosHeredados(s);
     pintarCoincidencias(s);
     pintarValidacion(s);
     pintarOpciones(s);
     pintarImagenesDetectadas(s);
 
     if (!$('#preview').hidden) {
-      $('#preview').innerHTML = renderMd(s.form.texto);
+      $('#preview').innerHTML = renderMd(textoVistaPrevia(s));
     }
+  }
+
+  /* Vista previa = texto_limpio en edición + sección "Recursos" (solo para mostrar, no se guarda) */
+  function textoVistaPrevia(s) {
+    return BACO.panelMultimedia.componerVistaPrevia(s.form.texto, BACO.panelMultimedia.lista(s), s);
   }
 
   function pintarStepper(s, etapaActual) {
@@ -167,7 +320,7 @@
     if (!cont) return;
     const nombres = (s.etapa && Array.isArray(s.etapa.etapas) && s.etapa.etapas.length)
       ? s.etapa.etapas
-      : ['Título y duplicados', 'Contenido', 'Plantilla y etiquetas', 'Revisión', 'Aprobación'];
+      : ['Título y duplicados', 'Contenido', 'Plantilla y etiquetas', 'Revisión', 'Conformidad'];
 
     if (cont.children.length !== nombres.length) {
       cont.innerHTML = '';
@@ -178,8 +331,8 @@
 
     Array.prototype.forEach.call(cont.querySelectorAll('.paso'), (nodo, i) => {
       const n = i + 1;
-      const completado = (s.flujo === 'APROBADO') ? true : (n < etapaActual);
-      const activo = (s.flujo !== 'APROBADO') && (n === etapaActual);
+      const completado = (s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO') ? true : (n < etapaActual);
+      const activo = (s.flujo !== 'CONFORMIDAD_USUARIO' && s.flujo !== 'APROBADO') && (n === etapaActual);
       nodo.classList.toggle('on', activo);
       nodo.classList.toggle('hecho', completado);
     });
@@ -209,26 +362,24 @@
 
     const cats = (s.categorias_disponibles && s.categorias_disponibles.length)
       ? s.categorias_disponibles
-      : [{ id: Number(s.form.categoria_id) || 1, nombre: 'Categoría ' + (Number(s.form.categoria_id) || 1) }];
+      : [];
 
-    const actualId = Number(s.form.categoria_id) || 1;
-    const tieneActual = cats.some((c) => Number(c.id) === actualId);
-    const opcionesSelect = tieneActual
-      ? cats
-      : [{ id: actualId, nombre: 'Categoría ' + actualId }].concat(cats);
+    const actualId = (s.form.categoria_id && Number(s.form.categoria_id) > 1) ? Number(s.form.categoria_id) : null;
 
-    sel.innerHTML = opcionesSelect.map((c) =>
-      '<option value="' + esc(c.id) + '"' + (Number(c.id) === actualId ? ' selected' : '') + '>' +
-      esc(c.nombre) + '</option>'
-    ).join('');
-    sel.value = String(actualId);
+    let selHtml = '<option value=""' + (!actualId ? ' selected' : '') + ' disabled>Elegí una categoría del display…</option>';
+    cats.forEach((c) => {
+      const selected = actualId && Number(c.id) === actualId;
+      selHtml += '<option value="' + esc(c.id) + '"' + (selected ? ' selected' : '') + '>' + esc(c.nombre) + '</option>';
+    });
+    sel.innerHTML = selHtml;
+    sel.value = actualId ? String(actualId) : '';
 
     chipsRow.innerHTML = '';
-    if (!s.categorias_disponibles || !s.categorias_disponibles.length) return;
+    if (!cats.length) return;
 
     chipsRow.appendChild(el('span', 'cap', 'Categorías'));
-    s.categorias_disponibles.forEach((c) => {
-      const activo = Number(c.id) === actualId;
+    cats.forEach((c) => {
+      const activo = actualId && Number(c.id) === actualId;
       const chip = el('button', 'sugg cat-chip' + (activo ? ' on' : ''), esc(c.nombre));
       chip.type = 'button';
       chip.disabled = !habilitado;
@@ -239,16 +390,60 @@
     });
   }
 
+  function pintarAvisoMetadatosHeredados(s) {
+    const bannerAviso = $('#bannerAviso');
+    if (!bannerAviso) return;
+    const b = s.borrador;
+    const metaAnt = b && b.metadatos_anteriores;
+    const pendiente = metaAnt && !b.metadatos_heredados_revisados;
+
+    if (pendiente) {
+      const nomCat = metaAnt.categoria_nombre || nombreCategoria(s, metaAnt.categoria_id);
+      const tagsStr = (metaAnt.tags || []).join(', ') || 'sin etiquetas';
+      bannerAviso.innerHTML =
+        '<div class="banner aviso banner-meta-ant" style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px;">' +
+          '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" style="flex-shrink:0; margin-top:2px;"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.5v4M8 11.5h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+          '<div style="flex:1">' +
+            '<div><b>Metadatos heredados de la versión anterior (#' + esc(b.articulo_original_id) + '):</b></div>' +
+            '<div style="margin:4px 0 8px 0; font-size:12.5px;">Categoría: <b>' + esc(nomCat) + '</b> · Etiquetas: <b>' + esc(tagsStr) + '</b></div>' +
+            '<div style="display:flex; gap:8px;">' +
+              '<button type="button" class="btn btn-sm btn-primary" id="btnAcepMetaHeredados">Aceptar</button>' +
+              '<button type="button" class="btn btn-sm btn-secondary" id="btnRechMetaHeredados">Rechazar</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      const btnAcep = $('#btnAcepMetaHeredados');
+      if (btnAcep) {
+        btnAcep.onclick = () => {
+          enviarTurno({ accion: 'aceptar_metadatos' }, 'Aceptar metadatos heredados');
+        };
+      }
+      const btnRech = $('#btnRechMetaHeredados');
+      if (btnRech) {
+        btnRech.onclick = () => {
+          store.setForm({ categoria_id: null, tags: [] });
+          enviarTurno({ accion: 'rechazar_metadatos' }, 'Rechazar metadatos heredados');
+        };
+      }
+    } else {
+      const bannerMeta = bannerAviso.querySelector('.banner-meta-ant');
+      if (bannerMeta) {
+        bannerAviso.innerHTML = '';
+      }
+    }
+  }
+
   function pintarResumenFinal(s) {
     const slot = $('#slotResumenFinal');
     if (!slot) return;
-    if (s.flujo !== 'APROBADO' || !s.borrador) {
+    if ((s.flujo !== 'CONFORMIDAD_USUARIO' && s.flujo !== 'APROBADO') || !s.borrador) {
       slot.innerHTML = '';
       return;
     }
     const b = s.borrador;
     const tags = (s.tags_acumulados && s.tags_acumulados.length) ? s.tags_acumulados : (b.tags || []);
-    const etapaTxt = (s.etapa ? (s.etapa.actual + ' de ' + s.etapa.total + ' (' + s.etapa.nombre + ')') : '5 de 5 (Aprobación)');
+    const etapaTxt = (s.etapa ? (s.etapa.actual + ' de ' + s.etapa.total + ' (' + s.etapa.nombre + ')') : '5 de 5 (Conformidad)');
     slot.innerHTML =
       '<div class="resumen-final">' +
         '<h3><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.8 8.2l2.6 2.6 5.4-5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -285,11 +480,36 @@
     nodo.className = 'cont ok';
   }
 
+  function contadorTexto(nodo, nodoAviso, actual, minimo, maximo) {
+    if (nodo) {
+      nodo.textContent = actual + ' / ' + maximo + ' caracteres';
+      if (actual > maximo) {
+        nodo.className = 'cont exceso';
+      } else if (actual > 0 && actual < minimo) {
+        nodo.className = 'cont falta';
+      } else if (actual >= minimo) {
+        nodo.className = 'cont ok';
+      } else {
+        nodo.className = 'cont';
+      }
+    }
+    if (nodoAviso) {
+      if (actual > maximo) {
+        const sobran = actual - maximo;
+        nodoAviso.hidden = false;
+        nodoAviso.textContent = 'El texto supera el límite máximo permitido de ' + maximo + ' caracteres (excede por ' + sobran + '). Acortalo o dividilo para poder confirmar.';
+      } else {
+        nodoAviso.hidden = true;
+        nodoAviso.textContent = '';
+      }
+    }
+  }
+
   function listoParaEnviar(s, campo) {
     if (campo === 'titulo') return s.form.titulo.trim().length >= cfg.MIN_TITULO;
-    if (campo === 'texto')  return s.form.texto.trim().length >= cfg.MIN_TEXTO;
-    if (campo === 'tags')   return s.form.tags.length >= cfg.MIN_TAGS;
-    if (campo === 'todo') return hayCambios(s);
+    if (campo === 'texto')  return s.form.texto.trim().length >= cfg.MIN_TEXTO && s.form.texto.length <= cfg.MAX_TEXTO;
+    if (campo === 'tags')   return s.form.tags.length >= cfg.MIN_TAGS && Number(s.form.categoria_id) > 1;
+    if (campo === 'todo') return hayCambios(s) && s.form.texto.length <= cfg.MAX_TEXTO;
     return true;
   }
 
@@ -299,7 +519,7 @@
     const mismosTags = (b.tags || []).length === s.form.tags.length &&
       (b.tags || []).every((t, i) => t === s.form.tags[i]);
     return s.form.titulo !== b.titulo ||
-           s.form.texto !== b.texto ||
+           s.form.texto !== (b.texto_limpio || '') ||   // el editor solo tiene texto_limpio
            Number(s.form.categoria_id) !== Number(b.categoria_id) ||
            !mismosTags;
   }
@@ -463,6 +683,11 @@
     barra.innerHTML = '';
     if (!s.opciones.length) return;
     s.opciones.forEach((op) => {
+      /* Si la acción principal ya es confirmar_texto (el botón principal del panel izquierdo),
+         no la duplicamos en opcionesBarra para no tener dos botones idénticos uno al lado del otro. */
+      if (op === 'confirmar_texto' && BACO.ACCION_PRINCIPAL[s.flujo] && BACO.ACCION_PRINCIPAL[s.flujo].campo === 'texto') {
+        return;
+      }
       const def = BACO.OPCIONES[op] || { label: op, estilo: 'btn-ghost' };
       const b = el('button', 'btn btn-sm ' + def.estilo, esc(def.label));
       b.disabled = s.enviando;
@@ -476,6 +701,15 @@
      ========================================================= */
   function accionar(op, label) {
     const s = store.get();
+
+    if (op === 'copiar_borrador') {
+      copiarBorrador();
+      return;
+    }
+
+    if (op === 'confirmar_texto') {
+      return confirmarTexto();
+    }
 
     /* 'editar' en revisión manda los campos del formulario */
     if (op === 'editar' && s.flujo === 'REVISION_BORRADOR') {
@@ -493,9 +727,29 @@
       $('#thread').innerHTML = '';
       $('#bannerError').innerHTML = '';
       $('#bannerAviso').innerHTML = '';
+      const chatIn = $('#chatInput');
+      if (chatIn) { chatIn.value = ''; chatIn.style.height = 'auto'; }
       return enviarTurno({ accion: 'reiniciar' });
     }
     enviarTurno({ accion: op }, label);
+  }
+
+  function confirmarTexto() {
+    const s = store.get();
+    const texto = (s.form && typeof s.form.texto === 'string' ? s.form.texto : '').trim();
+    if (texto) {
+      if (texto.length > cfg.MAX_TEXTO) return;
+      return enviarTurno({ accion: 'confirmar_texto', texto: texto }, 'Confirmar texto (' + texto.length + ' caracteres)');
+    }
+    const chatIn = $('#chatInput');
+    const pendiente = chatIn ? chatIn.value.trim() : '';
+    if (pendiente) {
+      if (pendiente.length > cfg.MAX_TEXTO) return;
+      chatIn.value = '';
+      chatIn.style.height = 'auto';
+      return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + pendiente.length + ' caracteres)');
+    }
+    return enviarTurno({ accion: 'confirmar_texto' }, 'Confirmar texto');
   }
 
   function enviarPrincipal() {
@@ -504,7 +758,7 @@
     if (!acc) return;
 
     if (acc.campo === 'titulo') return enviarTurno({ titulo: s.form.titulo }, s.form.titulo);
-    if (acc.campo === 'texto')  return enviarTurno({ texto: s.form.texto }, 'Envié el contenido (' + s.form.texto.length + ' caracteres)');
+    if (acc.campo === 'texto')  return confirmarTexto();
     if (acc.campo === 'tags') {
       return enviarTurno(
         { tags: s.form.tags, categoria_id: s.form.categoria_id },
@@ -548,17 +802,17 @@
     invocarAgente('auditarSemantica', 'Auditar con el validador');
   }
 
-  /* ---- borrador aprobado ---- */
-  async function mostrarAprobado() {
+  /* ---- borrador en conformidad ---- */
+  async function mostrarConforme() {
     const s = store.get();
     try {
-      const b = await api.borradorAprobado();
+      const b = (api.borradorConforme ? await api.borradorConforme() : await api.borradorAprobado());
       const tagsFinales = (s.tags_acumulados && s.tags_acumulados.length)
         ? s.tags_acumulados
         : (b.tags || []);
       const etapaFinal = s.etapa
         ? ('Etapa ' + s.etapa.actual + ' de ' + s.etapa.total + ' · ' + s.etapa.nombre)
-        : 'Etapa 5 de 5 · Aprobación';
+        : 'Etapa 5 de 5 · Conformidad';
       $('#recap').innerHTML =
         '<div class="r"><span class="k">Progreso</span><span class="v">' + esc(etapaFinal) + '</span></div>' +
         '<div class="r"><span class="k">Modo</span><span class="v">' + esc(b.modo) + '</span></div>' +
@@ -569,6 +823,37 @@
         '<div class="r"><span class="k">Etiquetas</span><span class="v">' + tagsFinales.map(esc).join(' · ') + '</span></div>';
       $('#overlay').hidden = false;
     } catch (e) { mostrarError(e); }
+  }
+  const mostrarAprobado = mostrarConforme;
+
+  async function copiarBorrador() {
+    const s = store.get();
+    try {
+      let b = s.borrador;
+      if (!b && (s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO')) {
+        b = (api.borradorConforme ? await api.borradorConforme() : await api.borradorAprobado());
+      }
+      const titulo = (b && b.titulo) || s.form.titulo || '';
+      const texto = (b && (b.texto || b.texto_limpio)) || s.form.texto || '';
+      const textoACopiar = `# ${titulo}\n\n${texto}`.trim();
+      if (!textoACopiar) {
+        toast('No hay contenido en el borrador para copiar');
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(textoACopiar);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = textoACopiar;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      toast('Borrador copiado al portapapeles');
+    } catch (e) {
+      toast('No se pudo copiar el borrador: ' + (e.message || e));
+    }
   }
 
   /* =========================================================
@@ -588,9 +873,11 @@
   function decir(html, opciones, ancho) {
     const b = burbuja('bot', html);
     if (ancho) b.querySelector('.bubble').classList.add('ancha');
-    if (opciones && opciones.length) {
+    /* En el panel derecho (BACO Companion) nunca se muestra el botón "Confirmar texto" */
+    const opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto');
+    if (opcionesCompanion.length) {
       const cont = el('div', 'acciones');
-      opciones.forEach((op) => {
+      opcionesCompanion.forEach((op) => {
         const def = BACO.OPCIONES[op] || { label: op, estilo: 'btn-ghost' };
         const btn = el('button', 'btn btn-sm ' + def.estilo, esc(def.label));
         btn.onclick = () => accionar(op, def.label);
@@ -607,7 +894,20 @@
 
     const s = store.get();
     if (s.flujo === 'ESPERANDO_TITULO')  return enviarTurno({ titulo: v }, v);
-    if (s.flujo === 'ESPERANDO_TEXTO')   return enviarTurno({ texto: v }, v);
+    if (s.flujo === 'ESPERANDO_TEXTO') {
+      const cmd = v.toLowerCase();
+      if (['volver', 'atras', 'atrás', 'regresar', 'reiniciar', 'ayuda', '?', 'descartar', 'continuar'].includes(cmd)) {
+        return enviarTurno({ mensaje: v }, v);
+      }
+      if (cmd === 'confirmar' || cmd === 'confirmar texto' || cmd === 'confirmar_texto') {
+        return confirmarTexto();
+      }
+      const actual = (s.form && typeof s.form.texto === 'string') ? s.form.texto.trim() : '';
+      const acumulado = actual ? (actual + '\n\n' + v) : v;
+      store.setForm({ texto: acumulado });
+      $('#fCuerpo').value = acumulado;
+      return enviarTurno({ mensaje: v, texto: acumulado }, v);
+    }
     if (s.flujo === 'ESPERANDO_METADATOS') {
       return enviarTurno({ mensaje: v, categoria_id: s.form.categoria_id }, v);
     }
@@ -666,65 +966,355 @@
     tToast = setTimeout(() => t.classList.remove('show'), 2400);
   }
 
-  function pintarImagenesDetectadas(s) {
-    const bar = $('#editorImgBar');
-    if (!bar) return;
-    const txt = (s && s.form && s.form.texto) || '';
-    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g;
-    const matches = [];
-    let m;
-    while ((m = imgRegex.exec(txt)) !== null) {
-      matches.push({ alt: m[1] || 'Captura', url: m[2] });
+  function pintarRecursosDetectados(s) {
+    /* 1. Mini panel de carga multimedia: fuente = s.borrador.multimedia.
+          Solo en pestaña Editor. Oculto en Vista previa. */
+    BACO.panelMultimedia.pintar($('#panelMultimedia'), s);
+    if ($('#preview') && !$('#preview').hidden) {
+      const pm = $('#panelMultimedia');
+      if (pm) { pm.hidden = true; pm.innerHTML = ''; }
     }
 
-    if (!matches.length) {
+    const bar = $('#editorImgBar');
+    if (!bar) return;
+    const b = s && s.borrador;
+    const esEnriquecerOActualizar = b && (b.modo === 'enriquecimiento' || b.modo === 'actualizar' || b.articulo_original_id != null);
+    const adicionales = (b && b.contenido_adicional) || [];
+
+    /* 2. Contenido adicional (texto): sección aparte, solo en enriquecer / actualizar */
+    if (!adicionales.length && !esEnriquecerOActualizar) {
       bar.hidden = true;
       bar.innerHTML = '';
       return;
     }
 
-    let h = '<div class="eib-head"><span>🖼️ Imágenes en este borrador (' + matches.length + ')</span><span style="font-weight:400;color:var(--ink-3)">Clic para abrir imagen en pestaña nueva</span></div>';
-    h += '<div class="eib-list">';
-    matches.forEach((img, idx) => {
-      const altEsc = esc(img.alt);
-      const urlEsc = encodeURI(img.url);
-      h += '<a class="eib-thumb" href="' + urlEsc + '" target="_blank" rel="noopener" title="Ver imagen ' + (idx + 1) + '">' +
-           '<img src="' + urlEsc + '" alt="' + altEsc + '" loading="lazy" referrerpolicy="no-referrer" />' +
-           '<div class="eib-cap">' + (altEsc || ('Imagen ' + (idx + 1))) + '</div>' +
-           '</a>';
-    });
-    h += '</div>';
+    let h = '';
+
+    // 2. Sección de Contenido adicional (habilitada en flujos de actualizar o enriquecer)
+    if (esEnriquecerOActualizar) {
+      h += '<div class="eib-sec-adicional">' +
+        '<div class="eib-sec-adicional-head">' +
+          '<div>' +
+            '<span class="eib-sec-adicional-tit">➕ Contenido adicional del artículo</span>' +
+            '<button type="button" class="btn-agregar-contenido" id="btnAgregarContenido" title="Agregar contenido nuevo" aria-label="Agregar contenido nuevo">+</button>' +
+            '<span class="eib-adicional-count">(' + adicionales.length + ')</span>' +
+          '</div>' +
+          '<span class="eib-subtit">Sección aparte · Las skills no leen ni modifican esta sección</span>' +
+        '</div>' +
+        '<div class="eib-nuevo-form">' +
+          '<input type="text" class="input eib-input-nuevo" id="inputNuevoContenido" placeholder="Escribí aquí el contenido nuevo a incorporar..." autocomplete="off" />' +
+          '<button type="button" class="btn btn-sm btn-dark" id="btnConfirmarAgregar">+ Añadir</button>' +
+        '</div>';
+
+      if (!adicionales.length) {
+        h += '<div class="eib-vacio-aviso">' +
+          '💡 Todavía no agregaste contenido adicional. Podés escribir arriba y presionar <b>+ Añadir</b> para sumarlo al borrador.' +
+          '</div>';
+      } else {
+        h += '<div class="eib-adicional-list">';
+        adicionales.forEach((item, idx) => {
+          const itemId = esc(item.id);
+          const itemTxt = esc(item.contenido || '');
+          const itemTipo = esc(item.tipo || 'texto');
+          h += '<div class="eib-adicional-item" data-id="' + itemId + '">' +
+            '<div class="eib-item-view" id="eibItemView_' + itemId + '">' +
+              '<div class="eib-item-left">' +
+                '<button type="button" class="btn-eliminar-item" data-id="' + itemId + '" title="Eliminar ítem" aria-label="Eliminar ítem">×</button>' +
+                '<span class="eib-item-num" title="Posición en la lista">#' + (idx + 1) + '</span>' +
+                '<div class="eib-reordenar-btns">' +
+                  '<button type="button" class="btn-mover-item" data-id="' + itemId + '" data-dir="up" title="Subir orden" ' + (idx === 0 ? 'disabled' : '') + '>▲</button>' +
+                  '<button type="button" class="btn-mover-item" data-id="' + itemId + '" data-dir="down" title="Bajar orden" ' + (idx === adicionales.length - 1 ? 'disabled' : '') + '>▼</button>' +
+                '</div>' +
+              '</div>' +
+              '<div class="eib-item-body">' +
+                '<span class="eib-adicional-tipo">' + itemTipo + '</span>' +
+                '<span class="eib-adicional-txt" title="' + itemTxt + '">' + itemTxt + '</span>' +
+              '</div>' +
+              '<div class="eib-item-actions">' +
+                '<button type="button" class="btn-editar-item" data-id="' + itemId + '" title="Modificar contenido">✎ Modificar</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="eib-item-edit" id="eibItemEdit_' + itemId + '" style="display:none;">' +
+              '<input type="text" class="input eib-input-edit" id="inputEdit_' + itemId + '" value="' + itemTxt + '" />' +
+              '<div class="eib-edit-actions">' +
+                '<button type="button" class="btn btn-xs btn-primary btn-guardar-item" data-id="' + itemId + '">Guardar</button>' +
+                '<button type="button" class="btn btn-xs btn-ghost btn-cancelar-item" data-id="' + itemId + '">Cancelar</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+
     bar.innerHTML = h;
     bar.hidden = !$('#preview').hidden;
+
+    // Handlers para agregar contenido nuevo mediante el formulario directo
+    const ejecutarAgregar = async () => {
+      const input = $('#inputNuevoContenido');
+      if (!input) return;
+      const texto = input.value.trim();
+      if (!texto) {
+        toast('Escribí el contenido que querés añadir');
+        input.focus();
+        return;
+      }
+      try {
+        let item;
+        if (api.agregarContenidoAdicional) {
+          item = await api.agregarContenidoAdicional(texto);
+        } else {
+          item = {
+            id: 'ca_' + Math.random().toString(36).substr(2, 8),
+            tipo: 'texto',
+            contenido: texto,
+            posicion: adicionales.length
+          };
+        }
+        if (b) {
+          b.contenido_adicional = b.contenido_adicional || [];
+          b.contenido_adicional.push(item);
+          if (b.conforme) {
+            b.conforme = false;
+            b.conforme_en = null;
+            b.conformidad_invalidada = true;
+            if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
+          }
+        }
+        pintarRecursosDetectados(s);
+        toast('Contenido nuevo agregado a la sección aparte');
+      } catch (err) {
+        toast('Error al agregar contenido: ' + (err.message || err));
+      }
+    };
+
+    const btnAdd = $('#btnConfirmarAgregar');
+    if (btnAdd) btnAdd.onclick = (e) => { e.preventDefault(); ejecutarAgregar(); };
+
+    const btnPlus = $('#btnAgregarContenido');
+    if (btnPlus) {
+      btnPlus.onclick = (e) => {
+        e.preventDefault();
+        const inp = $('#inputNuevoContenido');
+        if (inp) {
+          inp.focus();
+          if (inp.value.trim()) ejecutarAgregar();
+        }
+      };
+    }
+
+    const inpAdd = $('#inputNuevoContenido');
+    if (inpAdd) {
+      inpAdd.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          ejecutarAgregar();
+        }
+      });
+    }
+
+    // Handlers para abrir modo de edición de un ítem
+    bar.querySelectorAll('.btn-editar-item').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const id = btn.dataset.id;
+        const v = $('#eibItemView_' + id);
+        const ed = $('#eibItemEdit_' + id);
+        const inp = $('#inputEdit_' + id);
+        if (v && ed) {
+          v.style.display = 'none';
+          ed.style.display = 'flex';
+          if (inp) { inp.focus(); inp.select(); }
+        }
+      };
+    });
+
+    // Handlers para cancelar la edición de un ítem
+    bar.querySelectorAll('.btn-cancelar-item').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const id = btn.dataset.id;
+        const v = $('#eibItemView_' + id);
+        const ed = $('#eibItemEdit_' + id);
+        if (v && ed) {
+          ed.style.display = 'none';
+          v.style.display = 'flex';
+        }
+      };
+    });
+
+    // Guardar edición de un ítem modificado
+    const guardarEdicion = async (id) => {
+      const inp = $('#inputEdit_' + id);
+      if (!inp) return;
+      const nuevoTexto = inp.value.trim();
+      if (!nuevoTexto) {
+        toast('El contenido no puede estar vacío');
+        inp.focus();
+        return;
+      }
+      try {
+        if (api.modificarContenidoAdicional) {
+          await api.modificarContenidoAdicional(id, nuevoTexto);
+        }
+        if (b && b.contenido_adicional) {
+          const it = b.contenido_adicional.find((x) => x.id === id);
+          if (it) it.contenido = nuevoTexto;
+          if (b.conforme) {
+            b.conforme = false;
+            b.conforme_en = null;
+            b.conformidad_invalidada = true;
+            if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
+          }
+        }
+        pintarRecursosDetectados(s);
+        toast('Contenido modificado correctamente');
+      } catch (err) {
+        toast('Error al modificar ítem: ' + (err.message || err));
+      }
+    };
+
+    bar.querySelectorAll('.btn-guardar-item').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        guardarEdicion(btn.dataset.id);
+      };
+    });
+
+    bar.querySelectorAll('.eib-input-edit').forEach((inp) => {
+      inp.addEventListener('keydown', (e) => {
+        const id = inp.id.replace('inputEdit_', '');
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          guardarEdicion(id);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          const v = $('#eibItemView_' + id);
+          const ed = $('#eibItemEdit_' + id);
+          if (v && ed) {
+            ed.style.display = 'none';
+            v.style.display = 'flex';
+          }
+        }
+      });
+    });
+
+    // Handlers para eliminar ítems individuales
+    bar.querySelectorAll('.btn-eliminar-item').forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        const id = btn.dataset.id;
+        if (!id) return;
+        try {
+          if (api.eliminarContenidoAdicional) {
+            await api.eliminarContenidoAdicional(id);
+          }
+          if (b && b.contenido_adicional) {
+            b.contenido_adicional = b.contenido_adicional.filter((it) => it.id !== id);
+            b.contenido_adicional.forEach((it, idx) => { it.posicion = idx; });
+            if (b.conforme) {
+              b.conforme = false;
+              b.conforme_en = null;
+              b.conformidad_invalidada = true;
+              if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
+            }
+          }
+          pintarRecursosDetectados(s);
+          toast('Ítem eliminado del borrador');
+        } catch (err) {
+          toast('Error al eliminar ítem: ' + (err.message || err));
+        }
+      };
+    });
+
+    // Handlers para reordenar ítems (subir / bajar)
+    bar.querySelectorAll('.btn-mover-item').forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        const id = btn.dataset.id;
+        const dir = btn.dataset.dir;
+        if (!id || !b || !b.contenido_adicional) return;
+        const idx = b.contenido_adicional.findIndex((it) => it.id === id);
+        if (idx === -1) return;
+        const targetIdx = dir === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= b.contenido_adicional.length) return;
+
+        const temp = b.contenido_adicional[idx];
+        b.contenido_adicional[idx] = b.contenido_adicional[targetIdx];
+        b.contenido_adicional[targetIdx] = temp;
+        b.contenido_adicional.forEach((it, i) => { it.posicion = i; });
+
+        const ordenIds = b.contenido_adicional.map((it) => it.id);
+        try {
+          if (api.reordenarContenidoAdicional) {
+            await api.reordenarContenidoAdicional(ordenIds);
+          }
+          if (b.conforme) {
+            b.conforme = false;
+            b.conforme_en = null;
+            b.conformidad_invalidada = true;
+            if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
+          }
+          pintarRecursosDetectados(s);
+          toast('Orden de contenido actualizado');
+        } catch (err) {
+          toast('Error al reordenar: ' + (err.message || err));
+        }
+      };
+    });
   }
 
-  /* Markdown mínimo para la vista previa */
+  function pintarImagenesDetectadas(s) {
+    pintarRecursosDetectados(s);
+  }
+
+  /* Markdown adaptativo para la vista previa */
   function renderMd(src) {
     const renderInline = (s) => {
-      // 1. Reemplazar imágenes markdown antes de escapar texto general
+      // 1. Tokens de reemplazo previo al escape HTML
       let res = String(s).replace(
         /!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g,
         '___IMG_START___$1___SEP___$2___IMG_END___'
       ).replace(
         /\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g,
         '___ATT_START___$1___SEP___$2___ATT_END___'
+      ).replace(
+        /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g,
+        '___LINK_START___$1___SEP___$2___LINK_END___'
       );
 
       // 2. Escapar caracteres HTML peligrosos
       res = esc(res);
 
-      // 3. Restaurar imágenes y enlaces seguros
+      // 3. Restaurar imágenes y medios seguros
       res = res.replace(
         /___IMG_START___(.*?)___SEP___(.*?)___IMG_END___/g,
         '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>'
       ).replace(
         /___ATT_START___(.*?)___SEP___(.*?)___ATT_END___/g,
-        '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📄 $1</a>'
+        '<div class="preview-media-card attachment"><div class="pmc-main"><span class="pmc-icon">📎</span><div class="pmc-info"><span class="pmc-tag">Archivo adjunto</span><a class="pmc-title" href="$2" target="_blank" rel="noopener">$1</a></div></div><a class="pmc-btn" href="$2" target="_blank" rel="noopener">Descargar ↗</a></div>'
+      ).replace(
+        /___LINK_START___(.*?)___SEP___(.*?)___LINK_END___/g,
+        (match, title, url) => {
+          const rec = clasificarRecurso(url, title, false, false);
+          if (rec.tipo === 'doc') {
+            return '<div class="preview-media-card docs"><div class="pmc-main"><span class="pmc-icon">📄</span><div class="pmc-info"><span class="pmc-tag">Google Docs</span><a class="pmc-title" href="' + url + '" target="_blank" rel="noopener">' + title + '</a></div></div><a class="pmc-btn" href="' + url + '" target="_blank" rel="noopener">Abrir documento ↗</a></div>';
+          }
+          if (rec.tipo === 'slides') {
+            return '<div class="preview-media-card slides"><div class="pmc-main"><span class="pmc-icon">📊</span><div class="pmc-info"><span class="pmc-tag">Diapositivas</span><a class="pmc-title" href="' + url + '" target="_blank" rel="noopener">' + title + '</a></div></div><a class="pmc-btn" href="' + url + '" target="_blank" rel="noopener">Ver presentación ↗</a></div>';
+          }
+          if (rec.tipo === 'video') {
+            return '<div class="preview-media-card video"><div class="pmc-main"><span class="pmc-icon">🎬</span><div class="pmc-info"><span class="pmc-tag">Video</span><a class="pmc-title" href="' + url + '" target="_blank" rel="noopener">' + title + '</a></div></div><a class="pmc-btn" href="' + url + '" target="_blank" rel="noopener">Ver video ↗</a></div>';
+          }
+          return '<a class="preview-link" href="' + url + '" target="_blank" rel="noopener">' + title + ' ↗</a>';
+        }
       );
 
       // 4. Formatos inline estándar (negrita, código)
       return res
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/`([^`]+)`/g, '<code>$1</code>');
     };
 
@@ -743,6 +1333,28 @@
         const url = encodeURI(imgMatch[2]);
         out.push('<div class="preview-img-box"><img src="' + url + '" alt="' + alt + '" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">' + alt + '</span></div>');
         return;
+      }
+
+      // Línea solitaria con video de YouTube (reproductor integrado)
+      const ytMatch = l.match(/^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s]*)?$/);
+      if (ytMatch) {
+        cerrar();
+        const ytId = ytMatch[1];
+        const fullUrl = l.startsWith('http') ? l : ('https://' + l);
+        out.push('<div class="preview-video-box"><iframe class="preview-video-frame" src="https://www.youtube.com/embed/' + ytId + '" title="Video tutorial" frameborder="0" allowfullscreen loading="lazy"></iframe><div class="caption">🎬 Video explicativo · <a class="preview-link" href="' + encodeURI(fullUrl) + '" target="_blank" rel="noopener">Abrir en YouTube ↗</a></div></div>');
+        return;
+      }
+
+      // Línea solitaria con URL cruda de docs, diapositivas o video
+      const urlSoleMatch = l.match(/^(https?:\/\/[^\s]+)$/);
+      if (urlSoleMatch) {
+        const u = urlSoleMatch[1];
+        const rec = clasificarRecurso(u, '');
+        if (rec.tipo === 'doc' || rec.tipo === 'slides' || rec.tipo === 'video') {
+          cerrar();
+          out.push(renderInline('[' + (rec.titulo || rec.etiqueta) + '](' + u + ')'));
+          return;
+        }
       }
 
       if (/^ruta\s*[:>]/i.test(l)) { cerrar(); out.push('<div class="ruta">' + renderInline(l) + '</div>'); return; }
@@ -769,15 +1381,235 @@
   }
 
   /* =========================================================
+     Eventos Mini Panel Multimedia
+     ========================================================= */
+  function conectarEventosMultimedia() {
+    const cont = $('#panelMultimedia');
+    if (!cont) return;
+
+    let arrastrandoIdx = null;
+
+    cont.addEventListener('click', async (e) => {
+      // 1. Abrir / cerrar área de carga
+      const btnCarga = e.target.closest('[data-accion="abrir-carga"]');
+      if (btnCarga && !btnCarga.disabled) {
+        e.preventDefault();
+        const abierta = BACO.panelMultimedia.alternarCarga();
+        BACO.panelMultimedia.pintar(cont, store.get());
+        if (abierta) { const u = $('#pmUrl'); if (u) u.focus(); }
+        return;
+      }
+
+      // 2. Quitar recurso (botón ×)
+      const btnQuitar = e.target.closest('[data-accion="quitar"]');
+      if (btnQuitar && !btnQuitar.disabled) {
+        e.preventDefault();
+        const id = btnQuitar.getAttribute('data-id');
+        if (!id) return;
+        try {
+          store.set({ enviando: true });
+          await api.eliminarRecurso(id);
+          const recs = await api.obtenerRecursos();
+          store.actualizarRecursos(recs);
+          toast('Recurso quitado');
+        } catch (err) {
+          toast(err.message || 'No se pudo quitar el recurso');
+        } finally {
+          store.set({ enviando: false });
+        }
+        return;
+      }
+
+      // 3. Reordenar con botones ↑ / ↓
+      const btnMover = e.target.closest('[data-accion="subir"], [data-accion="bajar"]');
+      if (btnMover && !btnMover.disabled) {
+        e.preventDefault();
+        const accion = btnMover.getAttribute('data-accion');
+        const idx = parseInt(btnMover.getAttribute('data-idx'), 10);
+        if (isNaN(idx)) return;
+        const targetIdx = accion === 'subir' ? idx - 1 : idx + 1;
+        try {
+          store.set({ enviando: true });
+          await api.reordenarMultimedia(idx, targetIdx);
+          const recs = await api.obtenerRecursos();
+          store.actualizarRecursos(recs);
+        } catch (err) {
+          toast(err.message || 'No se pudo reordenar');
+        } finally {
+          store.set({ enviando: false });
+        }
+        return;
+      }
+
+      // 4. Agregar por URL
+      const btnUrl = e.target.closest('[data-accion="agregar-url"]');
+      if (btnUrl && !btnUrl.disabled) {
+        e.preventDefault();
+        await agregarUrlMultimedia();
+        return;
+      }
+    });
+
+    async function agregarUrlMultimedia() {
+      const inputUrl = $('#pmUrl');
+      if (!inputUrl) return;
+      const url = inputUrl.value.trim();
+      if (!url) {
+        toast('Ingresá una URL válida');
+        return;
+      }
+      try {
+        store.set({ enviando: true });
+        await api.agregarRecursoMultimedia({ referencia: url });
+        inputUrl.value = '';
+        const recs = await api.obtenerRecursos();
+        store.actualizarRecursos(recs);
+        toast('Recurso agregado');
+      } catch (err) {
+        toast(err.message || 'No se pudo agregar la URL');
+      } finally {
+        store.set({ enviando: false });
+      }
+    }
+
+    async function subirArchivoMultimedia(file) {
+      if (!file) return;
+      try {
+        store.set({ enviando: true });
+        await api.subirRecursoMultimedia(file);
+        const recs = await api.obtenerRecursos();
+        store.actualizarRecursos(recs);
+        toast('Archivo subido');
+      } catch (err) {
+        toast(err.message || 'No se pudo subir el archivo');
+      } finally {
+        store.set({ enviando: false });
+      }
+    }
+
+    cont.addEventListener('keydown', (e) => {
+      if (e.target && e.target.id === 'pmUrl' && e.key === 'Enter') {
+        e.preventDefault();
+        agregarUrlMultimedia();
+      }
+    });
+
+    cont.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'pmArchivo') {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          e.target.value = '';
+          subirArchivoMultimedia(file);
+        }
+      }
+    });
+
+    // Drag and drop de archivos sobre .pm-drop
+    cont.addEventListener('dragover', (e) => {
+      const drop = e.target.closest('.pm-drop');
+      if (drop && e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+        e.preventDefault();
+        drop.classList.add('sobre');
+      }
+    });
+    cont.addEventListener('dragleave', (e) => {
+      const drop = e.target.closest('.pm-drop');
+      if (drop) drop.classList.remove('sobre');
+    });
+    cont.addEventListener('drop', (e) => {
+      const drop = e.target.closest('.pm-drop');
+      if (drop && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        e.preventDefault();
+        drop.classList.remove('sobre');
+        subirArchivoMultimedia(e.dataTransfer.files[0]);
+      }
+    });
+
+    // Drag and drop para reordenar items .pm-item
+    cont.addEventListener('dragstart', (e) => {
+      const item = e.target.closest('.pm-item');
+      if (!item) return;
+      arrastrandoIdx = parseInt(item.getAttribute('data-idx'), 10);
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(arrastrandoIdx));
+      }
+      item.classList.add('arrastrando');
+    });
+
+    cont.addEventListener('dragover', (e) => {
+      const item = e.target.closest('.pm-item');
+      if (item && arrastrandoIdx !== null) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        item.classList.add('destino');
+      }
+    });
+
+    cont.addEventListener('dragleave', (e) => {
+      const item = e.target.closest('.pm-item');
+      if (item) item.classList.remove('destino');
+    });
+
+    cont.addEventListener('dragend', (e) => {
+      const item = e.target.closest('.pm-item');
+      if (item) item.classList.remove('arrastrando');
+      cont.querySelectorAll('.pm-item.destino').forEach(el => el.classList.remove('destino'));
+      arrastrandoIdx = null;
+    });
+
+    cont.addEventListener('drop', async (e) => {
+      const item = e.target.closest('.pm-item');
+      if (item && arrastrandoIdx !== null) {
+        e.preventDefault();
+        item.classList.remove('destino');
+        const destinoIdx = parseInt(item.getAttribute('data-idx'), 10);
+        const origenIdx = arrastrandoIdx;
+        arrastrandoIdx = null;
+        if (!isNaN(destinoIdx) && origenIdx !== destinoIdx) {
+          try {
+            store.set({ enviando: true });
+            await api.reordenarMultimedia(origenIdx, destinoIdx);
+            const recs = await api.obtenerRecursos();
+            store.actualizarRecursos(recs);
+          } catch (err) {
+            toast(err.message || 'No se pudo reordenar');
+          } finally {
+            store.set({ enviando: false });
+          }
+        }
+      }
+    });
+  }
+
+  /* =========================================================
      Eventos
      ========================================================= */
   function conectarEventos() {
     $('#fTitulo').addEventListener('input', (e) => store.setForm({ titulo: e.target.value }));
     $('#fCuerpo').addEventListener('input', (e) => store.setForm({ texto: e.target.value }));
-    $('#fCategoria').addEventListener('change', (e) => store.setForm({ categoria_id: parseInt(e.target.value, 10) || 1 }));
+    $('#fCategoria').addEventListener('change', (e) => store.setForm({ categoria_id: parseInt(e.target.value, 10) || null }));
 
     $('#fTitulo').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); if (!$('#btnPrincipal').disabled) enviarPrincipal(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const s = store.get();
+        if (s.flujo === 'ESPERANDO_TITULO') {
+          const tit = s.form.titulo.trim();
+          if (tit.length >= cfg.MIN_TITULO && !s.enviando) {
+            enviarTurno({ titulo: tit }, tit);
+          }
+        } else if (!$('#btnPrincipal').disabled) {
+          enviarPrincipal();
+        }
+      }
+    });
+
+    $('#fCuerpo').addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!$('#btnPrincipal').disabled) enviarPrincipal();
+      }
     });
 
     $('#tagInput').addEventListener('keydown', (e) => {
@@ -798,16 +1630,26 @@
 
     $('#btnPrincipal').onclick = enviarPrincipal;
 
+    conectarEventosMultimedia();
+    if ($('#btnConfirmarTexto')) {
+      $('#btnConfirmarTexto').onclick = confirmarTexto;
+    }
     $('#btnEditor').onclick = () => {
-      $('#fCuerpo').hidden = false; $('#preview').hidden = true;
-      $('#btnEditor').classList.add('sel'); $('#btnPreview').classList.remove('sel');
+      $('#fCuerpo').hidden = false;
+      $('#preview').hidden = true;
+      $('#btnEditor').classList.add('sel');
+      $('#btnPreview').classList.remove('sel');
       pintarImagenesDetectadas(store.get());
     };
     $('#btnPreview').onclick = () => {
-      $('#preview').innerHTML = renderMd(store.get().form.texto);
-      $('#fCuerpo').hidden = true; $('#preview').hidden = false;
-      $('#btnPreview').classList.add('sel'); $('#btnEditor').classList.remove('sel');
+      store.setForm({ texto: $('#fCuerpo').value });
+      $('#preview').innerHTML = renderMd(textoVistaPrevia(store.get()));
+      $('#fCuerpo').hidden = true;
+      $('#preview').hidden = false;
+      $('#btnPreview').classList.add('sel');
+      $('#btnEditor').classList.remove('sel');
       const bar = $('#editorImgBar'); if (bar) bar.hidden = true;
+      const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.innerHTML = ''; }
     };
 
     $('#btnSubir').onclick = () => $('#fileInput').click();
@@ -821,7 +1663,6 @@
       }
       const lector = new FileReader();
       lector.onload = () => {
-        const s = store.get();
         const nuevo = (s.form.texto.trim() ? s.form.texto + '\n\n' : '') + lector.result;
         store.setForm({ texto: nuevo });
         $('#fCuerpo').value = nuevo;
@@ -837,6 +1678,7 @@
     $('#btnEjemplo').onclick = cargarEjemplo;
 
     $('#btnCerrar').onclick = () => { $('#overlay').hidden = true; };
+    $('#btnCopiarBorrador').onclick = copiarBorrador;
     $('#btnOtra').onclick = () => { $('#overlay').hidden = true; accionar('reiniciar', 'Empezar de nuevo'); };
 
     $('#swError').addEventListener('change', (e) => {
@@ -851,6 +1693,10 @@
     $('#chatInput').addEventListener('input', (e) => {
       e.target.style.height = 'auto';
       e.target.style.height = Math.min(110, e.target.scrollHeight) + 'px';
+      const s = store.get();
+      if (s.flujo === 'ESPERANDO_TEXTO') {
+        contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), e.target.value.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
+      }
     });
   }
 
@@ -862,8 +1708,9 @@
       toast('Título de ejemplo cargado');
     } else if (s.flujo === 'ESPERANDO_TEXTO') {
       const c = BACO.datos.ejemplo.cuerpo;
-      $('#fCuerpo').value = c; store.setForm({ texto: c });
-      toast('Contenido de ejemplo cargado');
+      $('#fCuerpo').value = c;
+      store.setForm({ texto: c });
+      toast('Contenido de ejemplo cargado en el editor. Tocá "Confirmar texto" cuando estés listo.');
     } else {
       toast('El ejemplo se carga en los pasos de título y contenido');
     }

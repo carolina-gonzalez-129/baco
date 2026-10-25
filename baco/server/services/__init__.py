@@ -16,6 +16,7 @@ from baco.server.services.agente_service import (
 )
 from baco.server.services.orquestador import (
     manejar_turno,
+    obtener_borrador_conforme,
     obtener_borrador_aprobado,
     obtener_borrador_sesion_validado,
     actualizar_borrador_texto,
@@ -29,6 +30,7 @@ __all__ = [
     "MODEL_TEXTO_NAME",
     "DIM_TEXTO",
     "manejar_turno",
+    "obtener_borrador_conforme",
     "obtener_borrador_aprobado",
     "obtener_borrador_sesion_validado",
     "actualizar_borrador_texto",

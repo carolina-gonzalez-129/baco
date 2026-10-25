@@ -57,25 +57,31 @@ def test_prioridad_cookie_gana_sobre_header(client):
 
     SESIONES[sid_cookie] = SesionChat(
         session_id=sid_cookie,
-        estado=EstadoFlujo.APROBADO,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
         titulo="Título Cookie",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título Cookie",
             texto=TEXTO_VALIDO,
+            texto_original_conforme=TEXTO_VALIDO,
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
             tipo_plantilla="instructivo",
         ),
     )
     SESIONES[sid_header] = SesionChat(
         session_id=sid_header,
-        estado=EstadoFlujo.APROBADO,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
         titulo="Título Header",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título Header",
             texto=TEXTO_VALIDO,
+            texto_original_conforme=TEXTO_VALIDO,
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
             tipo_plantilla="instructivo",
         ),
     )
@@ -102,6 +108,7 @@ def test_prioridad_header_gana_sobre_body_y_body_se_ignora(client):
         headers={"X-Session-ID": sid_header},
         json={
             "session_id": "sesion-inventada-en-body",
+            "accion": "confirmar_texto",
             "texto": TEXTO_VALIDO,
             "tags": ["instructivo", "ventas"],
             "categoria_id": 5,
@@ -156,7 +163,8 @@ def test_estado_rechazado_borra_la_cookie(client):
     )
 
     client.cookies.set("baco_session", sid)
-    resp = client.post("/chat", json={"accion": "rechazar"})
+    client.post("/chat", json={"accion": "rechazar"})
+    resp = client.post("/chat", json={"accion": "confirmar_rechazo"})
 
     assert resp.status_code == 200
     assert resp.json()["estado"] == EstadoFlujo.RECHAZADO
@@ -166,17 +174,17 @@ def test_estado_rechazado_borra_la_cookie(client):
     assert ('baco_session=""' in set_cookie or "Max-Age=0" in set_cookie or "baco_session=;" in set_cookie)
 
 
-def test_estado_aprobado_mantiene_cookie_y_permite_get_borrador(client):
-    sid = "sesion-a-aprobar"
+def test_estado_conformidad_mantiene_cookie_y_permite_get_borrador(client):
+    sid = "sesion-a-dar-conformidad"
     from baco.server.schemas.validacion import ResumenValidacionSchema, ValidarFormatoResponse
     SESIONES[sid] = SesionChat(
         session_id=sid,
         estado=EstadoFlujo.REVISION_BORRADOR,
-        titulo="Artículo Aprobable",
+        titulo="Artículo para Conformidad",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
             modo="nuevo",
-            titulo="Artículo Aprobable",
+            titulo="Artículo para Conformidad",
             texto=TEXTO_VALIDO,
             tipo_plantilla="instructivo",
         ),
@@ -189,18 +197,18 @@ def test_estado_aprobado_mantiene_cookie_y_permite_get_borrador(client):
     )
 
     client.cookies.set("baco_session", sid)
-    resp = client.post("/chat", json={"accion": "aprobar"})
+    resp = client.post("/chat", json={"accion": "conforme"})
 
     assert resp.status_code == 200
-    assert resp.json()["estado"] == EstadoFlujo.APROBADO
+    assert resp.json()["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
 
     set_cookie = resp.headers.get("set-cookie", "")
     assert f"Max-Age={TTL_SEGUNDOS}" in set_cookie
 
-    # El front consulta GET /chat/borrador tras aprobar y la cookie sigue activa
+    # El front consulta GET /chat/borrador tras dar conformidad y la cookie sigue activa
     resp_borrador = client.get("/chat/borrador")
     assert resp_borrador.status_code == 200
-    assert resp_borrador.json()["titulo"] == "Artículo Aprobable"
+    assert resp_borrador.json()["titulo"] == "Artículo para Conformidad"
 
 
 def test_endpoints_sin_sesion_retornan_401(client):

@@ -14,9 +14,10 @@ OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
 OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
 OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
-OPCIONES_REVISION_VALIDO = ["aprobar", "editar", "sanitizar", "rechazar", "volver", "reiniciar"]
+OPCIONES_REVISION_VALIDO = ["conforme", "editar", "sanitizar", "rechazar", "volver", "reiniciar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "sanitizar", "rechazar", "volver", "reiniciar"]
 OPCIONES_REINICIAR = ["reiniciar"]
+OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
 
 MSG_SIN_COINCIDENCIAS_TITULO = (
     "No encontré ningún artículo existente con este título, así que avanzamos con uno nuevo. "
@@ -39,6 +40,10 @@ MSG_ELEGIR_SERIE_O_DESCARTAR = (
 MSG_TEXTO_VACIO = (
     "Perfecto, ahora necesito que me pases el texto o los pasos del artículo "
     "para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes."
+)
+MSG_TEXTO_EN_EDICION = (
+    "Guardé tu texto en edición. Podés seguir escribiendo o pegando más contenido, "
+    "y cuando esté listo tocá 'Confirmar texto' para buscar duplicados y continuar."
 )
 MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
     "Detecté un contenido muy parecido al que redactaste. "
@@ -67,7 +72,20 @@ PREFIJO_CONTINUAR_PROPIO = "Continuamos con tu propio texto. "
 PREFIJO_METADATOS_REGISTRADOS = "Metadatos registrados. "
 PREFIJO_DATOS_SANITIZADOS = "Datos sensibles sanitizados. "
 PREFIJO_BORRADOR_ACTUALIZADO = "Borrador actualizado. "
-PREFIJO_ERROR_APROBACION = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
+PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
+
+MSG_ANTES_DE_CONFORME = (
+    "Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. "
+    "Esto registra tu conformidad; no lo publica."
+)
+MSG_CONFORMIDAD_REGISTRADA = (
+    "✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedó listo. "
+    "Todavía no está publicado: la aprobación y publicación final las hace un administrador. "
+    "Podés copiar el borrador y cargarlo en la Base de Conocimiento."
+)
+MSG_CONFORMIDAD_INVALIDADA = (
+    "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad."
+)
 
 
 def prefijo_borrador_creado(articulo_id: int) -> str:
@@ -176,11 +194,8 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     )
 
 
-def msg_articulo_aprobado(titulo: str) -> str:
-    return (
-        f"¡Impecable! Tu artículo '{titulo}' está muy bien formulado. "
-        "Si querés comenzar con otro tema, tocá 'reiniciar'."
-    )
+def msg_articulo_conforme(titulo: str = "") -> str:
+    return MSG_CONFORMIDAD_REGISTRADA
 
 
 def msg_sesion_finalizada(estado_valor: str) -> str:
@@ -239,10 +254,10 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
                 OPCIONES_REVISION_BLOQUEANTE,
             )
         return (
-            "[Placeholder] El borrador está listo para confirmar. Podés tocar 'aprobar' para confirmarlo, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
+            "[Placeholder] El borrador está listo para confirmar. Podés tocar 'conforme' para registrar tu conformidad, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
             OPCIONES_REVISION_VALIDO,
         )
-    if est in (EstadoFlujo.APROBADO, EstadoFlujo.RECHAZADO):
+    if est in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO):
         return (
             msg_sesion_finalizada(est.value),
             OPCIONES_REINICIAR,
