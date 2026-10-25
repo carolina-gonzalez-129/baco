@@ -5,22 +5,29 @@ import mimetypes
 from pathlib import Path
 import re
 import shutil
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from baco.server.config_limites import (
     MAX_RECURSOS_POR_SESION,
+    MAX_RECURSOS_TOTAL_BYTES,
     PERMITIR_SUBIDA_RECURSOS,
     RECURSO_MAX_BYTES,
 )
-from baco.server.schemas.recurso import OrigenRecurso, Recurso, TipoRecurso
+from baco.server.schemas.recurso import (
+    BloqueItem,
+    OrigenRecurso,
+    Recurso,
+    TipoRecurso,
+    sanitizar_url_recurso,
+)
 
 logger = logging.getLogger(__name__)
 
 DIR_TEMP_SESIONES = Path("data/temp_sesiones")
 
-# Extensiones / URLs para clasificación de tipo
-EXTS_IMAGEN = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"}
+# Extensiones / URLs para clasificación de tipo (SVG estrictamente bloqueado por seguridad)
+EXTS_IMAGEN = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 EXTS_VIDEO = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".flv"}
 EXTS_AUDIO = {".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"}
 EXTS_DOCUMENTO = {".pdf", ".doc", ".docx", ".odt", ".ppt", ".pptx", ".odp", ".xls", ".xlsx", ".csv", ".txt"}
@@ -30,7 +37,6 @@ MIMES_PERMITIDOS = {
     "image/jpeg",
     "image/gif",
     "image/webp",
-    "image/svg+xml",
     "application/pdf",
     "video/mp4",
     "video/webm",
@@ -150,8 +156,9 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
 
     resultado = str(texto)
 
-    # Extracción en una sola pasada unificada para preservar estrictamente el orden de aparición original
     re_media = re.compile(r"(!)?\[([^\]]*)\]\((https?://[^\s\)]+)\)")
+    re_url_suelta = re.compile(r"^(https?://[^\s]+)$")
+
     def _sub_media(match: re.Match) -> str:
         nonlocal contador
         es_bang = match.group(1) == "!"
@@ -179,7 +186,8 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
                 return match.group(0)
 
         if url in urls_registradas:
-            return ""
+            rec_id = urls_registradas[url]
+            return f"[[recurso:{rec_id}]]"
 
         rec_id = f"rec_{contador}"
         contador += 1
@@ -192,14 +200,11 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
             referencia=url,
             orden=len(recursos),
         )
-        return ""
+        return f"[[recurso:{rec_id}]]"
 
-    resultado = re_media.sub(_sub_media, resultado)
-
-    # 4. Extraer URLs sueltas en líneas independientes que correspondan a videos o docs
+    # Procesar línea a línea de arriba hacia abajo para preservar el orden secuencial de IDs y aparición
     lineas = resultado.splitlines()
     nuevas_lineas = []
-    re_url_suelta = re.compile(r"^(https?://[^\s]+)$")
     for linea in lineas:
         l_strip = linea.strip()
         m = re_url_suelta.match(l_strip)
@@ -224,8 +229,9 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
                         referencia=url,
                         orden=len(recursos),
                     )
-                continue  # la URL suelta se quita del texto
-        nuevas_lineas.append(linea)
+                nuevas_lineas.append(f"[[recurso:{rec_id}]]")
+                continue
+        nuevas_lineas.append(re_media.sub(_sub_media, linea))
 
     resultado = "\n".join(nuevas_lineas)
 
@@ -239,7 +245,162 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
         bloques.pop()
     texto_limpio = "\n\n".join(bloques).strip()
 
+    sincronizar_orden_recursos_desde_texto(texto_limpio, recursos)
+
     return texto_limpio, recursos
+
+
+def sincronizar_orden_recursos_desde_texto(texto: str, recursos: Dict[str, Recurso]) -> List[Recurso]:
+    """Sincroniza r.orden según la posición de aparición de cada marcador [[recurso:<id>]] en el texto.
+    Los IDs de los recursos permanecen estables (no se renumeran)."""
+    marcadores = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", texto or "")
+    vistos = set()
+    orden_idx = 0
+    for rid in marcadores:
+        if rid in recursos and rid not in vistos:
+            recursos[rid].orden = orden_idx
+            orden_idx += 1
+            vistos.add(rid)
+    for r in sorted(recursos.values(), key=lambda x: x.orden):
+        if r.id not in vistos:
+            r.orden = orden_idx
+            orden_idx += 1
+            vistos.add(r.id)
+    return sorted(recursos.values(), key=lambda r: r.orden)
+
+
+def derivar_desde_bloques(
+    bloques: List[BloqueItem],
+    recursos_previos: Optional[Dict[str, Recurso]] = None,
+) -> Tuple[str, Dict[str, Recurso], Optional[str]]:
+    r"""Función pura que deriva texto_limpio (con marcadores [[R1]], [[R2]]...) y
+
+    el diccionario de recursos ordenados correlativamente.
+
+    Garantiza:
+    - Pureza: no muta los objetos de entrada ni estado global.
+    - Rechazo estricto si el usuario intentó inyectar [[R\d+]] manualmente en texto.
+    - Sanitización de URL (sin query strings, fragmentos ni credenciales).
+    - Bloqueo de SVG y validación de tipos / tamaños.
+    - Idempotencia: re-ejecutar con los mismos bloques genera exactamente el mismo resultado e IDs estables.
+    - Aviso con únicamente tipo y cantidad de recursos detectados.
+    """
+    if not bloques:
+        return "", {}, None
+
+    partes_texto: List[str] = []
+    recursos: Dict[str, Recurso] = {}
+    conteo_tipos: Dict[str, int] = {}
+    rec_counter = 1
+
+    prev_por_url: Dict[str, str] = {}
+    if recursos_previos:
+        for r in recursos_previos.values():
+            if r.referencia:
+                prev_por_url[r.referencia] = r.id
+
+    for b in bloques:
+        if b.tipo == "texto":
+            contenido = str(b.contenido or "").strip()
+            if re.search(r"\[\[R\d+\]\]", contenido):
+                raise RecursoInvalidoError(
+                    "El texto no puede incluir marcadores reservados del sistema como [[R1]]."
+                )
+            if contenido:
+                partes_texto.append(contenido)
+        elif b.tipo == "recurso":
+            rec_in = b.recurso
+            if not rec_in or not rec_in.url:
+                raise RecursoInvalidoError("El bloque de recurso no contiene una URL válida.")
+
+            try:
+                url_limpia = sanitizar_url_recurso(rec_in.url)
+            except ValueError as ve:
+                raise RecursoInvalidoError(str(ve))
+            partes_url = urlsplit(url_limpia)
+            ext = Path(partes_url.path).suffix.lower()
+
+            if ext == ".svg" or (rec_in.mime_type and "svg" in rec_in.mime_type.lower()):
+                raise RecursoInvalidoError("No se permiten archivos SVG por razones de seguridad.")
+
+            if rec_in.tamano_bytes is not None and rec_in.tamano_bytes > RECURSO_MAX_BYTES:
+                raise RecursoInvalidoError(
+                    f"El recurso supera el tamaño máximo permitido de {RECURSO_MAX_BYTES // (1024 * 1024)} MB."
+                )
+
+            tipo = rec_in.tipo or clasificar_tipo_recurso(url_limpia, rec_in.nombre or "", rec_in.mime_type)
+
+            # ID estable: si ya existía con la misma URL en recursos_previos, reutilizar su id
+            if url_limpia in prev_por_url:
+                rec_id = prev_por_url[url_limpia]
+            else:
+                rec_id = f"rec_{rec_counter}"
+                while rec_id in recursos:
+                    rec_counter += 1
+                    rec_id = f"rec_{rec_counter}"
+
+            orden = len(recursos)
+            marcador = f"[[R{orden + 1}]]"
+            partes_texto.append(marcador)
+
+            nombre = (rec_in.nombre or "").strip() or Path(partes_url.path).name or f"Recurso {orden + 1}"
+            recursos[rec_id] = Recurso(
+                id=rec_id,
+                tipo=tipo,
+                nombre=nombre,
+                origen="existente",
+                tamano_bytes=rec_in.tamano_bytes,
+                mime_type=rec_in.mime_type,
+                referencia=url_limpia,
+                orden=orden,
+            )
+            conteo_tipos[tipo] = conteo_tipos.get(tipo, 0) + 1
+            rec_counter += 1
+
+    texto_limpio = "\n\n".join(partes_texto).strip()
+
+    # Aviso con solo tipo y cantidad
+    aviso = None
+    if recursos:
+        partes_aviso = []
+        for t, cnt in conteo_tipos.items():
+            plural = "imágenes" if t == "imagen" else f"{t}s"
+            partes_aviso.append(f"{cnt} {t}" if cnt == 1 else f"{cnt} {plural}")
+        aviso = f"Se detectaron {len(recursos)} recursos ({', '.join(partes_aviso)})."
+
+    return texto_limpio, recursos, aviso
+
+
+def reindexar_marcadores_tras_eliminar(texto: str, orden_eliminado: int) -> str:
+    """Elimina [[R{orden_eliminado+1}]] y renumera correlativamente los marcadores posteriores."""
+    if not texto:
+        return ""
+    marcador_a_quitar = f"[[R{orden_eliminado + 1}]]"
+    nuevo = texto.replace(marcador_a_quitar, "")
+
+    def _sub_renum(m: re.Match) -> str:
+        num = int(m.group(1))
+        if num > orden_eliminado + 1:
+            return f"[[R{num - 1}]]"
+        return m.group(0)
+
+    nuevo = re.sub(r"\[\[R(\d+)\]\]", _sub_renum, nuevo)
+    bloques = [b.strip() for b in re.split(r"\n\s*\n", nuevo)]
+    return "\n\n".join(b for b in bloques if b).strip()
+
+
+def reindexar_marcadores_tras_reordenar(texto: str, mapa_orden: Dict[int, int]) -> str:
+    """Actualiza los marcadores [[R{n}]] en el texto según el nuevo orden (0-indexed)."""
+    if not texto or not mapa_orden:
+        return texto
+
+    def _sub_orden(m: re.Match) -> str:
+        viejo_idx = int(m.group(1)) - 1
+        nuevo_idx = mapa_orden.get(viejo_idx, viejo_idx)
+        return f"[[__TEMP_R_{nuevo_idx + 1}__]]"
+
+    temp = re.sub(r"\[\[R(\d+)\]\]", _sub_orden, texto)
+    return re.sub(r"\[\[__TEMP_R_(\d+)__\]\]", r"[[R\1]]", temp)
 
 
 SECCION_RECURSOS_TITULO = "## Recursos"
@@ -277,6 +438,30 @@ def componer_texto_publicable(
     bloque = "\n\n".join(_recurso_a_markdown(r) for r in items)
     seccion = f"{SECCION_RECURSOS_TITULO}\n\n{bloque}"
     return f"{cuerpo}\n\n{seccion}" if cuerpo else seccion
+
+
+def reconstruir_texto_con_recursos(
+    texto_limpio: str, recursos: Union[Dict[str, Recurso], Iterable[Recurso], None]
+) -> str:
+    """Compatibilidad: compone el texto para publicación/vista previa a partir de texto_limpio y recursos."""
+    return componer_texto_publicable(texto_limpio, recursos)
+
+
+def verificar_y_restaurar_marcadores(
+    texto: str, recursos: Dict[str, Recurso]
+) -> Tuple[str, List[str]]:
+    """Verifica determinísticamente que todos los marcadores de recursos existan en el texto.
+    Si falta alguno, lo restaura al final del texto y genera una advertencia."""
+    advertencias: List[str] = []
+    texto_res = texto or ""
+    for r in sorted(recursos.values(), key=lambda x: x.orden):
+        marcador = f"[[recurso:{r.id}]]"
+        if marcador not in texto_res:
+            advertencias.append(
+                f"Se restauró el marcador faltante para '{r.nombre}' ({marcador}) al final del texto."
+            )
+            texto_res = f"{texto_res}\n\n{marcador}".strip()
+    return texto_res, advertencias
 
 
 def generar_id_recurso_libre(recursos: Optional[Dict[str, Recurso]]) -> str:
@@ -428,6 +613,9 @@ def guardar_recurso_temporal_sesion(
 
     nombre_seguro = sanitizar_nombre_archivo(filename)
     mime_real = detectar_mime_type_real(contenido_bytes, nombre_seguro)
+
+    if mime_real == "image/svg+xml" or nombre_seguro.lower().endswith(".svg"):
+        raise RecursoInvalidoError("No se permiten archivos SVG por razones de seguridad.")
 
     if mime_real not in MIMES_PERMITIDOS or mime_real == "application/octet-stream":
         raise RecursoInvalidoError(
