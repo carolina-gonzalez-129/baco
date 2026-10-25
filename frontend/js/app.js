@@ -374,7 +374,7 @@
       if (!idsValidos.has(id)) textareasMap.delete(id);
     }
 
-    // Divisor inicial (posición 0)
+    // Único divisor con botón '+' en la parte superior
     frag.appendChild(crearDivisor(0, deshabilitado));
 
     estadoEditor.bloques.forEach((b, idx) => {
@@ -383,8 +383,6 @@
       } else if (b.tipo === 'recurso') {
         frag.appendChild(crearItemRecurso(b, idx, total, deshabilitado));
       }
-      // Divisor posterior (posición idx + 1)
-      frag.appendChild(crearDivisor(idx + 1, deshabilitado));
     });
 
     cont.replaceChildren(frag);
@@ -403,11 +401,8 @@
     }
     estadoEditor.bloques.splice(pos, 0, nuevoBloque);
 
-    if (pos + 1 >= estadoEditor.bloques.length || estadoEditor.bloques[pos + 1].tipo !== 'texto') {
-      estadoEditor.bloques.splice(pos + 1, 0, { id: genId(), tipo: 'texto', contenido: '' });
-    }
-    if (pos === 0 || estadoEditor.bloques[pos - 1].tipo !== 'texto') {
-      estadoEditor.bloques.splice(pos, 0, { id: genId(), tipo: 'texto', contenido: '' });
+    if (!estadoEditor.bloques.some((b) => b.tipo === 'texto')) {
+      estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: '' });
     }
   }
 
@@ -581,11 +576,11 @@
 
       if (res) {
         if (res.texto_limpio != null) {
-          store.setForm({ texto: res.texto_limpio });
-          const fc = $('#fCuerpo');
-          if (fc) fc.value = res.texto_limpio;
           const recs = res.recursos || (res.borrador && (Array.isArray(res.borrador.multimedia) ? res.borrador.multimedia : Object.values(res.borrador.recursos || {}))) || [];
           reconstruirBloques(res.texto_limpio, recs);
+          const fc = $('#fCuerpo');
+          if (fc) fc.value = res.texto_limpio;
+          store.setForm({ texto: res.texto_limpio });
         }
         if (res.borrador) {
           store.set({ borrador: res.borrador });
@@ -647,7 +642,6 @@
             url: r.referencia || r.url || ''
           }
         });
-        nuevosBloques.push({ id: genId(), tipo: 'texto', contenido: '' });
       });
       estadoEditor.bloques = nuevosBloques;
     } else {
@@ -658,25 +652,21 @@
   function sincronizarBloquesDesdeStore(s) {
     if (!s) return;
     const sesionCambio = s.session_id !== sesionCargadaId;
+    const textoStore = (s.form && s.form.texto) || (s.borrador && (s.borrador.texto_limpio != null ? s.borrador.texto_limpio : s.borrador.texto)) || '';
+    const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
+    const editandoEnBloque = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('bloque-textarea');
+    const textoActualBloques = componerTextoDesdeBloques();
+
     if (sesionCambio) {
       sesionCargadaId = s.session_id;
       estadoEditor.bloques.forEach((b) => {
         if (b.previewUrl) URL.revokeObjectURL(b.previewUrl);
       });
-      const textoLimpio = (s.borrador && s.borrador.texto_limpio) || (s.form && s.form.texto) || '';
-      const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
-      reconstruirBloques(textoLimpio, recs);
+      reconstruirBloques(textoStore, recs);
       renderBloques();
-    } else {
-      const editorVacio = estadoEditor.bloques.length === 1 &&
-        estadoEditor.bloques[0].tipo === 'texto' &&
-        !estadoEditor.bloques[0].contenido.trim();
-      const textoLimpio = s.borrador && s.borrador.texto_limpio;
-
-      if (editorVacio && textoLimpio) {
-        sesionCargadaId = null;
-        sincronizarBloquesDesdeStore(s);
-      }
+    } else if (textoStore !== textoActualBloques && !editandoEnBloque) {
+      reconstruirBloques(textoStore, recs);
+      renderBloques();
     }
   }
 
@@ -711,6 +701,15 @@
       const r = await api.turno(cuerpo);
       esperando.remove();
       ultimoFallo = null;
+      if (r && (r.borrador || typeof r.texto_limpio === 'string')) {
+        const txtAutorizado = r.borrador
+          ? (r.borrador.texto_limpio != null ? r.borrador.texto_limpio : (r.borrador.texto || ''))
+          : r.texto_limpio;
+        const recsAutorizados = r.borrador
+          ? (Array.isArray(r.borrador.multimedia) ? r.borrador.multimedia : Object.values(r.borrador.recursos || {}))
+          : [];
+        reconstruirBloques(txtAutorizado, recsAutorizados);
+      }
       store.aplicarTurno(r);
       store.set({ enviando: false });
 
@@ -1162,29 +1161,9 @@
   }
 
   /* ---------------- coincidencias ---------------- */
-  function pintarCoincidencias(s) {
+  function pintarCoincidencias() {
     const slot = $('#slotCoincidencias');
-    if (!s.coincidencias.length) { slot.innerHTML = ''; return; }
-    let h = '<div class="alert dup"><div class="ah">' +
-      '<span class="ic"><svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 2.2l6.2 11H1.8L8 2.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.6v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".85" fill="currentColor"/></svg></span>' +
-      '<div><b>Ya hay algo parecido publicado</b><p>Elegí abajo si lo enriquecés o seguís con tu contenido.</p></div>' +
-      '</div><div class="hits">';
-    const TIPOS = {
-      exacto:    'título idéntico',
-      serie:     'parece parte de la misma serie',
-      trigrama:  'texto muy parecido',
-      semantico: 'habla de lo mismo'
-    };
-    s.coincidencias.forEach((c) => {
-      h += '<div class="hit">' +
-        (c.url
-          ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener">#' + c.id + ' · ' + esc(c.titulo) + '</a>'
-          : '<a>#' + c.id + ' · ' + esc(c.titulo) + '</a>') +
-        (c.score != null ? '<span class="sc' + (c.score >= 0.9 ? ' hi' : '') + '">' + Number(c.score).toFixed(2) + '</span>' : '') +
-        (c.tipo_coincidencia ? '<span class="vd">' + esc(TIPOS[c.tipo_coincidencia] || c.tipo_coincidencia) + '</span>' : '') +
-        '</div>';
-    });
-    slot.innerHTML = h + '</div></div>';
+    if (slot) slot.innerHTML = '';
   }
 
   /* ---------------- validación ---------------- */

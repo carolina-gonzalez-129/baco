@@ -344,20 +344,26 @@ async def handle_esperando_texto(
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO")
             return construir_respuesta(sesion, msg_texto_vacio(intento), ops_texto)
 
+        sanit_frag = sanitizar_borrador(texto=fragmento, titulo=sesion.titulo)
+        fragmento_limpio = sanit_frag["texto_sanitizado"]
+        aviso_priv_frag = sanit_frag.get("aviso_privacidad")
+
         if req.texto is not None:
-            nuevo_borrador_txt = fragmento
+            nuevo_borrador_txt = fragmento_limpio
         elif sesion.texto_en_edicion:
-            nuevo_borrador_txt = f"{sesion.texto_en_edicion}\n\n{fragmento}".strip()
+            nuevo_borrador_txt = f"{sesion.texto_en_edicion}\n\n{fragmento_limpio}".strip()
         else:
-            nuevo_borrador_txt = fragmento
+            nuevo_borrador_txt = fragmento_limpio
 
         if len(nuevo_borrador_txt) > TEXTO_MAX:
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
             return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), ops_texto)
 
         sesion.texto_en_edicion = nuevo_borrador_txt
+        sesion.texto_limpio = nuevo_borrador_txt
         if sesion.borrador is not None:
             sesion.borrador.texto_en_edicion = nuevo_borrador_txt
+            sesion.borrador.texto_limpio = nuevo_borrador_txt
         if req.categoria_id is not None:
             sesion.categoria_id = req.categoria_id
         if req.tags is not None:
@@ -367,7 +373,7 @@ async def handle_esperando_texto(
             f"Guardé tu texto en edición ({len(nuevo_borrador_txt)} / {TEXTO_MAX} caracteres). "
             "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
         )
-        return construir_respuesta(sesion, msg_edicion, ops_texto)
+        return construir_respuesta(sesion, msg_edicion, ops_texto, aviso_privacidad=aviso_priv_frag)
 
     if req.texto is not None:
         texto_raw = req.texto.strip()
@@ -737,9 +743,17 @@ async def handle_revision_borrador(
 
     if opcion == "sanitizar":
         txt_a_sanit = req.texto or b.texto_limpio or b.texto
-        limpio = sanitizar_borrador(texto=txt_a_sanit, titulo=req.titulo or b.titulo)
-        b.titulo = limpio["titulo_sanitizado"]
-        b.texto_limpio = limpio["texto_sanitizado"]
+        if b.modo == "enriquecimiento" and sesion.coincidencias and sesion.coincidencias[0].texto_original:
+            texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+            txt_sanitizado, aviso_sanit = consolidar_texto_enriquecimiento(texto_base_limpio, txt_a_sanit)
+            limpio_tit = sanitizar_borrador(texto="", titulo=req.titulo or b.titulo)
+            b.titulo = limpio_tit["titulo_sanitizado"]
+            b.texto_limpio = txt_sanitizado
+        else:
+            limpio = sanitizar_borrador(texto=txt_a_sanit, titulo=req.titulo or b.titulo)
+            b.titulo = limpio["titulo_sanitizado"]
+            b.texto_limpio = limpio["texto_sanitizado"]
+            aviso_sanit = limpio.get("aviso_privacidad")
         b.conforme = False
         b.conforme_en = None
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
@@ -751,7 +765,7 @@ async def handle_revision_borrador(
         else:
             prefijo = PREFIJO_DATOS_SANITIZADOS
         msg, ops = validar_borrador(sesion, prefijo)
-        return construir_respuesta(sesion, msg, ops, aviso_privacidad=limpio.get("aviso_privacidad"))
+        return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_sanit)
 
     if hubo_cambios:
         ops_actuales = (
@@ -784,13 +798,19 @@ async def handle_revision_borrador(
                 )
                 return construir_respuesta(sesion, msg, ops_actuales)
 
-            sanit_edit = sanitizar_borrador(texto=txt_nuevo_limpio, titulo=b.titulo)
-            txt_verif = sanit_edit["texto_sanitizado"]
-            if sanit_edit.get("aviso_privacidad"):
+            if b.modo == "enriquecimiento" and sesion.coincidencias and sesion.coincidencias[0].texto_original:
+                texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+                txt_verif, aviso_txt = consolidar_texto_enriquecimiento(texto_base_limpio, txt_nuevo_limpio)
+            else:
+                sanit_edit = sanitizar_borrador(texto=txt_nuevo_limpio, titulo=b.titulo)
+                txt_verif = sanit_edit["texto_sanitizado"]
+                aviso_txt = sanit_edit.get("aviso_privacidad")
+
+            if aviso_txt:
                 if aviso_priv_edicion:
-                    aviso_priv_edicion = f"{aviso_priv_edicion}\n{sanit_edit['aviso_privacidad']}"
+                    aviso_priv_edicion = f"{aviso_priv_edicion}\n{aviso_txt}"
                 else:
-                    aviso_priv_edicion = sanit_edit.get("aviso_privacidad")
+                    aviso_priv_edicion = aviso_txt
 
             adv = []
             err_txt = validar_longitud_maxima(txt_verif, TEXTO_MAX, "texto")
@@ -858,9 +878,19 @@ async def handle_revision_borrador(
         if not sesion.validacion or not sesion.validacion.valido:
             msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
             return construir_respuesta(sesion, msg, ops)
-        limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
-        b.titulo = limpio["titulo_sanitizado"]
-        b.texto_limpio = limpio["texto_sanitizado"]
+        if b.modo == "enriquecimiento" and sesion.coincidencias and sesion.coincidencias[0].texto_original:
+            texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+            txt_conf, aviso_priv_conf = consolidar_texto_enriquecimiento(texto_base_limpio, b.texto_limpio)
+            limpio_tit = sanitizar_borrador(texto="", titulo=b.titulo)
+            b.titulo = limpio_tit["titulo_sanitizado"]
+            b.texto_limpio = txt_conf
+            aviso_privacidad_final = aviso_priv_conf or limpio_tit.get("aviso_privacidad")
+        else:
+            limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
+            b.titulo = limpio["titulo_sanitizado"]
+            b.texto_limpio = limpio["texto_sanitizado"]
+            aviso_privacidad_final = limpio.get("aviso_privacidad")
+        sesion.texto_limpio = b.texto_limpio
         b.conforme = True
         b.conforme_en = datetime.now(timezone.utc).isoformat()
         b.texto_original_conforme = b.texto
@@ -877,7 +907,7 @@ async def handle_revision_borrador(
             sesion,
             mensaje_conforme,
             OPCIONES_CONFORMIDAD,
-            aviso_privacidad=limpio.get("aviso_privacidad"),
+            aviso_privacidad=aviso_privacidad_final,
         )
 
     if opcion in ("aceptar", "aceptar_metadatos") and b and b.metadatos_anteriores:

@@ -176,8 +176,13 @@ BACO.store = (function () {
         estado.form.texto = r.borrador.texto_limpio || '';
         estado.form.tags = (r.borrador.tags || []).slice();
         estado.form.categoria_id = (r.borrador.categoria_id && Number(r.borrador.categoria_id) > 1) ? Number(r.borrador.categoria_id) : null;
-      } else if (estado.tags_acumulados.length) {
-        estado.form.tags = estado.tags_acumulados.slice();
+      } else {
+        if (typeof r.texto_limpio === 'string' && r.texto_limpio) {
+          estado.form.texto = r.texto_limpio;
+        }
+        if (estado.tags_acumulados.length) {
+          estado.form.tags = estado.tags_acumulados.slice();
+        }
       }
       notificar();
     },

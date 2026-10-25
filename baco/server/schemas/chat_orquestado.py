@@ -331,6 +331,10 @@ class ChatOrquestadorResponse(BaseModel):
     )
     coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list)
     borrador: Optional[BorradorSesion] = None
+    texto_limpio: Optional[str] = Field(
+        default=None,
+        description="Texto limpio y sanitizado actual de la sesión o borrador."
+    )
     multimedia_habilitada: bool = Field(
         default=False,
         description="True una vez superada buscar_duplicados (en cualquier rama): el mini panel multimedia está operativo.",

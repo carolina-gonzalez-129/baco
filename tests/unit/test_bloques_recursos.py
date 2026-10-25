@@ -481,6 +481,64 @@ def test_endpoint_post_chat_bloques(client):
     assert sesion.borrador.conformidad_invalidada is True
 
 
+def test_endpoint_post_chat_bloques_autosanitiza_pii_y_avisa(client):
+    """Verifica que POST /chat/bloques autosanitiza PII y secretos inmediatamente,
+
+    actualiza la sesión y borrador sin datos sensibles, y emite el aviso de privacidad.
+    """
+    sid = "sesion-endpoint-bloques-pii"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.REVISION_BORRADOR,
+        titulo="Artículo con PII en bloques",
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Artículo con PII en bloques",
+            texto_limpio="Texto previo",
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    payload = {
+        "session_id": sid,
+        "bloques": [
+            {
+                "tipo": "texto",
+                "contenido": "Configuración para el usuario con CUIL: 20-30405060-9 y mail personal juan@empresa.com.",
+            },
+            {
+                "tipo": "recurso",
+                "recurso": {
+                    "url": "https://finneg.com/archivos/guia.png",
+                    "nombre": "Diagrama de Configuración",
+                    "tipo": "imagen",
+                },
+            },
+        ],
+    }
+
+    resp = client.post("/chat/bloques", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["session_id"] == sid
+    assert "20-30405060-9" not in data["texto_limpio"]
+    assert "juan@empresa.com" not in data["texto_limpio"]
+    assert "[CUIT_OCULTO]" in data["texto_limpio"]
+    assert "usuario@ejemplo.com" in data["texto_limpio"]
+    assert "[[R1]]" in data["texto_limpio"]
+
+    # Aviso debe contener advertencia de privacidad y conteo de recursos
+    assert "preservarte" in data["aviso"]
+    assert "1 imagen" in data["aviso"]
+
+    # La sesión y el borrador deben reflejar el texto sanitizado
+    assert "20-30405060-9" not in sesion.borrador.texto_limpio
+    assert "[CUIT_OCULTO]" in sesion.borrador.texto_limpio
+    assert "[CUIT_OCULTO]" in sesion.texto_limpio
+    assert "[CUIT_OCULTO]" in sesion.texto
+
+
 # =========================================================================
 # 6. Test de lectura en fila real de la Base de Datos (articulos.texto)
 # =========================================================================

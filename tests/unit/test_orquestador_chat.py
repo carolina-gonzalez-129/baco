@@ -1580,4 +1580,51 @@ def test_nueva_entrada_sin_duplicados_sin_categoria_es_bloqueante(client, mock_b
     assert r5["validacion"]["valido"] is True
 
 
+def test_revision_borrador_live_edit_autosanitiza_pii_inmediatamente(client, mock_buscador):
+    """Verifica la convergencia absoluta en edición viva durante REVISION_BORRADOR:
+
+    Cualquier texto editado reemplaza inmediatamente el PII por marcadores sanitizados,
+    sin requerir tocar 'sanitizar', y emite aviso_privacidad al usuario.
+    """
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    # 1. Iniciar artículo
+    r1 = client.post("/chat", json={"mensaje": "Manual de Alta de Clientes en el Sistema"}).json()
+    sid = r1["session_id"]
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
+    client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
+    r_rev = client.post("/chat", json={"session_id": sid, "tags": ["ventas", "alta"], "categoria_id": 2}).json()
+    assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
+
+    # 2. El usuario edita directamente el texto enviando PII (CUIL y correo personal)
+    texto_con_pii = (
+        "Pasos para dar de alta al cliente en la base corporativa:\n"
+        "1. Solicitar la documentación fiscal.\n"
+        "2. Verificar el CUIL: 20-30405060-9 del representante legal.\n"
+        "3. Remitir la constancia al mail juan.perez@empresa.com para su validación final."
+    )
+    r_edit = client.post(
+        "/chat",
+        json={"session_id": sid, "accion": "editar", "texto": texto_con_pii},
+    ).json()
+
+    assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert "20-30405060-9" not in r_edit["borrador"]["texto_limpio"]
+    assert "juan.perez@empresa.com" not in r_edit["borrador"]["texto_limpio"]
+    assert "[CUIT_OCULTO]" in r_edit["borrador"]["texto_limpio"]
+    assert "usuario@ejemplo.com" in r_edit["borrador"]["texto_limpio"]
+
+    # Aviso de privacidad presente en la respuesta
+    assert r_edit.get("aviso_privacidad") is not None
+    assert "preservarte" in r_edit["aviso_privacidad"]
+
+    # Sesión activa con texto sanitizado
+    sesion = SESIONES[sid]
+    assert "[CUIT_OCULTO]" in sesion.texto_limpio
+    assert "[CUIT_OCULTO]" in sesion.borrador.texto_limpio
+    assert "20-30405060-9" not in sesion.texto_limpio
+
+
+
 
