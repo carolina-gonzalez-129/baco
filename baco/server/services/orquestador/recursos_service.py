@@ -416,6 +416,10 @@ def _recursos_ordenados(recursos: Union[Dict[str, Recurso], Iterable[Recurso], N
 def _recurso_a_markdown(rec: Recurso) -> str:
     if rec.tipo == "imagen":
         return f"![{rec.nombre}]({rec.referencia})"
+    if rec.tipo == "video":
+        if rec.referencia.startswith("http://") or rec.referencia.startswith("https://"):
+            return rec.referencia
+        return f"[{rec.nombre}]({rec.referencia})"
     if rec.tipo == "documento" and (
         "/uploads/" in rec.referencia or rec.referencia.endswith((".pdf", ".zip", ".docx"))
     ):
@@ -426,18 +430,49 @@ def _recurso_a_markdown(rec: Recurso) -> str:
 def componer_texto_publicable(
     texto_limpio: str, recursos: Union[Dict[str, Recurso], Iterable[Recurso], None]
 ) -> str:
-    """Arma el texto para vista previa / copiar / publicar.
+    """Cambio 4: sustituye cada marcador por su Markdown en la posición exacta,
 
-    Es una vista derivada: el resultado NUNCA se guarda en texto_limpio.
-    Los recursos van al final, en una sección "Recursos", según su orden explícito.
+    sin sección ## Recursos al final. Los recursos sin marcador en el texto se
+    anexan al final como Markdown sin encabezado ## Recursos.
     """
     cuerpo = (texto_limpio or "").strip()
-    items = _recursos_ordenados(recursos)
-    if not items:
+    if not recursos:
         return cuerpo
-    bloque = "\n\n".join(_recurso_a_markdown(r) for r in items)
-    seccion = f"{SECCION_RECURSOS_TITULO}\n\n{bloque}"
-    return f"{cuerpo}\n\n{seccion}" if cuerpo else seccion
+
+    recs_map: Dict[str, Recurso] = {}
+    if isinstance(recursos, dict):
+        recs_map = dict(recursos)
+    else:
+        recs_map = {r.id: r for r in recursos}
+
+    items_ordenados = sorted(recs_map.values(), key=lambda r: r.orden)
+    recursos_sustituidos = set()
+
+    def _sustituir(m: re.Match) -> str:
+        rec_id = m.group(1)
+        if rec_id and rec_id in recs_map:
+            recursos_sustituidos.add(rec_id)
+            return _recurso_a_markdown(recs_map[rec_id])
+
+        r_num = m.group(2)
+        if r_num:
+            idx = int(r_num) - 1
+            if 0 <= idx < len(items_ordenados):
+                r = items_ordenados[idx]
+                recursos_sustituidos.add(r.id)
+                return _recurso_a_markdown(r)
+        return m.group(0)
+
+    patron = r"\[\[(?:recurso:([a-zA-Z0-9_\-]+)|R(\d+))\]\]"
+    resultado = re.sub(patron, _sustituir, cuerpo) if cuerpo else ""
+
+    # Recursos en el borrador que no tenían marcador en el texto (sin sección ## Recursos)
+    restantes = [r for r in items_ordenados if r.id not in recursos_sustituidos]
+    if restantes:
+        bloque_restantes = "\n\n".join(_recurso_a_markdown(r) for r in restantes)
+        resultado = f"{resultado}\n\n{bloque_restantes}" if resultado else bloque_restantes
+
+    return resultado
 
 
 def reconstruir_texto_con_recursos(
