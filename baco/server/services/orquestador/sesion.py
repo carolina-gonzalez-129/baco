@@ -39,7 +39,7 @@ class SesionChat:
     orden_multimedia: List[int] = field(default_factory=list)
     posiciones: List[int] = field(default_factory=list)
     contenido_adicional: List[ItemContenidoAdicional] = field(default_factory=list)
-    categoria_id: Optional[int] = 1
+    categoria_id: Optional[int] = None
     tags: List[str] = field(default_factory=list)
     metadatos_anteriores: Optional[Dict[str, Any]] = None
     metadatos_heredados_revisados: bool = False

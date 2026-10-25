@@ -91,7 +91,7 @@ class BorradorSesion(BaseModel):
     conforme_en: Optional[str] = Field(default=None, description="Timestamp ISO 8601 del momento en que se registró la conformidad.")
     conformidad_invalidada: bool = Field(default=False, description="Indica si una conformidad previa fue invalidada por una modificación posterior.")
     tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = None
-    categoria_id: Optional[int] = 1
+    categoria_id: Optional[int] = None
     tags: List[str] = Field(default_factory=list)
     metadatos_anteriores: Optional[Dict[str, Any]] = Field(
         default=None,

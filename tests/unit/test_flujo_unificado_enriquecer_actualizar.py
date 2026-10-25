@@ -68,7 +68,7 @@ def test_decision_titulo_enriquecer_trae_imagenes_y_valida_bloqueante(client, mo
 
     # 2. Clickea 'enriquecer' -> Trae texto con imágenes mediante GET a bc.finneg.com
     with patch("baco.server.services.discourse_media.consultar_articulo_bc_publico") as mock_bc:
-        mock_bc.return_value = (TEXTO_CON_IMAGEN, None, ["instructivo", "contabilidad"])
+        mock_bc.return_value = (TEXTO_CON_IMAGEN, 12, ["instructivo", "contabilidad"])
         r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
     # Pasa a ESPERANDO_TEXTO con el contenido cargado en el editor
