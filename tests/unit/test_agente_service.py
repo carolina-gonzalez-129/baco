@@ -159,3 +159,40 @@ def test_agente_corta_con_error_claro_si_no_hay_texto():
     assert exc_info_val.value.status_code == 400
     assert "no contiene texto" in exc_info_val.value.detail
     mock_baco.assert_not_called()
+
+
+def test_borrador_texto_no_es_asignable_y_coincide_siempre_con_componer_texto_publicable():
+    """Riesgo 4: borrador.texto no se puede asignar directamente y se deriva de texto_limpio y recursos."""
+    from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo="Título de prueba",
+        texto_limpio="Texto inicial de prueba para la composición de borrador.",
+        conforme=True,
+    )
+
+    # 1. borrador.texto coincide exactamente con componer_texto_publicable
+    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
+
+    # 2. Intentar asignar borrador.texto debe fallar (no es un campo asignable)
+    with pytest.raises((AttributeError, TypeError)):
+        borrador.texto = "Intento de asignación manual directa"
+
+    # 3. Al cambiar texto_limpio, borrador.texto se actualiza inmediatamente
+    borrador.texto_limpio = "Texto modificado paso a paso sin reasignar borrador.texto."
+    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
+    assert "Texto modificado paso a paso" in borrador.texto
+
+    # 4. Al agregar un recurso, borrador.texto se actualiza inmediatamente reflejando el recurso
+    nuevo_rec = Recurso(
+        id="rec_1",
+        tipo="imagen",
+        nombre="Diagrama de flujo",
+        referencia="https://bc.finneg.com/uploads/diagrama.png",
+        orden=0,
+    )
+    borrador.agregar_multimedia(nuevo_rec)
+    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
+    assert "https://bc.finneg.com/uploads/diagrama.png" in borrador.texto
+

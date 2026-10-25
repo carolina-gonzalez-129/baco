@@ -70,7 +70,6 @@ class BorradorSesion(BaseModel):
     articulo_original_id: Optional[int] = None
     articulo_original_url: Optional[str] = None
     titulo: str
-    texto: str = ""
     texto_limpio: str = ""
     texto_en_edicion: str = ""
     recursos: Dict[str, Recurso] = Field(default_factory=dict)
@@ -102,6 +101,28 @@ class BorradorSesion(BaseModel):
         default=False,
         description="Indica si el usuario ya revisó o confirmó los metadatos heredados.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def preparar_datos_borrador(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            txt = data.get("texto")
+            txt_limpio = data.get("texto_limpio")
+            if (not txt_limpio) and txt:
+                from baco.server.services.orquestador.recursos_service import extraer_recursos_y_texto_limpio
+                tl, recs = extraer_recursos_y_texto_limpio(txt)
+                data["texto_limpio"] = tl
+                if recs and not data.get("recursos"):
+                    data["recursos"] = recs
+            data.pop("texto", None)
+        return data
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def texto(self) -> str:
+        """Vista compuesta derivada: siempre componer_texto_publicable(texto_limpio, recursos)."""
+        from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+        return componer_texto_publicable(self.texto_limpio, self.recursos)
 
     @field_validator("texto_limpio", mode="before")
     @classmethod

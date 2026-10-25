@@ -697,7 +697,6 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     valido = res["status"] != "Pendiente"
     if res.get("texto_sanitizado"):
         b.texto_limpio = res["texto_sanitizado"]
-        b.texto = res["texto_sanitizado"]
     if res.get("titulo_sanitizado"):
         b.titulo = res["titulo_sanitizado"]
     sesion.validacion = ValidarFormatoResponse(

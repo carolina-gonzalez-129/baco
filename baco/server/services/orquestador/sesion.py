@@ -86,15 +86,17 @@ def multimedia_habilitada(sesion: Optional[SesionChat]) -> bool:
 
 
 def _sanitizar_y_clonar_borrador(borrador: BorradorSesion) -> BorradorSesion:
-    limpio = sanitizar_borrador(texto=borrador.texto, titulo=borrador.titulo)
-    borrador.titulo = limpio["titulo_sanitizado"]
-    borrador.texto = limpio["texto_sanitizado"]
     if borrador.texto_limpio:
         limpio_tl = sanitizar_borrador(texto=borrador.texto_limpio, titulo=borrador.titulo)
+        borrador.titulo = limpio_tl["titulo_sanitizado"]
         borrador.texto_limpio = limpio_tl["texto_sanitizado"]
     else:
-        # `texto` es la vista compuesta (incluye la sección "Recursos"): se extrae solo el texto
-        borrador.texto_limpio, _ = extraer_recursos_y_texto_limpio(borrador.texto)
+        tl, recs = extraer_recursos_y_texto_limpio(borrador.texto)
+        limpio_tl = sanitizar_borrador(texto=tl, titulo=borrador.titulo)
+        borrador.titulo = limpio_tl["titulo_sanitizado"]
+        borrador.texto_limpio = limpio_tl["texto_sanitizado"]
+        if recs and not borrador.recursos:
+            borrador.recursos = recs
     return borrador.model_copy(deep=True)
 
 
@@ -214,14 +216,13 @@ class GestorSesiones:
         if sesion.borrador is not None:
             if not sesion.borrador.texto_original_conforme:
                 sesion.borrador.texto_original_conforme = sesion.borrador.texto
-            if sesion.borrador.texto != nuevo_texto:
+            if sesion.borrador.texto_limpio != nuevo_texto:
                 sesion.borrador.conforme = False
                 sesion.borrador.conforme_en = None
                 sesion.borrador.conformidad_invalidada = True
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
-            sesion.borrador.texto = nuevo_texto
             sesion.borrador.texto_limpio = nuevo_texto
-            sesion.texto = nuevo_texto
+            sesion.texto = sesion.borrador.texto
             sesion.texto_limpio = nuevo_texto
             sesion.updated_at = ahora
             return True
@@ -257,7 +258,7 @@ class GestorSesiones:
             b.recursos = recs_dict
             b.orden_multimedia = list(vec_orden)
             b.posiciones = list(vec_orden)
-            b.texto = componer_texto_publicable(b.texto_limpio, items_ordenados)
+            sesion.texto = b.texto
             sesion.texto = b.texto
             # texto_original_conforme NO se actualiza: el cambio debe quedar visible como modificación
             if b.conforme:
