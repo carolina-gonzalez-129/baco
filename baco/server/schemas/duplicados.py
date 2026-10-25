@@ -1,11 +1,19 @@
+from enum import Enum
 from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
+
+
+class NivelCoincidenciaEnum(str, Enum):
+    EXACTO = "exacto"
+    SIMILAR = "similar"
+    NINGUNO = "ninguno"
+
 
 class ArticuloSimilarTool(BaseModel):
     id: int = Field(..., description="ID del artículo en Discourse")
     titulo: str = Field(..., description="Título del artículo existente")
     url: str = Field(..., description="URL oficial del artículo para proponer su mejora o consulta")
-    score: Optional[float] = Field(default=None, description="Puntaje de similitud (0.0 a 1.0)")
+    score: Optional[float] = Field(default=None, description="Puntaje de similitud (0.0 a 1.0, siendo 1.0 coincidencia exacta)")
 
 
 class BuscarDuplicadosToolOutput(BaseModel):
@@ -18,6 +26,10 @@ class BuscarDuplicadosToolOutput(BaseModel):
         ...,
         description="True si se detectó algún duplicado exacto o artículos muy similares."
     )
+    nivel: NivelCoincidenciaEnum = Field(
+        default=NivelCoincidenciaEnum.NINGUNO,
+        description="Nivel de coincidencia: 'exacto' (score 1.0), 'similar' o 'ninguno'."
+    )
     mensaje: str = Field(
         ...,
         description="Diagnóstico conciso del buscador de duplicados."
@@ -28,5 +40,5 @@ class BuscarDuplicadosToolOutput(BaseModel):
     )
     articulos_similares: List[ArticuloSimilarTool] = Field(
         default_factory=list,
-        description="Lista de artículos similares existentes encontrados (solo lectura)."
+        description="Lista de artículos similares existentes encontrados (solo lectura, sin cuerpo del artículo)."
     )
