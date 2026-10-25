@@ -415,11 +415,9 @@ async def handle_esperando_texto(
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
             return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), [])
 
-        texto_reconstruido = componer_texto_publicable(texto_limpio, recursos)
-        sesion.borrador.texto = texto_reconstruido
         sesion.borrador.texto_limpio = texto_limpio
         sesion.borrador.recursos = recursos
-        sesion.texto = texto_reconstruido
+        sesion.texto = sesion.borrador.texto
         sesion.texto_limpio = texto_limpio
         sesion.recursos = recursos
         if req.categoria_id is not None:
@@ -704,7 +702,6 @@ async def handle_revision_borrador(
         limpio = sanitizar_borrador(texto=txt_a_sanit, titulo=req.titulo or b.titulo)
         b.titulo = limpio["titulo_sanitizado"]
         b.texto_limpio = limpio["texto_sanitizado"]
-        b.texto = componer_texto_publicable(b.texto_limpio, b.recursos)
         b.conforme = False
         b.conforme_en = None
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
@@ -742,7 +739,6 @@ async def handle_revision_borrador(
                 return construir_respuesta(sesion, err_txt, ops_actuales)
             b.texto_limpio = txt_verif
             b.recursos = recursos_combinados
-            b.texto = componer_texto_publicable(b.texto_limpio, b.recursos)
             b.conforme = False
             b.conforme_en = None
             sesion.estado = EstadoFlujo.REVISION_BORRADOR
@@ -803,9 +799,9 @@ async def handle_revision_borrador(
         if not sesion.validacion or not sesion.validacion.valido:
             msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
             return construir_respuesta(sesion, msg, ops)
-        limpio = sanitizar_borrador(texto=b.texto, titulo=b.titulo)
+        limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
         b.titulo = limpio["titulo_sanitizado"]
-        b.texto = limpio["texto_sanitizado"]
+        b.texto_limpio = limpio["texto_sanitizado"]
         b.conforme = True
         b.conforme_en = datetime.now(timezone.utc).isoformat()
         b.texto_original_conforme = b.texto
