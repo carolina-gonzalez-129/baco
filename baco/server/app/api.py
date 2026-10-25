@@ -38,8 +38,10 @@ from baco.server.services.orquestador.recursos_service import (
     componer_texto_publicable,
     crear_recurso_desde_url,
     derivar_desde_bloques,
+    extraer_recursos_y_texto_limpio,
     guardar_recurso_temporal_sesion,
 )
+from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento
 
 router = APIRouter(tags=["API REST"])
 
@@ -256,9 +258,19 @@ def confirmar_bloques(
         raise HTTPException(status_code=400, detail=str(exc))
 
     titulo_ctx = (sesion.borrador.titulo if sesion.borrador else sesion.titulo) or "Artículo"
-    sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
-    texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
-    aviso_priv = sanit.get("aviso_privacidad")
+    if (
+        sesion.borrador
+        and sesion.borrador.modo == "enriquecimiento"
+        and sesion.coincidencias
+        and sesion.coincidencias[0].texto_original
+    ):
+        texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+        texto_sanitizado, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, texto_limpio)
+    else:
+        sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
+        texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
+        aviso_priv = sanit.get("aviso_privacidad")
+
     aviso_final = f"{aviso_priv}\n\n{aviso}" if (aviso_priv and aviso) else (aviso_priv or aviso)
 
     if not sesion.borrador:
@@ -272,6 +284,7 @@ def confirmar_bloques(
         )
     else:
         sesion.borrador.texto_limpio = texto_sanitizado
+        sesion.borrador.texto_en_edicion = texto_sanitizado
         sesion.borrador.recursos = recursos
         sesion.borrador.orden_multimedia = [r.orden for r in sorted(recursos.values(), key=lambda x: x.orden)]
         sesion.borrador.posiciones = list(sesion.borrador.orden_multimedia)
@@ -281,6 +294,7 @@ def confirmar_bloques(
             sesion.borrador.conformidad_invalidada = True
 
     sesion.texto_limpio = texto_sanitizado
+    sesion.texto_en_edicion = texto_sanitizado
     sesion.texto = sesion.borrador.texto
     sesion.recursos = recursos
     sesion.orden_multimedia = list(sesion.borrador.orden_multimedia)

@@ -26,6 +26,7 @@ from baco.server.services.orquestador.mensajes import (
     msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
+from baco.server.services.orquestador.recursos_service import extraer_recursos_y_texto_limpio
 from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
 
 ETAPAS_FLUJO: List[str] = [
@@ -396,18 +397,40 @@ def consolidar_texto_enriquecimiento(
 ) -> Tuple[str, Optional[str]]:
     """
     Sanitiza el aporte y lo consolida con el texto base del artículo existente.
-    Permite modificar o eliminar secciones cuando el aporte es sustancial o reemplazo completo,
-    y anexa automáticamente cuando se trata de una nota o adición breve (<40% o <250 caracteres).
+    Preserva intacto el texto proveniente de la API (texto_base), aplicando la
+    autosanitización únicamente sobre el aporte o las adiciones del usuario.
     Retorna: (texto_consolidado, aviso_privacidad).
     """
-    sanit = sanitizar_borrador(texto=texto_aporte_raw)
+    base = (texto_base or "").strip()
+    raw = (texto_aporte_raw or "").strip()
+    if not raw:
+        return base, None
+    if base and raw == base:
+        return base, None
+    if base and base in raw:
+        pre, post = raw.split(base, 1)
+        avisos = []
+        pre_limpio = ""
+        post_limpio = ""
+        if pre.strip():
+            s_pre = sanitizar_borrador(texto=pre)
+            pre_limpio = s_pre["texto_sanitizado"]
+            if s_pre.get("aviso_privacidad"):
+                avisos.append(s_pre["aviso_privacidad"])
+        if post.strip():
+            s_post = sanitizar_borrador(texto=post)
+            post_limpio = s_post["texto_sanitizado"]
+            if s_post.get("aviso_privacidad"):
+                avisos.append(s_post["aviso_privacidad"])
+        partes = [p for p in (pre_limpio, base, post_limpio) if p]
+        aviso_priv = avisos[0] if avisos else None
+        return "\n\n".join(partes), aviso_priv
+
+    sanit = sanitizar_borrador(texto=raw)
     aporte_limpio = sanit["texto_sanitizado"]
     aviso_priv = sanit.get("aviso_privacidad")
 
-    base = (texto_base or "").strip()
     if aporte_limpio and base:
-        if base in aporte_limpio:
-            return aporte_limpio, aviso_priv
         if len(aporte_limpio) < min(len(base) * 0.4, 250):
             return f"{base}\n\n{aporte_limpio}", aviso_priv
         return aporte_limpio, aviso_priv
@@ -418,7 +441,9 @@ def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest)
     if req.titulo is not None and req.titulo.strip():
         sesion.titulo = req.titulo.strip()
     if req.texto is not None and req.texto.strip():
-        sesion.texto = req.texto.strip()
+        sanit = sanitizar_borrador(texto=req.texto.strip(), titulo=sesion.titulo)
+        sesion.texto = sanit["texto_sanitizado"]
+        sesion.texto_limpio = sanit["texto_sanitizado"]
     if req.categoria_id is not None:
         sesion.categoria_id = req.categoria_id
     if req.tags is not None:
@@ -649,6 +674,11 @@ def construir_respuesta(
     aviso_privacidad: Optional[str] = None,
     aviso_metadatos_heredados: Optional[str] = None,
 ) -> ChatOrquestadorResponse:
+    txt_limpio_actual = (
+        sesion.borrador.texto_limpio
+        if sesion.borrador is not None
+        else (sesion.texto_limpio or sesion.texto_en_edicion or None)
+    )
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
         estado=sesion.estado,
@@ -660,6 +690,7 @@ def construir_respuesta(
         tags_disponibles=list(sesion.tags_disponibles),
         coincidencias=sesion.coincidencias if sesion.estado in (EstadoFlujo.DECISION_TITULO, EstadoFlujo.DECISION_TEXTO) else [],
         borrador=sesion.borrador,
+        texto_limpio=txt_limpio_actual,
         multimedia_habilitada=multimedia_habilitada(sesion),
         validacion=sesion.validacion,
         aviso_privacidad=aviso_privacidad,
@@ -705,7 +736,13 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
 
     res = validar_texto_y_estructura_post_duplicados(articulo)
     valido = res["status"] != "Pendiente"
-    if res.get("texto_sanitizado"):
+    if b.modo == "enriquecimiento" and sesion.coincidencias and sesion.coincidencias[0].texto_original:
+        texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+        texto_preservado, aviso_preservado = consolidar_texto_enriquecimiento(texto_base_limpio, texto_eval)
+        b.texto_limpio = texto_preservado
+        res["texto_sanitizado"] = texto_preservado
+        res["aviso_privacidad"] = aviso_preservado
+    elif res.get("texto_sanitizado"):
         b.texto_limpio = res["texto_sanitizado"]
     if res.get("titulo_sanitizado"):
         b.titulo = res["titulo_sanitizado"]

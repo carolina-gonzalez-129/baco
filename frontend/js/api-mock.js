@@ -296,6 +296,7 @@ BACO.apiMock = (function () {
       tags_disponibles: tagsDisp,
       coincidencias: (s.estado === 'DECISION_TITULO' || s.estado === 'DECISION_TEXTO') ? s.coincidencias : [],
       borrador: s.borrador ? JSON.parse(JSON.stringify(s.borrador)) : null,
+      texto_limpio: s.borrador ? (s.borrador.texto_limpio != null ? s.borrador.texto_limpio : (s.borrador.texto || '')) : (s.texto_limpio || s.texto_en_edicion || s.texto || null),
       validacion: s.validacion || null,
       aviso_privacidad: aviso || null
     };
@@ -440,9 +441,17 @@ BACO.apiMock = (function () {
           if (opcion === 'enriquecer' || opcion === 'actualizar') {
             const el = sesion.coincidencias[0];
             const art = BACO.datos.baseConocimiento.find((a) => a.id_externo === el.id) || {};
-            let textoIni = String(req.texto || el.texto_original || art.extracto || sesion.texto || '').trim();
-            if (textoIni.length < L.MIN_TEXTO) {
-              textoIni = 'Pasos para la configuración del artículo:\n1. Acceder al menú principal.\n2. Verificar parámetros del sistema.\n3. Guardar cambios y confirmar.';
+            let textoBase = String(el.texto_original || art.extracto || '').trim();
+            if (textoBase.length < L.MIN_TEXTO) {
+              textoBase = 'Pasos para la configuración del artículo:\n1. Acceder al menú principal.\n2. Verificar parámetros del sistema.\n3. Guardar cambios y confirmar.';
+            }
+            const textoEnviado = String(req.texto || '').trim();
+            let avisoEnriq = null;
+            let textoIni = textoBase;
+            if (textoEnviado) {
+              const limpioEnv = sanitizar(textoEnviado, sesion.titulo);
+              avisoEnriq = avisoPrivacidad(limpioEnv.cambios);
+              textoIni = limpioEnv.texto_sanitizado;
             }
             const tagsIni = req.tags != null ? req.tags : (art.etiquetas || sesion.tags);
             const esSerie = el.tipo_coincidencia === 'serie' || opcion === 'actualizar';
@@ -460,7 +469,7 @@ BACO.apiMock = (function () {
               orden_multimedia: [],
               posiciones: [],
               multimedia: [],
-              texto_original_aprobado: el.texto_original || null,
+              texto_original_aprobado: textoBase,
               tipo_plantilla: tipoPlantilla(tagsIni),
               categoria_id: req.categoria_id || sesion.categoria_id || 5,
               tags: tagsIni,
@@ -469,16 +478,17 @@ BACO.apiMock = (function () {
               contenido_adicional: []
             };
             sesion.texto_en_edicion = textoIni;
-            const textoEnviado = String(req.texto || '').trim();
+            sesion.texto_limpio = textoIni;
+            sesion.texto = textoIni;
             if (!textoEnviado) {
               marcar();
               sesion.estado = 'ESPERANDO_TEXTO';
               const msgCarga = esSerie
                 ? 'Cargué el contenido de la última entrega de la serie (#' + el.id + ' - "' + el.titulo + '"). Tenés total libertad para trabajar sobre él: podés modificar lo que haya cambiado, eliminar lo que no aplique o adicionar novedades. Cuando esté listo, tocá "Confirmar texto".'
                 : 'Cargué el texto del artículo #' + el.id + ' ("' + el.titulo + '"). Podés revisarlo, modificar explicaciones, eliminar secciones obsoletas o adicionar nuevos pasos. Cuando esté listo, tocá "Confirmar texto".';
-              return resp(msgCarga, ['confirmar_texto', 'descartar', 'volver']);
+              return resp(msgCarga, ['confirmar_texto', 'descartar', 'volver'], avisoEnriq);
             }
-            return avanzar('Armé el borrador sobre #' + el.id + '. ');
+            return avanzar('Armé el borrador sobre #' + el.id + '. ', avisoEnriq);
           }
           if (opcion === 'descartar' || opcion === 'continuar') {
             marcar();
@@ -490,15 +500,19 @@ BACO.apiMock = (function () {
             });
             const textoDisp = String(req.texto || sesion.texto || '').trim();
             if (textoDisp && textoDisp.length >= L.MIN_TEXTO) {
-              const hitTxt = buscarSimilares(textoDisp, 'texto');
+              const limpioDisp = sanitizar(textoDisp, sesion.titulo);
+              const avisoDisp = avisoPrivacidad(limpioDisp.cambios);
+              sesion.texto = limpioDisp.texto_sanitizado;
+              sesion.texto_limpio = limpioDisp.texto_sanitizado;
+              const hitTxt = buscarSimilares(sesion.texto, 'texto');
               if (hitTxt && !sesion.articulos_descartados_ids.includes(hitTxt.id)) {
                 sesion.coincidencias = [hitTxt];
                 sesion.estado = 'DECISION_TEXTO';
                 return resp('Encontré un artículo que explica prácticamente lo mismo en el contenido: "' +
                   hitTxt.titulo + '" (' + hitTxt.url + '). ¿Querés enriquecer ese artículo o seguimos con tu texto?',
-                  OPS.ENRIQUECER_CONTINUAR);
+                  OPS.ENRIQUECER_CONTINUAR, avisoDisp);
               }
-              return avanzar('Listo, descartamos la coincidencia y seguimos con tu contenido propio. ');
+              return avanzar('Listo, descartamos la coincidencia y seguimos con tu contenido propio. ', avisoDisp);
             }
             sesion.estado = 'ESPERANDO_TEXTO';
             return resp('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['confirmar_texto', 'volver']);
@@ -518,11 +532,20 @@ BACO.apiMock = (function () {
           if (!esConfirmacion) {
             const frag = String(req.texto != null ? req.texto : (req.mensaje || '')).trim();
             if (!frag) return resp('Perfecto, ahora necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos.', opsTexto);
-            sesion.texto_en_edicion = req.texto != null ? frag : ((sesion.texto_en_edicion ? sesion.texto_en_edicion + '\n\n' : '') + frag);
-            if (sesion.texto_en_edicion.length > L.MAX_TEXTO) {
-              return resp('El artículo supera los ' + L.MAX_TEXTO + ' caracteres. Dividilo o resumilo.', opsTexto);
+            const limpioFrag = sanitizar(frag, sesion.titulo);
+            const fragSanit = limpioFrag.texto_sanitizado;
+            const avisoFrag = avisoPrivacidad(limpioFrag.cambios);
+            sesion.texto_en_edicion = req.texto != null ? fragSanit : ((sesion.texto_en_edicion ? sesion.texto_en_edicion + '\n\n' : '') + fragSanit);
+            sesion.texto_limpio = sesion.texto_en_edicion;
+            if (sesion.borrador) {
+              sesion.borrador.texto_en_edicion = sesion.texto_en_edicion;
+              sesion.borrador.texto_limpio = sesion.texto_en_edicion;
+              sesion.borrador.texto = sesion.texto_en_edicion;
             }
-            return resp('Guardé tu texto en edición (' + sesion.texto_en_edicion.length + ' / ' + L.MAX_TEXTO + ' caracteres). Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá "Confirmar texto".', opsTexto);
+            if (sesion.texto_en_edicion.length > L.MAX_TEXTO) {
+              return resp('El artículo supera los ' + L.MAX_TEXTO + ' caracteres. Dividilo o resumilo.', opsTexto, avisoFrag);
+            }
+            return resp('Guardé tu texto en edición (' + sesion.texto_en_edicion.length + ' / ' + L.MAX_TEXTO + ' caracteres). Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá "Confirmar texto".', opsTexto, avisoFrag);
           }
 
           const textoIn = String(req.texto != null ? req.texto : (sesion.texto_en_edicion || req.mensaje || '')).trim();
@@ -537,12 +560,14 @@ BACO.apiMock = (function () {
 
           const limpio = sanitizar(textoIn, sesion.titulo);
           const aviso = avisoPrivacidad(limpio.cambios);
-          sesion.texto = limpio.cambios.length ? limpio.texto_sanitizado : textoIn;
+          sesion.texto = limpio.texto_sanitizado;
+          sesion.texto_limpio = sesion.texto;
           if (req.categoria_id != null) sesion.categoria_id = req.categoria_id;
           if (req.tags != null) sesion.tags = req.tags;
 
           if (sesion.borrador && sesion.borrador.modo === 'enriquecimiento') {
             sesion.borrador.texto = sesion.texto;
+            sesion.borrador.texto_limpio = sesion.texto;
             if (req.categoria_id != null) sesion.borrador.categoria_id = req.categoria_id;
             if (req.tags != null) sesion.borrador.tags = req.tags;
             return avanzar('Sumé tu texto al borrador sobre #' + sesion.borrador.articulo_original_id + '. ', aviso);
@@ -559,7 +584,7 @@ BACO.apiMock = (function () {
           }
 
           sesion.borrador = { modo: 'nuevo', articulo_original_id: null, articulo_original_url: null,
-            titulo: sesion.titulo, texto: sesion.texto, texto_original_aprobado: null,
+            titulo: sesion.titulo, texto: sesion.texto, texto_limpio: sesion.texto, texto_original_aprobado: null,
             tipo_plantilla: tipoPlantilla(sesion.tags),
             categoria_id: sesion.categoria_id, tags: sesion.tags.slice() };
           return avanzar('No hay nada parecido publicado, seguimos con tu artículo. ', aviso);
@@ -577,7 +602,17 @@ BACO.apiMock = (function () {
             const tituloFinal = (sesion.titulo || req.titulo || el.titulo).trim();
             const nomCat = art.categoria || 'Ventas';
             const metaAnt = { categoria_id: art.categoria_id || 5, categoria_nombre: nomCat, tags: tagsIni.slice() };
-            let textoIni = String(req.texto || el.texto_original || art.extracto || sesion.texto || '').trim();
+            const textoBase = String(el.texto_original || art.extracto || '').trim();
+            let avisoDecTxt = null;
+            let aporte = String(req.texto || sesion.texto_limpio || sesion.texto || '').trim();
+            if (aporte) {
+              const limpioAp = sanitizar(aporte, tituloFinal);
+              avisoDecTxt = avisoPrivacidad(limpioAp.cambios);
+              aporte = limpioAp.texto_sanitizado;
+            }
+            const textoIni = (textoBase && aporte && !aporte.includes(textoBase) && aporte.length < Math.min(textoBase.length * 0.4, 250))
+              ? (textoBase + '\n\n' + aporte)
+              : (aporte || textoBase);
             sesion.borrador = { modo: 'enriquecimiento', articulo_original_id: el.id, articulo_original_url: el.url,
               titulo: tituloFinal, texto: textoIni, texto_limpio: textoIni,
               recursos: {}, orden_multimedia: [], posiciones: [], multimedia: [],
@@ -585,7 +620,9 @@ BACO.apiMock = (function () {
               tipo_plantilla: tipoPlantilla(tagsIni), categoria_id: req.categoria_id || sesion.categoria_id || 5, tags: tagsIni,
               metadatos_anteriores: metaAnt, metadatos_heredados_revisados: false,
               contenido_adicional: [] };
-            return avanzar('Armé el borrador de enriquecimiento sobre #' + el.id + '. ');
+            sesion.texto = textoIni;
+            sesion.texto_limpio = textoIni;
+            return avanzar('Armé el borrador de enriquecimiento sobre #' + el.id + '. ', avisoDecTxt);
           }
           if (opcion === 'continuar' || opcion === 'descartar') {
             sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
@@ -595,7 +632,7 @@ BACO.apiMock = (function () {
               }
             });
             sesion.borrador = { modo: 'nuevo', articulo_original_id: null, articulo_original_url: null,
-              titulo: sesion.titulo, texto: sesion.texto, texto_original_aprobado: null,
+              titulo: sesion.titulo, texto: sesion.texto, texto_limpio: sesion.texto, texto_original_aprobado: null,
               tipo_plantilla: tipoPlantilla(sesion.tags),
               categoria_id: sesion.categoria_id, tags: sesion.tags.slice() };
             return avanzar('Dale, seguimos con tu propio texto. ');
@@ -658,7 +695,11 @@ BACO.apiMock = (function () {
 
           if (opcion === 'sanitizar') {
             const limpio = sanitizar(req.texto || b.texto, req.titulo || b.titulo);
-            b.titulo = limpio.titulo_sanitizado; b.texto = limpio.texto_sanitizado;
+            b.titulo = limpio.titulo_sanitizado;
+            b.texto = limpio.texto_sanitizado;
+            b.texto_limpio = limpio.texto_sanitizado;
+            sesion.texto = b.texto;
+            sesion.texto_limpio = b.texto_limpio;
             const r = validarBorrador(limpio.cambios.length ? 'Listo, limpié los datos sensibles. ' : 'Revisé el borrador y no encontré datos sensibles para limpiar. ');
             return resp(r.msg, r.ops, avisoPrivacidad(limpio.cambios));
           }
@@ -669,6 +710,9 @@ BACO.apiMock = (function () {
             if (textoEd != null) {
               const limpio = sanitizar(textoEd, b.titulo);
               b.texto = limpio.cambios.length ? limpio.texto_sanitizado : String(textoEd).trim();
+              b.texto_limpio = b.texto;
+              sesion.texto = b.texto;
+              sesion.texto_limpio = b.texto_limpio;
               aviso = avisoPrivacidad(limpio.cambios);
             }
             if (req.categoria_id != null) b.categoria_id = req.categoria_id;
@@ -716,7 +760,9 @@ BACO.apiMock = (function () {
               return resp(r.msg, r.ops);
             }
             const limpio = sanitizar(b.texto, b.titulo);
-            b.titulo = limpio.titulo_sanitizado; b.texto = limpio.texto_sanitizado;
+            b.titulo = limpio.titulo_sanitizado;
+            b.texto = limpio.texto_sanitizado;
+            b.texto_limpio = limpio.texto_sanitizado;
             sesion.estado = 'CONFORMIDAD_USUARIO';
             return resp('✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedó listo. Todavía no está publicado: la aprobación y publicación final las hace un administrador. Podés copiar el borrador y cargarlo en la Base de Conocimiento.', ['copiar_borrador', 'reiniciar']);
           }
@@ -768,10 +814,11 @@ BACO.apiMock = (function () {
           throw err('ESTADO_INVALIDO', 'El contenido adicional solo está permitido en actualizar o enriquecer.');
         }
         sesion.borrador.contenido_adicional = sesion.borrador.contenido_adicional || [];
+        const sanitItem = sanitizar(String(contenido || ''), sesion.borrador.titulo);
         const nuevo = {
           id: 'ca_' + Math.random().toString(36).substr(2, 8),
           tipo: tipo || 'texto',
-          contenido: String(contenido || ''),
+          contenido: sanitItem.texto_sanitizado,
           posicion: sesion.borrador.contenido_adicional.length
         };
         sesion.borrador.contenido_adicional.push(nuevo);
@@ -811,7 +858,8 @@ BACO.apiMock = (function () {
         const items = sesion.borrador.contenido_adicional || [];
         const item = items.find((it) => it.id === itemId);
         if (!item) throw err('NO_ENCONTRADO', 'No se encontró el ítem.');
-        item.contenido = String(contenido || '');
+        const sanitMod = sanitizar(String(contenido || ''), sesion.borrador.titulo);
+        item.contenido = sanitMod.texto_sanitizado;
         if (tipo) item.tipo = tipo;
         if (sesion.borrador.conforme) {
           sesion.borrador.conforme = false;

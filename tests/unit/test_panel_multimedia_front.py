@@ -221,3 +221,27 @@ def test_vista_previa_respeta_formato_original_api():
 
     # 4. Al modificar el texto desde el editor, la vista previa refleja el texto modificado
     assert "Paso 1 modificado." in res["prevModificado"]
+
+
+def test_layout_formulario_sin_banner_coincidencias_y_editor_amplio():
+    # 1. El banner 'Ya hay algo parecido publicado' fue removido por completo
+    assert "Ya hay algo parecido publicado" not in APP_JS
+    assert 'id="slotCoincidencias"' not in INDEX
+
+    # 2. La sección 'Título *' (#campoTitulo) comienza directamente debajo del toolbar ('Empezar de nuevo')
+    i_reiniciar = INDEX.index('id="btnReiniciar"')
+    i_panebody = INDEX.index('class="panebody scroll"')
+    i_titulo = INDEX.index('id="campoTitulo"')
+    i_borrador = INDEX.index('id="slotBorrador"')
+    assert i_reiniciar < i_panebody < i_titulo < i_borrador
+
+    # 3. Área de texto Markdown ampliada (min-height >= 450px / 50vh) y botón Confirmar en extremo inferior derecho
+    assert "min-height: max(450px, 50vh)" in CSS
+    assert 'id="btnConfirmarBloques"' in INDEX
+    assert "justify-content: flex-end" in CSS
+
+    # 4. Una sola línea divisora con '+' (sin segunda línea divisora debajo del área de texto)
+    assert "crearDivisor(0, deshabilitado)" in APP_JS
+    assert "crearDivisor(idx + 1, deshabilitado)" not in APP_JS
+
+

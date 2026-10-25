@@ -391,12 +391,13 @@ class GestorSesiones:
                 "El contenido adicional solo está permitido en flujos de actualizar o enriquecer un artículo existente."
             )
 
+        contenido_sanitizado = sanitizar_borrador(texto=contenido).get("texto_sanitizado", contenido)
         items = sesion.borrador.contenido_adicional
         item_id = f"ca_{secrets.token_hex(4)}"
         nuevo_item = ItemContenidoAdicional(
             id=item_id,
             tipo=tipo,
-            contenido=contenido,
+            contenido=contenido_sanitizado,
             posicion=len(items),
         )
         items.append(nuevo_item)
@@ -512,7 +513,7 @@ class GestorSesiones:
         if not item:
             raise EstadoInvalidoError(f"No se encontró el ítem '{item_id}' en el contenido adicional.")
 
-        item.contenido = nuevo_contenido
+        item.contenido = sanitizar_borrador(texto=nuevo_contenido).get("texto_sanitizado", nuevo_contenido)
         if nuevo_tipo is not None:
             item.tipo = nuevo_tipo
 

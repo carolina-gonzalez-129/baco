@@ -169,3 +169,54 @@ def test_esperando_texto_acumula_fragmentos_y_confirma(client, mock_buscador):
     assert r4["borrador"] is not None
     assert r4["borrador"]["texto_limpio"].strip() == acumulado.strip()
 
+
+def test_enriquecer_autosanitiza_aportes_preservando_texto_api_y_sincroniza_texto_limpio(client, mock_buscador):
+    """Verifica que al enriquecer un artículo:
+    1. El texto base de la API no se toca.
+    2. Los datos sensibles agregados en el panel izquierdo se anonimizan en borrador.texto_limpio y texto_limpio.
+    3. Nunca pueden continuar los datos sensibles originales en pasos posteriores.
+    """
+    texto_api = (
+        "Este es el contenido original traído de la API (contacto original: api.original@empresa.com).\n\n"
+        "Tiene suficientes caracteres para superar el mínimo requerido de texto.\n"
+        "Incluye pasos detallados para resolver el problema."
+    )
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de título encontrada",
+        "link": "https://bc.finneg.com/t/3005",
+        "coincidencias": [(3005, "Configuración de Impuestos en Ventas", "https://bc.finneg.com/t/3005")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 3005,
+        "titulo": "Configuración de Impuestos en Ventas",
+        "url": "https://bc.finneg.com/t/3005",
+        "texto": texto_api,
+        "categoria_id": 2,
+        "tags": ["instructivo", "impuestos", "ventas"],
+    }
+
+    r1 = client.post("/chat", json={"mensaje": "Configuración de Impuestos en Ventas"}).json()
+    sid = r1["session_id"]
+    r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    # El texto de la API permanece intacto
+    assert "api.original@empresa.com" in r2["borrador"]["texto_limpio"]
+
+    # El usuario agrega datos sensibles en el panel izquierdo y confirma
+    texto_con_sensibles = (
+        texto_api
+        + "\n\nNota agregada por el usuario con CUIL: 20-30405060-9 y correo personal juan.perez@empresa.com."
+    )
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_con_sensibles}).json()
+    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["aviso_privacidad"] is not None
+
+    # El texto de la API sigue intacto, pero el aporte del usuario fue anonimizado en borrador y texto_limpio
+    assert "api.original@empresa.com" in r3["borrador"]["texto_limpio"]
+    assert "20-30405060-9" not in r3["borrador"]["texto_limpio"]
+    assert "juan.perez@empresa.com" not in r3["borrador"]["texto_limpio"]
+    assert "[CUIT_OCULTO]" in r3["borrador"]["texto_limpio"]
+    assert "usuario@ejemplo.com" in r3["borrador"]["texto_limpio"]
+    assert r3["texto_limpio"] == r3["borrador"]["texto_limpio"]
+
+
