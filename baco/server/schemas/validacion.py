@@ -1,5 +1,12 @@
+from enum import Enum
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
+
+
+class StatusValidacionEnum(str, Enum):
+    LISTO = "Listo"
+    LISTO_CON_AJUSTES = "Listo con ajustes sugeridos"
+    PENDIENTE = "Pendiente"
 
 
 class FindingSchema(BaseModel):
@@ -81,7 +88,7 @@ class HallazgoTool(BaseModel):
 class ValidarFormatoToolOutput(BaseModel):
     """Diagnóstico editorial y estructural simplificado para consumo en MCP."""
     valido: bool = Field(..., description="True si no existen observaciones bloqueantes para la publicación.")
-    status: str = Field(..., description="'Listo' o 'Pendiente'")
+    status: StatusValidacionEnum = Field(..., description="'Listo', 'Listo con ajustes sugeridos' o 'Pendiente'")
     titulo_sanitizado: Optional[str] = Field(
         default=None,
         description="Título sanitizado listo para consumo directo de BACO."
