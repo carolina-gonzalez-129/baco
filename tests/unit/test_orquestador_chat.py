@@ -1442,8 +1442,8 @@ def test_metadatos_heredados_aviso_y_aceptar(client, mock_buscador):
     assert r_acepta["validacion"]["valido"] is True
 
 
-def test_metadatos_heredados_rechazar_bloquea_y_permite_carga_manual(client, mock_buscador):
-    """Al rechazar los metadatos heredados, pasan a la validación como no cargados (bloqueantes) y se pueden cargar a mano."""
+def test_metadatos_heredados_rechazar_activa_proceso_validacion_asistido(client, mock_buscador):
+    """Al rechazar los metadatos heredados, no se bloquea para carga manual sino que se activa el flujo guiado (plantilla y metadatos)."""
     mock_buscador.evaluar_titulo.return_value = {
         "mensaje": "Coincidencia",
         "link": "https://bc.finneg.com/t/601",
@@ -1463,23 +1463,53 @@ def test_metadatos_heredados_rechazar_bloquea_y_permite_carga_manual(client, moc
     client.post("/chat", json={"session_id": sid, "accion": "enriquecer"})
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
 
-    # Rechaza metadatos heredados -> borrador pasa a validación como si no hubiesen sido cargados
+    # Rechaza metadatos heredados -> activa el proceso de validación guiado ofreciendo plantillas
     r_rech = client.post("/chat", json={"session_id": sid, "accion": "rechazar"}).json()
-    assert r_rech["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_rech["borrador"]["categoria_id"] is None
-    assert r_rech["borrador"]["tags"] == []
-    assert r_rech["validacion"]["valido"] is False
-    findings_campos = [f["field"] for f in r_rech["validacion"]["findings"]]
-    assert "categoria_id" in findings_campos
-    assert "tags" in findings_campos
+    assert r_rech["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert "instructivo" in r_rech["opciones"]
+    assert "soluciones" in r_rech["opciones"]
 
-    # Ahora carga manualmente la categoría elegida del catálogo y las etiquetas
-    r_manual = client.post("/chat", json={"session_id": sid, "categoria_id": 24, "tags": ["instructivo", "compras"]}).json()
-    assert r_manual["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_manual["borrador"]["categoria_id"] == 24
-    assert r_manual["borrador"]["tags"] == ["instructivo", "compras"]
-    assert r_manual["validacion"]["valido"] is True
+    # Selecciona la plantilla instructivo -> pasa a pedir metadatos temáticos
+    r_plantilla = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r_plantilla["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r_plantilla["borrador"]["tipo_plantilla"] == "instructivo"
 
+    # Ingresa la etiqueta temática y categoría -> avanza a revisión con el borrador validado
+    r_meta = client.post("/chat", json={"session_id": sid, "categoria_id": 24, "tags": ["compras"]}).json()
+    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_meta["borrador"]["categoria_id"] == 24
+    assert "instructivo" in r_meta["borrador"]["tags"]
+    assert "compras" in r_meta["borrador"]["tags"]
+    assert r_meta["validacion"]["valido"] is True
 
+def test_metadatos_heredados_rechazar_y_volver_permite_reconsiderar(client, mock_buscador):
+    """Si tras rechazar los metadatos heredados la persona toca 'volver', se le vuelve a ofrecer aceptarlos o rechazarlos."""
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia",
+        "link": "https://bc.finneg.com/t/602",
+        "coincidencias": [(602, "Módulo de Ventas", "https://bc.finneg.com/t/602")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 602,
+        "titulo": "Módulo de Ventas",
+        "url": "https://bc.finneg.com/t/602",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 15,
+        "tags": ["instructivo", "ventas"],
+    }
+    r1 = client.post("/chat", json={"mensaje": "Ventas y Facturación"}).json()
+    sid = r1["session_id"]
+    client.post("/chat", json={"session_id": sid, "accion": "enriquecer"})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
 
+    # Rechaza metadatos -> pasa a ESPERANDO_PLANTILLA
+    r_rech = client.post("/chat", json={"session_id": sid, "accion": "rechazar"}).json()
+    assert r_rech["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+
+    # Toca volver -> vuelve a REVISION_BORRADOR con el aviso de metadatos heredados
+    r_volver = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
+    assert r_volver["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_volver["aviso_metadatos_heredados"] is not None
+    assert "aceptar" in r_volver["opciones"]
+    assert "rechazar" in r_volver["opciones"]
 

@@ -602,8 +602,19 @@ async def handle_decision_texto(
 async def handle_esperando_plantilla(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
+    b = sesion.borrador
     if opcion == "volver":
         sesion.limpiar_fallos("ESPERANDO_PLANTILLA")
+        if b and b.metadatos_anteriores:
+            b.metadatos_heredados_revisados = False
+            sesion.metadatos_heredados_revisados = False
+            ant = b.metadatos_anteriores
+            b.categoria_id = ant.get("categoria_id")
+            b.tags = list(ant.get("tags") or [])
+            b.tipo_plantilla = extraer_tipo_plantilla(b.tags)
+            sesion.categoria_id = b.categoria_id
+            sesion.tags = list(b.tags)
+            return avanzar_a_metadatos_o_revision(sesion)
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
         return construir_respuesta(
             sesion,
@@ -611,7 +622,6 @@ async def handle_esperando_plantilla(
             ["confirmar_texto", "volver"],
         )
 
-    b = sesion.borrador
     if req.categoria_id is not None:
         b.categoria_id = req.categoria_id
 
@@ -853,12 +863,12 @@ async def handle_revision_borrador(
     ):
         b.metadatos_heredados_revisados = True
         sesion.metadatos_heredados_revisados = True
+        b.tipo_plantilla = None
         b.categoria_id = None
         b.tags = []
         sesion.categoria_id = None
         sesion.tags = []
-        msg, ops = validar_borrador(sesion, "Se descartaron los metadatos heredados. ")
-        return construir_respuesta(sesion, msg, ops)
+        return avanzar_a_metadatos_o_revision(sesion, prefijo="Se descartaron los metadatos heredados. ")
 
     if opcion == "copiar_borrador":
         return construir_respuesta(
