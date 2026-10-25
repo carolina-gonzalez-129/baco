@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict
 class StatusValidacionEnum(str, Enum):
     LISTO = "Listo"
     LISTO_CON_AJUSTES = "Listo con ajustes sugeridos"
+    LISTO_CON_SUGERENCIAS = "Listo con sugerencias"
     PENDIENTE = "Pendiente"
 
 
