@@ -196,6 +196,10 @@ BACO.apiHttp = (function () {
       return await res.json();
     },
 
+    confirmarBloques(bloques) {
+      return pedir('POST', '/chat/bloques', { bloques: bloques });
+    },
+
     /* Para que el panel pueda mostrar / limpiar la sesión */
     sesionActual() { return sessionId; },
     olvidarSesion() { sessionId = null; }

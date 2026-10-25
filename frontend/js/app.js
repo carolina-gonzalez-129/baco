@@ -584,6 +584,8 @@
           store.setForm({ texto: res.texto_limpio });
           const fc = $('#fCuerpo');
           if (fc) fc.value = res.texto_limpio;
+          const recs = res.recursos || (res.borrador && (Array.isArray(res.borrador.multimedia) ? res.borrador.multimedia : Object.values(res.borrador.recursos || {}))) || [];
+          reconstruirBloques(res.texto_limpio, recs);
         }
         if (res.borrador) {
           store.set({ borrador: res.borrador });
@@ -600,6 +602,59 @@
     }
   }
 
+  function reconstruirBloques(textoLimpio, recs) {
+    textareasMap.clear();
+    const recsArray = Array.isArray(recs) ? recs : Object.values(recs || {});
+    if (textoLimpio && /\[\[R\d+\]\]/.test(textoLimpio)) {
+      const partes = textoLimpio.split(/(\[\[R\d+\]\])/g);
+      const nuevosBloques = [];
+      partes.forEach((p) => {
+        const match = p.match(/^\[\[R(\d+)\]\]$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          const r = recsArray[num - 1] || { id: 'rec_' + num, nombre: 'Recurso ' + num, tipo: 'otro', url: '' };
+          nuevosBloques.push({
+            id: genId(),
+            tipo: 'recurso',
+            cargando: false,
+            recurso: {
+              id: r.id || ('rec_' + num),
+              tipo: r.tipo || 'otro',
+              nombre: r.nombre || ('Recurso ' + num),
+              url: r.referencia || r.url || ''
+            }
+          });
+        } else {
+          nuevosBloques.push({
+            id: genId(),
+            tipo: 'texto',
+            contenido: p
+          });
+        }
+      });
+      estadoEditor.bloques = nuevosBloques.length ? nuevosBloques : [{ id: genId(), tipo: 'texto', contenido: '' }];
+    } else if (textoLimpio != null) {
+      const nuevosBloques = [{ id: genId(), tipo: 'texto', contenido: textoLimpio }];
+      recsArray.forEach((r, i) => {
+        nuevosBloques.push({
+          id: genId(),
+          tipo: 'recurso',
+          cargando: false,
+          recurso: {
+            id: r.id || ('rec_' + (i + 1)),
+            tipo: r.tipo || 'otro',
+            nombre: r.nombre || ('Recurso ' + (i + 1)),
+            url: r.referencia || r.url || ''
+          }
+        });
+        nuevosBloques.push({ id: genId(), tipo: 'texto', contenido: '' });
+      });
+      estadoEditor.bloques = nuevosBloques;
+    } else {
+      estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: '' }];
+    }
+  }
+
   function sincronizarBloquesDesdeStore(s) {
     if (!s) return;
     const sesionCambio = s.session_id !== sesionCargadaId;
@@ -608,59 +663,9 @@
       estadoEditor.bloques.forEach((b) => {
         if (b.previewUrl) URL.revokeObjectURL(b.previewUrl);
       });
-      textareasMap.clear();
-
       const textoLimpio = (s.borrador && s.borrador.texto_limpio) || (s.form && s.form.texto) || '';
       const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
-
-      if (textoLimpio && /\[\[R\d+\]\]/.test(textoLimpio)) {
-        const partes = textoLimpio.split(/(\[\[R\d+\]\])/g);
-        const nuevosBloques = [];
-        partes.forEach((p) => {
-          const match = p.match(/^\[\[R(\d+)\]\]$/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            const r = recs[num - 1] || { id: 'rec_' + num, nombre: 'Recurso ' + num, tipo: 'otro', url: '' };
-            nuevosBloques.push({
-              id: genId(),
-              tipo: 'recurso',
-              cargando: false,
-              recurso: {
-                id: r.id || ('rec_' + num),
-                tipo: r.tipo || 'otro',
-                nombre: r.nombre || ('Recurso ' + num),
-                url: r.referencia || r.url || ''
-              }
-            });
-          } else {
-            nuevosBloques.push({
-              id: genId(),
-              tipo: 'texto',
-              contenido: p
-            });
-          }
-        });
-        estadoEditor.bloques = nuevosBloques.length ? nuevosBloques : [{ id: genId(), tipo: 'texto', contenido: '' }];
-      } else if (textoLimpio) {
-        const nuevosBloques = [{ id: genId(), tipo: 'texto', contenido: textoLimpio }];
-        recs.forEach((r, i) => {
-          nuevosBloques.push({
-            id: genId(),
-            tipo: 'recurso',
-            cargando: false,
-            recurso: {
-              id: r.id || ('rec_' + (i + 1)),
-              tipo: r.tipo || 'otro',
-              nombre: r.nombre || ('Recurso ' + (i + 1)),
-              url: r.referencia || r.url || ''
-            }
-          });
-          nuevosBloques.push({ id: genId(), tipo: 'texto', contenido: '' });
-        });
-        estadoEditor.bloques = nuevosBloques;
-      } else {
-        estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: '' }];
-      }
+      reconstruirBloques(textoLimpio, recs);
       renderBloques();
     } else {
       const editorVacio = estadoEditor.bloques.length === 1 &&
@@ -2311,6 +2316,7 @@
         }
         renderBloques();
         toast('Documento volcado en el editor');
+        confirmarBloques();
       };
       lector.readAsText(f);
     });

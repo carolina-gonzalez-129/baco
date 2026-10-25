@@ -360,11 +360,12 @@ BACO.apiMock = (function () {
       return resp((prefijo || '') + '¿Qué plantilla corresponde para este artículo: instructivo o soluciones?',
         OPS.PLANTILLAS, aviso);
     }
-    if (b.tags.length < lim().MIN_TAGS) {
+    const catValida = b.categoria_id != null && Number(b.categoria_id) > 1;
+    if (b.tags.length < lim().MIN_TAGS || !catValida) {
       marcar();
       sesion.estado = 'ESPERANDO_METADATOS';
-      return resp((prefijo || '') + 'Aplico la plantilla "' + b.tipo_plantilla + '". Agregá al menos un tag temático ' +
-        '(por ejemplo "ventas" o "facturacion"; si son varios, separalos con coma) y, si querés, el ID de categoría.',
+      return resp((prefijo || '') + 'Aplico la plantilla "' + b.tipo_plantilla + '". Ingresá al menos una etiqueta temática ' +
+        'y seleccioná la categoría desde el menú desplegable en el formulario de la izquierda.',
         ['volver'], aviso);
     }
     marcar();
@@ -626,7 +627,16 @@ BACO.apiMock = (function () {
             });
           }
           b.tags = combinarTags(b.tipo_plantilla, b.tags, nuevos);
-          if (b.tags.length < L.MIN_TAGS) {
+          const tagsValidos = b.tags.length >= L.MIN_TAGS;
+          const catValida = b.categoria_id != null && Number(b.categoria_id) > 1;
+
+          if (!tagsValidos || !catValida) {
+            if (!tagsValidos && !catValida) {
+              return resp('Necesitamos al menos dos etiquetas temáticas y que selecciones la categoría desde el menú desplegable en el formulario de la izquierda.', ['volver']);
+            }
+            if (!catValida) {
+              return resp('Por favor seleccioná la categoría del artículo desde el menú desplegable en el formulario de la izquierda.', ['volver']);
+            }
             return resp('Todavía falta al menos un tag temático además de "' + b.tipo_plantilla + '".', ['volver']);
           }
           if (b.tags.length > L.MAX_TAGS) {
@@ -964,6 +974,68 @@ BACO.apiMock = (function () {
         tamano_bytes: (file && file.size) || 1024,
         posicion: posicion
       });
+    },
+
+    confirmarBloques(bloques) {
+      return responder(() => {
+        if (!sesion) throw err('SIN_SESION', 'No hay sesión activa.');
+        const recs = {};
+        const partes = [];
+        let rCount = 1;
+        const tiposConteo = {};
+        (bloques || []).forEach((b) => {
+          if (b.tipo === 'texto' && b.contenido) {
+            partes.push(b.contenido.trim());
+          } else if (b.tipo === 'recurso' && b.recurso) {
+            const rid = 'rec_' + rCount;
+            const r = {
+              id: rid,
+              tipo: b.recurso.tipo || 'otro',
+              nombre: b.recurso.nombre || 'Recurso ' + rCount,
+              referencia: b.recurso.url || '',
+              orden: rCount - 1
+            };
+            recs[rid] = r;
+            partes.push('[[R' + rCount + ']]');
+            tiposConteo[r.tipo] = (tiposConteo[r.tipo] || 0) + 1;
+            rCount++;
+          }
+        });
+        const textoLimpio = partes.join('\n\n').trim();
+        const sanit = sanitizar(textoLimpio, sesion.titulo || (sesion.borrador && sesion.borrador.titulo));
+        const textoFinal = sanit.texto_sanitizado;
+        let avisoPriv = null;
+        if (sanit.cambios && sanit.cambios.length) {
+          avisoPriv = 'Se detectaron y anonimizaron datos personales (' + sanit.cambios.join(', ') + ').';
+        }
+        if (!sesion.borrador) {
+          sesion.borrador = {
+            titulo: sesion.titulo || 'Artículo',
+            texto_limpio: textoFinal,
+            texto: textoFinal,
+            recursos: recs,
+            multimedia: Object.values(recs)
+          };
+        } else {
+          sesion.borrador.texto_limpio = textoFinal;
+          sesion.borrador.recursos = recs;
+          sesion.borrador.multimedia = Object.values(recs);
+          sesion.borrador.conforme = false;
+        }
+        sesion.texto_limpio = textoFinal;
+        sesion.texto = textoFinal;
+        sesion.recursos = recs;
+        const avisoPartes = Object.entries(tiposConteo).map(([t, c]) => `${c} ${t}`);
+        const avisoRecursos = avisoPartes.length ? `Se detectaron ${rCount - 1} recursos (${avisoPartes.join(', ')}).` : null;
+        const avisoFinal = [avisoPriv, avisoRecursos].filter(Boolean).join('\n\n') || null;
+        return {
+          session_id: sesion.session_id,
+          texto_limpio: textoFinal,
+          recursos: Object.values(recs),
+          aviso: avisoFinal,
+          borrador: sesion.borrador
+        };
+      }, 50);
     },
 
     sesionActual() { return sesion ? sesion.session_id : null; },

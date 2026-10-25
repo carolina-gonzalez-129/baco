@@ -18,6 +18,7 @@ from baco.server.schemas.recurso import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
+from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.agente_service import (
     ejecutar_skill_plantillas,
     ejecutar_skill_validador,
@@ -254,17 +255,23 @@ def confirmar_bloques(
     except RecursoInvalidoError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    titulo_ctx = (sesion.borrador.titulo if sesion.borrador else sesion.titulo) or "Artículo"
+    sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
+    texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
+    aviso_priv = sanit.get("aviso_privacidad")
+    aviso_final = f"{aviso_priv}\n\n{aviso}" if (aviso_priv and aviso) else (aviso_priv or aviso)
+
     if not sesion.borrador:
         sesion.borrador = BorradorSesion(
             modo="nuevo",
-            titulo=sesion.titulo or "Artículo",
-            texto_limpio=texto_limpio,
+            titulo=titulo_ctx,
+            texto_limpio=texto_sanitizado,
             recursos=recursos,
             categoria_id=sesion.categoria_id,
             tags=list(sesion.tags),
         )
     else:
-        sesion.borrador.texto_limpio = texto_limpio
+        sesion.borrador.texto_limpio = texto_sanitizado
         sesion.borrador.recursos = recursos
         sesion.borrador.orden_multimedia = [r.orden for r in sorted(recursos.values(), key=lambda x: x.orden)]
         sesion.borrador.posiciones = list(sesion.borrador.orden_multimedia)
@@ -273,16 +280,16 @@ def confirmar_bloques(
             sesion.borrador.conforme_en = None
             sesion.borrador.conformidad_invalidada = True
 
-    sesion.texto_limpio = texto_limpio
+    sesion.texto_limpio = texto_sanitizado
     sesion.texto = sesion.borrador.texto
     sesion.recursos = recursos
     sesion.orden_multimedia = list(sesion.borrador.orden_multimedia)
 
     return ConfirmarBloquesResponse(
         session_id=sid,
-        texto_limpio=texto_limpio,
+        texto_limpio=texto_sanitizado,
         recursos=sorted(recursos.values(), key=lambda r: r.orden),
-        aviso=aviso,
+        aviso=aviso_final,
         borrador=sesion.borrador,
     )
 

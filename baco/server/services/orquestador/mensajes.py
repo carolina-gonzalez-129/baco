@@ -20,16 +20,16 @@ OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
 
 MSG_SIN_COINCIDENCIAS_TITULO = (
-    "No encontré ningún artículo existente con este título, así que avanzamos con uno nuevo. "
-    "Por favor, enviame el texto o desarrollo del artículo."
+    "No encontré nada similar. Por favor, enviame el texto o desarrollo del artículo."
 )
 MSG_DESCARTAR_COINCIDENCIA_TITULO = (
-    "Descartamos la sugerencia para continuar con tu propuesta original. "
-    "Escribí o pegá el texto completo del artículo para continuar."
+    "Descartamos la sugerencia para continuar con tu propuesta "
+    "Por favor escribí o pegá el texto completo del artículo para continuar. Podes ir de a poco escribiendo desde aca"
+    "y apretar 'Confirmar texto' cuando estes conforme, vas a ver el texto en el panel izquierdo"
 )
 MSG_ELEGIR_ENRIQUECER_O_DESCARTAR = (
     "Encontré un artículo existente sobre este tema. "
-    "Tocá 'enriquecer' para trabajar sobre él y sumar tu aporte sin duplicar información, "
+    "Tocá 'enriquecer' para trabajar sobre él y sumar tu aporte, "
     "o 'descartar' si tu caso es diferente y querés ingresar tu texto desde cero."
 )
 MSG_ELEGIR_SERIE_O_DESCARTAR = (
@@ -38,15 +38,15 @@ MSG_ELEGIR_SERIE_O_DESCARTAR = (
     "o 'descartar' si se trata de una nueva edición que querés publicar por separado."
 )
 MSG_TEXTO_VACIO = (
-    "Perfecto, ahora necesito que me pases el texto o los pasos del artículo "
+    "Por favor, ncesito que me pases el texto o los pasos del artículo "
     "para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes."
 )
 MSG_TEXTO_EN_EDICION = (
     "Guardé tu texto en edición. Podés seguir escribiendo o pegando más contenido, "
-    "y cuando esté listo tocá 'Confirmar texto' para buscar duplicados y continuar."
+    "y cuando esté listo tocá 'Confirmar texto' "
 )
 MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
-    "Detecté un contenido muy parecido al que redactaste. "
+    "Detecté contenido muy parecido al que redactaste. "
     "Elegí 'enriquecer' si querés sumar tus cambios al documento actual, "
     "o 'continuar' si tu artículo trata un caso distinto."
 )
@@ -148,7 +148,7 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f"Cargué el texto del artículo #{articulo_id} ('{titulo}').\n\n"
-        "Podés revisarlo, modificar explicaciones, eliminar secciones obsoletas o adicionar nuevos pasos. "
+        "Podés revisarlo, modificar explicaciones, eliminar secciones  o adicionar nuevos pasos. "
         "Cuando termines tus cambios, enviame la versión completa para avanzar."
     )
 
@@ -207,8 +207,9 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
         f"{prefijo}Asignamos el formato '{plantilla}'. "
-        "Para clasificar el artículo, ingresá al menos dos etiquetas temáticas "
-        "(por ejemplo: ventas, facturación) y seleccioná la categoría desde el menú desplegable en el formulario de la izquierda."
+        "Para clasificar el artículo, por favor ingresá en la sección del panel izquierdo al menos dos etiquetas temáticas "
+        "(por ejemplo: ventas, facturación) "
+        "y seleccioná la categoría desde el menú desplegable en el formulario de la izquierda."
     )
 
 
@@ -224,40 +225,40 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
     est = sesion.estado
     if est == EstadoFlujo.ESPERANDO_TITULO:
         return (
-            "[Placeholder] Estás en el inicio de la redacción. Por favor, ingresá el título de tu artículo (por ejemplo: la acción y el circuito).",
+            "Estás en el inicio de la redacción. Por favor, ingresá el título de tu artículo (por ejemplo: la acción y el circuito).",
             [],
         )
     if est == EstadoFlujo.DECISION_TITULO:
         es_serie = bool(sesion.coincidencias and sesion.coincidencias[0].tipo_coincidencia == "serie")
         ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
         return (
-            "[Placeholder] Encontré un artículo similar en la base. Podés enriquecerlo/actualizarlo, descartarlo para escribir uno nuevo con este título, o tocar 'volver' para ingresar otro título.",
+            " Encontré un artículo similar en la base. Podés enriquecerlo/actualizarlo, descartarlo para escribir uno nuevo con este título, o tocar 'volver' para ingresar otro título.",
             ops + ["volver"],
         )
     if est == EstadoFlujo.ESPERANDO_TEXTO:
         if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
             return (
-                "[Placeholder] Cargamos el artículo existente. Podés editarlo o sumar contenido nuevo. También podés tocar 'descartar' si preferís escribir tu propio texto desde cero, o 'reiniciar'.",
+                "  Cargamos el artículo existente. Podés editarlo o sumar contenido nuevo desde el panel izquierdo. También podés tocar 'descartar' si preferís escribir tu propio texto desde cero, o 'reiniciar'.",
                 ["descartar", "reiniciar"],
             )
         return (
-            "[Placeholder] Necesito el texto o los pasos de tu artículo (al menos 20 caracteres). Pegalo o redactalo acá abajo cuando gustes, o tocá 'volver' para cambiar el título.",
+            "  Necesito el texto o los pasos de tu artículo (al menos 20 caracteres). Pegalo o redactalo acá abajo cuando gustes, o tocá 'volver' para cambiar el título.",
             ["volver"],
         )
     if est == EstadoFlujo.DECISION_TEXTO:
         return (
-            "[Placeholder] Encontré un artículo con contenido muy parecido. Podés elegir 'enriquecer' para sumar tu aporte, 'continuar' para publicar tu texto propio, o 'volver' para modificar tu texto.",
+            "  Encontré un artículo con contenido muy parecido. Podés elegir 'enriquecer' para sumar tu aporte, 'continuar' para publicar tu texto propio, o 'volver' para modificar tu texto.",
             OPCIONES_ENRIQUECER_CONTINUAR + ["volver"],
         )
     if est == EstadoFlujo.ESPERANDO_PLANTILLA:
         return (
-            "[Placeholder] Seleccioná la plantilla que mejor se ajuste a tu documento ('instructivo' o 'soluciones'), o tocá 'volver' para revisar el texto.",
+            "  Seleccioná la plantilla que mejor se ajuste a tu documento ('instructivo' o 'soluciones'), o tocá 'volver' para revisar el texto.",
             OPCIONES_PLANTILLAS + ["volver"],
         )
     if est == EstadoFlujo.ESPERANDO_METADATOS:
         plantilla = (sesion.borrador.tipo_plantilla if sesion.borrador else "") or ""
         return (
-            f"[Placeholder] Necesitamos al menos dos etiquetas temáticas para clasificar el {plantilla} "
+            f" Necesitamos al menos dos etiquetas temáticas para clasificar el {plantilla} "
             "y que selecciones la categoría desde el menú desplegable en el formulario de la izquierda. "
             "Podés escribir las etiquetas acá o tocar 'volver' para cambiar de plantilla.",
             ["volver"],
@@ -265,16 +266,16 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
     if est in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR):
         if getattr(sesion, "confirmando_rechazo", False):
             return (
-                "[Placeholder] Estás por descartar el borrador. Tocá 'confirmar_rechazo' si querés cancelarlo definitivamente, o 'volver' para conservarlo.",
+                " Estás por descartar el borrador. Tocá 'confirmar_rechazo' si querés cancelarlo definitivamente, o 'volver' para conservarlo.",
                 ["confirmar_rechazo", "volver"],
             )
         if sesion.validacion and not sesion.validacion.valido:
             return (
-                "[Placeholder] El borrador tiene puntos pendientes obligatorios. Podés tocar 'editar' para corregirlos, 'sanitizar' si hay datos sensibles, o 'rechazar' para cancelar.",
+                "El borrador tiene puntos pendientes obligatorios. Podés tocar 'editar' para corregirlos, 'sanitizar' si hay datos sensibles, o 'rechazar' para cancelar.",
                 OPCIONES_REVISION_BLOQUEANTE,
             )
         return (
-            "[Placeholder] El borrador está listo para confirmar. Podés tocar 'conforme' para registrar tu conformidad, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
+            " El borrador está listo para confirmar. Podés tocar 'conforme' para registrar tu conformidad, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
             OPCIONES_REVISION_VALIDO,
         )
     if est in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO):
@@ -283,6 +284,6 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             OPCIONES_REINICIAR,
         )
     return (
-        "[Placeholder] Podés continuar escribiendo o tocar 'reiniciar' para comenzar de nuevo.",
+        " Podes continuar escribiendo o tocar 'reiniciar' para comenzar de nuevo.",
         OPCIONES_REINICIAR,
     )

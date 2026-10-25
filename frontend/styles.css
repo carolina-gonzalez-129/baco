@@ -603,3 +603,262 @@ input,textarea,select{font-family:inherit}
 .panel-multimedia .pm-btn-mover:hover:not(:disabled){border-color:var(--ink-3)}
 .panel-multimedia .pm-btn-mover:disabled,.panel-multimedia .pm-quitar:disabled{opacity:.35;cursor:not-allowed}
 .panel-multimedia .pm-vacio{margin-top:6px;color:var(--ink-3);font-size:11.5px}
+
+/* =============================================================
+   Editor de Bloques (Texto / Recurso / Texto...)
+   ============================================================= */
+.editor-bloques-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.contenedor-bloques {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+/* Bloque de Texto */
+.bloque-texto-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bloque-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.bloque-textarea:focus {
+  outline: none;
+  border-color: var(--coral, #ea580c);
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15);
+}
+
+/* Bloque de Recurso */
+.bloque-recurso-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-2, #f8f9fa);
+  border: 1px solid var(--rule-2, #e5e7eb);
+  border-radius: 6px;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.bloque-recurso-item.cargando {
+  opacity: 0.75;
+  background: #fff8f5;
+  border-color: var(--coral, #ea580c);
+}
+
+.bloque-eliminar-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink-3, #6b7280);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.bloque-eliminar-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.bloque-recurso-icono {
+  flex: none;
+  font-size: 18px;
+  width: 28px;
+  text-align: center;
+}
+
+.bloque-recurso-mini {
+  flex: none;
+  width: 44px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+}
+
+.bloque-recurso-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bloque-recurso-nombre {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bloque-recurso-meta {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+}
+
+.bloque-recurso-mover {
+  flex: none;
+  display: flex;
+  gap: 3px;
+}
+
+.bloque-btn-mover {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bloque-btn-mover:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  background: var(--surface-3);
+}
+
+.bloque-btn-mover:disabled, .bloque-eliminar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Divisor y Botón "+" Pequeño */
+.bloque-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 4px 0;
+  height: 24px;
+}
+
+.bloque-divider-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--rule-2, #e5e7eb);
+  z-index: 1;
+}
+
+.btn-agregar-bloque {
+  position: relative;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--rule-2);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-agregar-bloque:hover {
+  background: var(--coral, #ea580c);
+  color: #fff;
+  border-color: var(--coral, #ea580c);
+  transform: scale(1.1);
+}
+
+/* Menú flotante del botón "+" */
+.menu-agregar-bloque {
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  z-index: 50;
+  min-width: 130px;
+}
+
+.menu-opcion-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.menu-opcion-btn:hover {
+  background: var(--surface-2);
+  color: var(--coral-600, #c2410c);
+}
+
+/* Botón Confirmar siempre visible */
+.editor-bloques-footer {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-confirmar-bloques {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-confirmar-bloques:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
