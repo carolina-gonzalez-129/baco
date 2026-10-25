@@ -12,4 +12,5 @@ CATEGORIA_ID_DEFAULT = 1
 # Configuración de Recursos Multimedia en Sesión
 PERMITIR_SUBIDA_RECURSOS: bool = True  # Habilitado: el mini panel permite subir archivos al borrador
 RECURSO_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB máximo por recurso
+MAX_RECURSOS_TOTAL_BYTES: int = 50 * 1024 * 1024  # 50 MB máximo total de recursos acumulados
 MAX_RECURSOS_POR_SESION: int = 20  # Límite de recursos por borrador de sesión

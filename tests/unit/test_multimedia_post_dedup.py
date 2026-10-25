@@ -121,7 +121,7 @@ def test_panel_multimedia_operativo_en_todas_las_ramas(client, mock_buscador, ra
     assert [m["referencia"] for m in borrador["multimedia"]] == [URL_IMG]
     assert borrador["orden_multimedia"] == [0]
     assert URL_IMG not in borrador["texto_limpio"]
-    assert "[[recurso:" not in borrador["texto_limpio"]
+    assert "[[recurso:rec_1]]" in borrador["texto_limpio"]
 
     texto_limpio_inicial = SESIONES[sid].borrador.texto_limpio
 

@@ -1,7 +1,7 @@
 from enum import Enum
 import re
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, computed_field, field_validator, model_validator
 
 from baco.server.config_limites import TEXTO_MAX, TITULO_MAX
 from baco.server.schemas.validacion import ValidarFormatoResponse
@@ -70,9 +70,9 @@ class BorradorSesion(BaseModel):
     articulo_original_id: Optional[int] = None
     articulo_original_url: Optional[str] = None
     titulo: str
+    recursos: Dict[str, Recurso] = Field(default_factory=dict)
     texto_limpio: str = ""
     texto_en_edicion: str = ""
-    recursos: Dict[str, Recurso] = Field(default_factory=dict)
     orden_multimedia: List[int] = Field(
         default_factory=list,
         description="Vector numérico que guarda el orden explícito de los contenidos multimedia en el borrador."
@@ -124,20 +124,29 @@ class BorradorSesion(BaseModel):
         from baco.server.services.orquestador.recursos_service import componer_texto_publicable
         return componer_texto_publicable(self.texto_limpio, self.recursos)
 
-    @field_validator("texto_limpio", mode="before")
+    @field_validator("texto_limpio", mode="after")
     @classmethod
-    def quitar_marcadores_legacy(cls, v):
-        """Compatibilidad: borradores previos podían traer marcadores [[recurso:<id>]].
+    def validar_marcadores_referencian_recursos_existentes(cls, v: str, info: ValidationInfo) -> str:
+        """Cambio 3: valida que cada marcador en texto_limpio referencia un recurso existente.
 
-        texto_limpio es solo texto, así que se quitan al cargar.
+        Rechaza marcadores inventados o escritos a mano por la persona sin borrado silencioso.
         """
-        if isinstance(v, str) and "[[recurso:" in v:
-            v = _RE_MARCADOR_LEGACY.sub("", v)
-            v = "\n".join(l.rstrip() for l in v.splitlines())
-            v = re.sub(r"[ \t]{2,}", " ", v)
-            v = re.sub(r"[ \t]+([.,;:!?])", r"\1", v)
-            bloques = [b.strip() for b in re.split(r"\n\s*\n", v)]
-            v = "\n\n".join(b for b in bloques if b).strip()
+        if not v or not isinstance(v, str):
+            return v
+        marcadores_recurso = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", v)
+        if not marcadores_recurso:
+            return v
+
+        recursos = info.data.get("recursos") if info.data else None
+        recursos_dict = recursos if isinstance(recursos, dict) else {}
+
+        invalidos = [m for m in marcadores_recurso if m not in recursos_dict]
+        if invalidos:
+            raise ValueError(
+                f"El texto contiene marcadores que no referencian ningún recurso existente: "
+                f"{', '.join(f'[[recurso:{m}]]' for m in invalidos)}. "
+                f"No se permite ingresar marcadores manualmente."
+            )
         return v
 
     @model_validator(mode="after")
