@@ -41,6 +41,9 @@ def buscar_duplicados(
     texto: Optional[str] = None,
     limite: int = 3,
     borrador: Optional[str] = None,
+    *,
+    _get_ro_conn=None,
+    _buscador_cls=None,
 ) -> BuscarDuplicadosToolOutput:
     """
     Fachada de solo lectura para búsqueda de artículos duplicados o similares.
@@ -92,9 +95,12 @@ def buscar_duplicados(
             articulos_similares=[],
         )
 
-    with get_ro_conn() as conn:
+    conn_fn = _get_ro_conn or get_ro_conn
+    cls_buscador = _buscador_cls or BuscadorDuplicados
+
+    with conn_fn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            buscador = BuscadorDuplicados(cur)
+            buscador = cls_buscador(cur)
             resultado = buscador.evaluar_coincidencias(
                 titulo=titulo_limpio,
                 headers=True,
