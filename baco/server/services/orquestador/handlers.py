@@ -222,12 +222,13 @@ async def handle_decision_titulo(
             # Condición sine qua non: habiendo recibido título y texto, al descartar
             # la coincidencia de título la búsqueda por duplicados continúa sobre el texto.
             txt_disp_limpio, recs_disp = extraer_recursos_y_texto_limpio(texto_disponible)
-            sesion.texto = txt_disp_limpio
-            sesion.texto_limpio = txt_disp_limpio
-            sesion.recursos = recs_disp
-            sanit_txt = sanitizar_borrador(texto=txt_disp_limpio)
-            texto_busqueda = sanit_txt["texto_sanitizado"]
+            sanit_txt = sanitizar_borrador(texto=txt_disp_limpio, titulo=sesion.titulo)
+            texto_sanitizado = sanit_txt["texto_sanitizado"]
             aviso_privacidad = sanit_txt.get("aviso_privacidad")
+            sesion.texto = texto_sanitizado
+            sesion.texto_limpio = texto_sanitizado
+            sesion.recursos = recs_disp
+            texto_busqueda = texto_sanitizado
 
             res_txt = await run_in_threadpool(buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1)
             if res_txt and res_txt.get("coincidencias"):
@@ -452,13 +453,14 @@ async def handle_esperando_texto(
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
         return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), [])
 
-    sesion.texto = texto_limpio
-    sesion.texto_limpio = texto_limpio
-    sesion.recursos = recursos
-
-    sanit_txt = sanitizar_borrador(texto=texto_limpio)
-    texto_busqueda = sanit_txt["texto_sanitizado"]
+    sanit_txt = sanitizar_borrador(texto=texto_limpio, titulo=sesion.titulo)
+    texto_sanitizado = sanit_txt["texto_sanitizado"]
     aviso_privacidad = sanit_txt.get("aviso_privacidad")
+
+    sesion.texto = texto_sanitizado
+    sesion.texto_limpio = texto_sanitizado
+    sesion.recursos = recursos
+    texto_busqueda = texto_sanitizado
 
     res_txt = await run_in_threadpool(buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1)
     if res_txt and res_txt.get("coincidencias"):
@@ -757,12 +759,16 @@ async def handle_revision_borrador(
             if (sesion.validacion and sesion.validacion.valido)
             else OPCIONES_REVISION_BLOQUEANTE
         )
+        aviso_priv_edicion = None
         if req.titulo is not None:
             tit_nuevo = req.titulo.strip()
             err_tit = validar_longitud_maxima(tit_nuevo, TITULO_MAX, "título")
             if err_tit:
                 return construir_respuesta(sesion, err_tit, ops_actuales)
-            b.titulo = tit_nuevo
+            sanit_tit = sanitizar_borrador(texto="", titulo=tit_nuevo)
+            b.titulo = sanit_tit["titulo_sanitizado"]
+            if sanit_tit.get("aviso_privacidad"):
+                aviso_priv_edicion = sanit_tit.get("aviso_privacidad")
 
         if texto_edicion is not None:
             txt_nuevo = texto_edicion.strip()
@@ -777,8 +783,16 @@ async def handle_revision_borrador(
                     f"Cada marcador debe referenciar un recurso multimedia existente."
                 )
                 return construir_respuesta(sesion, msg, ops_actuales)
-            # texto_limpio es solo texto: no hay marcadores que verificar ni restaurar
-            txt_verif, adv = txt_nuevo_limpio, []
+
+            sanit_edit = sanitizar_borrador(texto=txt_nuevo_limpio, titulo=b.titulo)
+            txt_verif = sanit_edit["texto_sanitizado"]
+            if sanit_edit.get("aviso_privacidad"):
+                if aviso_priv_edicion:
+                    aviso_priv_edicion = f"{aviso_priv_edicion}\n{sanit_edit['aviso_privacidad']}"
+                else:
+                    aviso_priv_edicion = sanit_edit.get("aviso_privacidad")
+
+            adv = []
             err_txt = validar_longitud_maxima(txt_verif, TEXTO_MAX, "texto")
             if err_txt:
                 return construir_respuesta(sesion, err_txt, ops_actuales)
@@ -806,7 +820,7 @@ async def handle_revision_borrador(
         else:
             prefijo = PREFIJO_BORRADOR_ACTUALIZADO
         msg, ops = validar_borrador(sesion, prefijo)
-        return construir_respuesta(sesion, msg, ops)
+        return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_priv_edicion)
 
     if opcion == "editar":
         ops = (

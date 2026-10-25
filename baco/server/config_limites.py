@@ -14,3 +14,7 @@ PERMITIR_SUBIDA_RECURSOS: bool = True  # Habilitado: el mini panel permite subir
 RECURSO_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB máximo por recurso
 MAX_RECURSOS_TOTAL_BYTES: int = 50 * 1024 * 1024  # 50 MB máximo total de recursos acumulados
 MAX_RECURSOS_POR_SESION: int = 20  # Límite de recursos por borrador de sesión
+
+#COTA MAXIMA PERCENTIL 99
+##X SI A ELLOS LES PARECE Q DEBEN INCLUIRSE MAS, 
+TEXTO_MAX_PERCENTIL99 = 16776.449999999997

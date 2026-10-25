@@ -124,7 +124,14 @@
                 <button class="act sel" id="btnEditor">Editor</button>
                 <button class="act" id="btnPreview">Vista previa</button>
               </div>
-              <textarea class="textarea" id="fCuerpo" placeholder="El cuerpo del artículo, en Markdown. Las imágenes, videos y documentos se cargan abajo, en Multimedia."></textarea>
+              <div class="editor-bloques-wrapper" id="editorBloquesWrapper">
+                <div class="contenedor-bloques" id="contenedorBloques"></div>
+                <div class="editor-bloques-footer">
+                  <button type="button" class="btn btn-primary btn-confirmar-bloques" id="btnConfirmarBloques">Confirmar</button>
+                </div>
+                <input type="file" id="inputSelectorBloque" hidden>
+              </div>
+              <textarea class="textarea" id="fCuerpo" hidden placeholder="El cuerpo del artículo, en Markdown."></textarea>
               <div class="preview" id="preview" hidden></div>
               <div class="panel-multimedia" id="panelMultimedia" hidden></div>
               <div class="editor-img-bar" id="editorImgBar" hidden></div>
@@ -139,9 +146,9 @@
               </div>
               <div class="suggrow" id="suggRow"></div>
 
-              <label class="flabel" for="fCategoria" style="margin-top:14px">Categoría</label>
+              <label class="flabel" for="fCategoria" style="margin-top:14px">Categoría <span class="req">*</span></label>
               <select class="input sel" id="fCategoria">
-                <option value="1">Seleccionar categoría...</option>
+                <option value="">Seleccionar categoría del desplegable...</option>
               </select>
               <div class="suggrow" id="catChipsRow"></div>
             </div>
