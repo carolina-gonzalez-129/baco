@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: baco-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-baco_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en su archivo .env}
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?Defina DB_RO_PASSWORD en su archivo .env}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - baco_pgdata:/var/lib/postgresql/data
+      - ./baco/server/db:/opt/baco/db:ro
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/01-init-baco.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-baco_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: baco-mcp:latest
+    profiles:
+      - mcp
+    stdin_open: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-baco_db}
+      DB_RO_USER: ${DB_RO_USER:-baco_readonly}
+      DB_RO_PASSWORD: ${DB_RO_PASSWORD:?Defina DB_RO_PASSWORD en su archivo .env}
+      ONNX_INTRA_OP_THREADS: ${ONNX_INTRA_OP_THREADS:-2}
+
+volumes:
+  baco_pgdata:

@@ -209,7 +209,7 @@ CREATE OR REPLACE FUNCTION duplicados.buscar_exacto(
     texto_articulo text
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 DECLARE
     v_dato_normalizado TEXT := public.normalizar_texto(p_dato);
@@ -256,7 +256,7 @@ CREATE OR REPLACE FUNCTION duplicados.obtener_articulo(
     tags text[]
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+    SET search_path = public, duplicados, pg_temp
 AS $$
 BEGIN
     RETURN QUERY
@@ -300,7 +300,7 @@ CREATE OR REPLACE FUNCTION duplicados.similares_embeddings_con_titulo(
     score_total numeric
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 BEGIN
     RETURN QUERY
@@ -380,7 +380,7 @@ CREATE OR REPLACE FUNCTION duplicados.similares_embeddings_solo_texto(
     score_total numeric
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 BEGIN
     RETURN QUERY
@@ -436,7 +436,7 @@ CREATE OR REPLACE FUNCTION duplicados.similares_embeddings_titulo(
     sim_titulo numeric
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 BEGIN
     RETURN QUERY
@@ -468,7 +468,7 @@ CREATE OR REPLACE FUNCTION duplicados.similares_series(
     base_titulo text
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 DECLARE
     v_base_titulo TEXT := public.titulo_base(public.normalizar_texto(p_titulo));
@@ -488,10 +488,11 @@ ALTER FUNCTION duplicados.similares_series(character varying, integer) OWNER TO 
 
 DROP FUNCTION IF EXISTS duplicados.similares_trigramas(character varying, real, integer);
 DROP FUNCTION IF EXISTS duplicados.similares_trigramas(character varying, numeric, integer);
+DROP FUNCTION IF EXISTS duplicados.similares_trigramas(character varying, double precision, integer);
 
 CREATE OR REPLACE FUNCTION duplicados.similares_trigramas(
     p_titulo character varying,
-    p_umbral numeric DEFAULT 0.90,
+    p_umbral double precision DEFAULT 0.90,
     p_limit integer DEFAULT 3
 ) RETURNS TABLE(
     id_articulo integer,
@@ -500,28 +501,28 @@ CREATE OR REPLACE FUNCTION duplicados.similares_trigramas(
     score real
 )
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 DECLARE
     p_titulo_normalizado TEXT := public.normalizar_texto(p_titulo);
 BEGIN
     RETURN QUERY
     SELECT a.id, a.titulo, a.url,
-           public.similarity(a.titulo_normalizado, p_titulo_normalizado) AS score
+           public.similarity(a.titulo_normalizado, p_titulo_normalizado)::real AS score
     FROM public.articulos as a
-    WHERE a.titulo_normalizado % p_titulo_normalizado
+    WHERE a.titulo_normalizado OPERATOR(public.%) p_titulo_normalizado
       AND public.similarity(a.titulo_normalizado, p_titulo_normalizado) >= p_umbral
     ORDER BY score DESC, a.id
     LIMIT p_limit;
 END;
 $$;
-ALTER FUNCTION duplicados.similares_trigramas(character varying, numeric, integer) OWNER TO postgres;
+ALTER FUNCTION duplicados.similares_trigramas(character varying, double precision, integer) OWNER TO postgres;
 
 CREATE OR REPLACE FUNCTION duplicados.son_iguales_titulo(
     p_dato character varying
 ) RETURNS boolean
 LANGUAGE plpgsql
-SET search_path = public, pg_temp
+SET search_path = public, duplicados, pg_temp
 AS $$
 DECLARE
     v_dato_normalizado TEXT := public.normalizar_texto(p_dato);
