@@ -245,3 +245,12 @@ def test_layout_formulario_sin_banner_coincidencias_y_editor_amplio():
     assert "crearDivisor(idx + 1, deshabilitado)" not in APP_JS
 
 
+def test_nodos_ocultos_desacoplados_null_safe():
+    # Ninguno de los 4 nodos opcionales/ocultos se desreferencia directo sin guard
+    app_code = (FRONT / "js" / "app.js").read_text(encoding="utf-8")
+    for sel in ("#fCuerpo", "#preview", "#panelMultimedia", "#editorImgBar"):
+        assert f"$('{sel}')." not in app_code
+        assert f'$("{sel}").' not in app_code
+
+
+

@@ -746,16 +746,21 @@
     const etapaTotal = (s.etapa && s.etapa.total) || 5;
 
     const pill = $('#pillEstado');
-    pill.textContent = info.etiqueta;
-    pill.className = 'pill ' + info.tono;
-    $('#ayudaEstado').textContent = info.ayuda;
+    if (pill) {
+      pill.textContent = info.etiqueta;
+      pill.className = 'pill ' + info.tono;
+    }
+    const ayuda = $('#ayudaEstado');
+    if (ayuda) ayuda.textContent = info.ayuda;
 
     const pct = BACO.avance(s);
-    $('#meterFill').style.width = pct + '%';
-    $('#meterFill').classList.toggle('full', s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO');
-    $('#meterPct').textContent = 'Etapa ' + etapaActual + ' de ' + etapaTotal;
+    if ($('#meterFill')) {
+      $('#meterFill').style.width = pct + '%';
+      $('#meterFill').classList.toggle('full', s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO');
+    }
+    if ($('#meterPct')) $('#meterPct').textContent = 'Etapa ' + etapaActual + ' de ' + etapaTotal;
 
-    $('#sesion').textContent = s.session_id ? 'sesión ' + s.session_id.slice(0, 8) : '';
+    if ($('#sesion')) $('#sesion').textContent = s.session_id ? 'sesión ' + s.session_id.slice(0, 8) : '';
 
     /* Stepper dinámico dictado por s.etapa */
     pintarStepper(s, etapaActual);
@@ -763,12 +768,16 @@
 
     /* campos activos según el estado */
     const act = BACO.CAMPOS_ACTIVOS[s.flujo] || {};
-    $('#fTitulo').disabled = !act.titulo || s.enviando;
-    $('#fCuerpo').disabled = !act.texto || s.enviando;
-    $('#tagInput').disabled = !act.tags || s.enviando;
-    $('#fCategoria').disabled = !act.categoria || s.enviando;
-    $('#campoTitulo').classList.toggle('activo', !!act.titulo);
-    $('#campoTexto').classList.toggle('activo', !!act.texto);
+    const fTit = $('#fTitulo');
+    const fCue = $('#fCuerpo');
+    const tInp = $('#tagInput');
+    const fCat = $('#fCategoria');
+    if (fTit) fTit.disabled = !act.titulo || s.enviando;
+    if (fCue) fCue.disabled = !act.texto || s.enviando;
+    if (tInp) tInp.disabled = !act.tags || s.enviando;
+    if (fCat) fCat.disabled = !act.categoria || s.enviando;
+    if ($('#campoTitulo')) $('#campoTitulo').classList.toggle('activo', !!act.titulo);
+    if ($('#campoTexto')) $('#campoTexto').classList.toggle('activo', !!act.texto);
 
     /* Visibilidad y activación de campoTags:
        - No se muestra en los pasos de título ni contenido (ESPERANDO_TITULO, DECISION_TITULO, ESPERANDO_TEXTO, DECISION_TEXTO).
@@ -796,19 +805,19 @@
       campoTags.hidden = !mostrarCampoTags;
       campoTags.classList.toggle('activo', mostrarCampoTags && !!act.tags);
     }
-    $('#tagBox').classList.toggle('off', !act.tags);
+    if ($('#tagBox')) $('#tagBox').classList.toggle('off', !act.tags);
 
-    if ($('#fTitulo').value !== s.form.titulo && document.activeElement !== $('#fTitulo')) {
-      $('#fTitulo').value = s.form.titulo;
+    if (fTit && fTit.value !== s.form.titulo && document.activeElement !== fTit) {
+      fTit.value = s.form.titulo;
     }
-    if ($('#fCuerpo').value !== s.form.texto && document.activeElement !== $('#fCuerpo')) {
-      $('#fCuerpo').value = s.form.texto;
+    if (fCue && fCue.value !== s.form.texto && document.activeElement !== fCue) {
+      fCue.value = s.form.texto;
     }
 
     /* Contadores */
-    contador($('#contTitulo'), s.form.titulo.length, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
-    contadorTexto($('#contTexto'), $('#avisoMaxTexto'), s.form.texto.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
-    contador($('#contTags'),   s.form.tags.length,   cfg.MIN_TAGS,   'etiquetas', cfg.MAX_TAGS);
+    if ($('#contTitulo')) contador($('#contTitulo'), s.form.titulo.length, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
+    if ($('#contTexto')) contadorTexto($('#contTexto'), $('#avisoMaxTexto'), s.form.texto.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
+    if ($('#contTags')) contador($('#contTags'),   s.form.tags.length,   cfg.MIN_TAGS,   'etiquetas', cfg.MAX_TAGS);
 
     const enEsperandoTexto = s.flujo === 'ESPERANDO_TEXTO';
     const compMeta = $('#chatComposerMeta');
@@ -823,27 +832,29 @@
     /* botón principal */
     const acc = BACO.ACCION_PRINCIPAL[s.flujo];
     const btn = $('#btnPrincipal');
-    if (acc) {
-      btn.hidden = false;
-      btn.disabled = s.enviando || !listoParaEnviar(s, acc.campo);
-      btn.textContent = (acc.campo === 'todo' && !hayCambios(s))
-        ? 'Sin cambios para guardar'
-        : acc.label;
-      const textoCorto = s.form.texto.trim().length < cfg.MIN_TEXTO;
-      const textoLargo = s.form.texto.length > cfg.MAX_TEXTO;
-      const tagsFaltan = (s.form.tags || []).length < cfg.MIN_TAGS;
-      const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
-      btn.title = btn.disabled && acc.campo === 'todo'
-        ? 'Editá algún campo para habilitar el guardado'
-        : (btn.disabled && acc.campo === 'texto'
-            ? (textoCorto
-                ? 'El texto debe tener al menos ' + cfg.MIN_TEXTO + ' caracteres'
-                : (textoLargo ? 'El texto supera el máximo de ' + cfg.MAX_TEXTO + ' caracteres' : ''))
-            : (btn.disabled && acc.campo === 'tags'
-                ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del desplegable.' : ''))
-                : ''));
-    } else {
-      btn.hidden = true;
+    if (btn) {
+      if (acc) {
+        btn.hidden = false;
+        btn.disabled = s.enviando || !listoParaEnviar(s, acc.campo);
+        btn.textContent = (acc.campo === 'todo' && !hayCambios(s))
+          ? 'Sin cambios para guardar'
+          : acc.label;
+        const textoCorto = s.form.texto.trim().length < cfg.MIN_TEXTO;
+        const textoLargo = s.form.texto.length > cfg.MAX_TEXTO;
+        const tagsFaltan = (s.form.tags || []).length < cfg.MIN_TAGS;
+        const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
+        btn.title = btn.disabled && acc.campo === 'todo'
+          ? 'Editá algún campo para habilitar el guardado'
+          : (btn.disabled && acc.campo === 'texto'
+              ? (textoCorto
+                  ? 'El texto debe tener al menos ' + cfg.MIN_TEXTO + ' caracteres'
+                  : (textoLargo ? 'El texto supera el máximo de ' + cfg.MAX_TEXTO + ' caracteres' : ''))
+              : (btn.disabled && acc.campo === 'tags'
+                  ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del desplegable.' : ''))
+                  : ''));
+      } else {
+        btn.hidden = true;
+      }
     }
 
     pintarTags(s);
@@ -859,8 +870,9 @@
     sincronizarBloquesDesdeStore(s);
     renderBloques();
 
-    if (!$('#preview').hidden) {
-      $('#preview').innerHTML = renderMd(textoVistaPrevia(s));
+    const prev = $('#preview');
+    if (prev && !prev.hidden) {
+      prev.innerHTML = renderMd(textoVistaPrevia(s));
     }
   }
 
@@ -1215,11 +1227,14 @@
 
     slot.querySelectorAll('.check.clickable').forEach((nodo) => {
       nodo.onclick = () => {
-        const campo = $('#' + nodo.dataset.ir);
+        let campo = $('#' + nodo.dataset.ir);
+        if ((!campo || campo.hidden) && nodo.dataset.ir === 'fCuerpo') {
+          campo = $('.bloque-textarea') || $('#contenedorBloques') || $('#campoTexto');
+        }
         if (!campo || campo.disabled) return;
         campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
         setTimeout(() => {
-          campo.focus();
+          if (typeof campo.focus === 'function') campo.focus();
           const cont = campo.closest('.field');
           if (cont) {
             cont.classList.add('senalado');
@@ -1458,7 +1473,8 @@
       const actual = (s.form && typeof s.form.texto === 'string') ? s.form.texto.trim() : '';
       const acumulado = actual ? (actual + '\n\n' + v) : v;
       store.setForm({ texto: acumulado });
-      $('#fCuerpo').value = acumulado;
+      const fc = $('#fCuerpo');
+      if (fc) fc.value = acumulado;
       return enviarTurno({ mensaje: v, texto: acumulado }, v);
     }
     if (s.flujo === 'ESPERANDO_METADATOS') {
@@ -1598,7 +1614,8 @@
     }
 
     bar.innerHTML = h;
-    bar.hidden = !$('#preview').hidden;
+    const prev = $('#preview');
+    bar.hidden = !!(prev && !prev.hidden);
 
     // Handlers para agregar contenido nuevo mediante el formulario directo
     const ejecutarAgregar = async () => {
@@ -2135,49 +2152,60 @@
      Eventos
      ========================================================= */
   function conectarEventos() {
-    $('#fTitulo').addEventListener('input', (e) => store.setForm({ titulo: e.target.value }));
-    $('#fCuerpo').addEventListener('input', (e) => store.setForm({ texto: e.target.value }));
-    $('#fCategoria').addEventListener('change', (e) => store.setForm({ categoria_id: parseInt(e.target.value, 10) || null }));
+    const fTit = $('#fTitulo');
+    if (fTit) fTit.addEventListener('input', (e) => store.setForm({ titulo: e.target.value }));
+    const fCue = $('#fCuerpo');
+    if (fCue) fCue.addEventListener('input', (e) => store.setForm({ texto: e.target.value }));
+    const fCat = $('#fCategoria');
+    if (fCat) fCat.addEventListener('change', (e) => store.setForm({ categoria_id: parseInt(e.target.value, 10) || null }));
 
-    $('#fTitulo').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const s = store.get();
-        if (s.flujo === 'ESPERANDO_TITULO') {
-          const tit = s.form.titulo.trim();
-          if (tit.length >= cfg.MIN_TITULO && !s.enviando) {
-            enviarTurno({ titulo: tit }, tit);
+    if (fTit) {
+      fTit.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const s = store.get();
+          if (s.flujo === 'ESPERANDO_TITULO') {
+            const tit = s.form.titulo.trim();
+            if (tit.length >= cfg.MIN_TITULO && !s.enviando) {
+              enviarTurno({ titulo: tit }, tit);
+            }
+          } else if ($('#btnPrincipal') && !$('#btnPrincipal').disabled) {
+            enviarPrincipal();
           }
-        } else if (!$('#btnPrincipal').disabled) {
-          enviarPrincipal();
         }
-      }
-    });
+      });
+    }
 
-    $('#fCuerpo').addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (!$('#btnPrincipal').disabled) enviarPrincipal();
-      }
-    });
-
-    $('#tagInput').addEventListener('keydown', (e) => {
-      const s = store.get();
-      if (e.key === 'Enter' || e.key === ',') {
-        e.preventDefault();
-        const v = e.target.value.trim().toLowerCase().replace(/\s+/g, '-');
-        if (v && s.form.tags.indexOf(v) === -1) {
-          if (s.form.tags.length >= cfg.MAX_TAGS) toast('Máximo ' + cfg.MAX_TAGS + ' etiquetas');
-          else store.setForm({ tags: s.form.tags.concat([v]) });
+    if (fCue) {
+      fCue.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          if ($('#btnPrincipal') && !$('#btnPrincipal').disabled) enviarPrincipal();
         }
-        e.target.value = '';
-      } else if (e.key === 'Backspace' && !e.target.value && s.form.tags.length) {
-        store.setForm({ tags: s.form.tags.slice(0, -1) });
-      }
-    });
-    $('#tagBox').addEventListener('click', (e) => { if (e.target === e.currentTarget && !$('#tagInput').disabled) $('#tagInput').focus(); });
+      });
+    }
 
-    $('#btnPrincipal').onclick = enviarPrincipal;
+    const tagIn = $('#tagInput');
+    if (tagIn) {
+      tagIn.addEventListener('keydown', (e) => {
+        const s = store.get();
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault();
+          const v = e.target.value.trim().toLowerCase().replace(/\s+/g, '-');
+          if (v && s.form.tags.indexOf(v) === -1) {
+            if (s.form.tags.length >= cfg.MAX_TAGS) toast('Máximo ' + cfg.MAX_TAGS + ' etiquetas');
+            else store.setForm({ tags: s.form.tags.concat([v]) });
+          }
+          e.target.value = '';
+        } else if (e.key === 'Backspace' && !e.target.value && s.form.tags.length) {
+          store.setForm({ tags: s.form.tags.slice(0, -1) });
+        }
+      });
+    }
+    const tagBx = $('#tagBox');
+    if (tagBx) tagBx.addEventListener('click', (e) => { if (e.target === e.currentTarget && tagIn && !tagIn.disabled) tagIn.focus(); });
+
+    if ($('#btnPrincipal')) $('#btnPrincipal').onclick = enviarPrincipal;
 
     const contBloques = $('#contenedorBloques');
     if (contBloques) {
@@ -2250,94 +2278,115 @@
     if ($('#btnConfirmarTexto')) {
       $('#btnConfirmarTexto').onclick = confirmarTexto;
     }
-    $('#btnEditor').onclick = () => {
-      $('#editorBloquesWrapper').hidden = false;
-      $('#fCuerpo').hidden = true;
-      $('#preview').hidden = true;
-      $('#btnEditor').classList.add('sel');
-      $('#btnPreview').classList.remove('sel');
-      estadoEditor.modo = 'edicion';
-      renderBloques();
-    };
-    $('#btnPreview').onclick = () => {
-      sincronizarTextoConStore();
-      $('#preview').innerHTML = renderMd(textoVistaPrevia(store.get()));
-      $('#editorBloquesWrapper').hidden = true;
-      $('#fCuerpo').hidden = true;
-      $('#preview').hidden = false;
-      $('#btnPreview').classList.add('sel');
-      $('#btnEditor').classList.remove('sel');
-      estadoEditor.modo = 'preview';
-      const bar = $('#editorImgBar'); if (bar) bar.hidden = true;
-      const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.innerHTML = ''; }
-    };
-
-    $('#btnSubir').onclick = () => $('#fileInput').click();
-    $('#fileInput').addEventListener('change', (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      e.target.value = '';
-      if (!/\.(txt|md)$/i.test(f.name)) {
-        toast('Por ahora solo .txt y .md: el backend todavía no extrae PDF ni Word');
-        return;
-      }
-      const lector = new FileReader();
-      lector.onload = () => {
-        const s = store.get();
-        const nuevo = (s.form.texto.trim() ? s.form.texto + '\n\n' : '') + lector.result;
-        store.setForm({ texto: nuevo });
-        $('#fCuerpo').value = nuevo;
-        if (estadoEditor.bloques.length && estadoEditor.bloques[estadoEditor.bloques.length - 1].tipo === 'texto') {
-          const ult = estadoEditor.bloques[estadoEditor.bloques.length - 1];
-          ult.contenido = (ult.contenido.trim() ? ult.contenido + '\n\n' : '') + lector.result;
-        } else {
-          estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: String(lector.result) });
-        }
+    if ($('#btnEditor')) {
+      $('#btnEditor').onclick = () => {
+        if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = false;
+        const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
+        const pr = $('#preview'); if (pr) pr.hidden = true;
+        $('#btnEditor').classList.add('sel');
+        if ($('#btnPreview')) $('#btnPreview').classList.remove('sel');
+        estadoEditor.modo = 'edicion';
         renderBloques();
-        toast('Documento volcado en el editor');
-        confirmarBloques();
       };
-      lector.readAsText(f);
-    });
+    }
+    if ($('#btnPreview')) {
+      $('#btnPreview').onclick = () => {
+        sincronizarTextoConStore();
+        let pr = $('#preview');
+        if (!pr && $('#campoTexto')) {
+          pr = el('div', 'preview');
+          pr.id = 'preview';
+          $('#campoTexto').appendChild(pr);
+        }
+        if (pr) {
+          pr.innerHTML = renderMd(textoVistaPrevia(store.get()));
+          pr.hidden = false;
+        }
+        if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
+        const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
+        $('#btnPreview').classList.add('sel');
+        if ($('#btnEditor')) $('#btnEditor').classList.remove('sel');
+        estadoEditor.modo = 'preview';
+        const bar = $('#editorImgBar'); if (bar) bar.hidden = true;
+        const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.innerHTML = ''; }
+      };
+    }
 
-    $('#btnPlantilla').onclick = aplicarPlantilla;
-    $('#btnAuditar').onclick = auditar;
+    if ($('#btnSubir')) $('#btnSubir').onclick = () => { if ($('#fileInput')) $('#fileInput').click(); };
+    if ($('#fileInput')) {
+      $('#fileInput').addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        e.target.value = '';
+        if (!/\.(txt|md)$/i.test(f.name)) {
+          toast('Por ahora solo .txt y .md: el backend todavía no extrae PDF ni Word');
+          return;
+        }
+        const lector = new FileReader();
+        lector.onload = () => {
+          const s = store.get();
+          const nuevo = (s.form.texto.trim() ? s.form.texto + '\n\n' : '') + lector.result;
+          store.setForm({ texto: nuevo });
+          const fc = $('#fCuerpo');
+          if (fc) fc.value = nuevo;
+          if (estadoEditor.bloques.length && estadoEditor.bloques[estadoEditor.bloques.length - 1].tipo === 'texto') {
+            const ult = estadoEditor.bloques[estadoEditor.bloques.length - 1];
+            ult.contenido = (ult.contenido.trim() ? ult.contenido + '\n\n' : '') + lector.result;
+          } else {
+            estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: String(lector.result) });
+          }
+          renderBloques();
+          toast('Documento volcado en el editor');
+          confirmarBloques();
+        };
+        lector.readAsText(f);
+      });
+    }
 
-    $('#btnReiniciar').onclick = () => accionar('reiniciar', 'Empezar de nuevo');
-    $('#btnEjemplo').onclick = cargarEjemplo;
+    if ($('#btnPlantilla')) $('#btnPlantilla').onclick = aplicarPlantilla;
+    if ($('#btnAuditar')) $('#btnAuditar').onclick = auditar;
 
-    $('#btnCerrar').onclick = () => { $('#overlay').hidden = true; };
-    $('#btnCopiarBorrador').onclick = copiarBorrador;
-    $('#btnOtra').onclick = () => { $('#overlay').hidden = true; accionar('reiniciar', 'Empezar de nuevo'); };
+    if ($('#btnReiniciar')) $('#btnReiniciar').onclick = () => accionar('reiniciar', 'Empezar de nuevo');
+    if ($('#btnEjemplo')) $('#btnEjemplo').onclick = cargarEjemplo;
 
-    $('#swError').addEventListener('change', (e) => {
-      cfg.mock.TASA_ERROR = e.target.checked ? 0.35 : 0;
-      toast(e.target.checked ? 'Fallas simuladas activadas' : 'Fallas simuladas desactivadas');
-    });
+    if ($('#btnCerrar')) $('#btnCerrar').onclick = () => { if ($('#overlay')) $('#overlay').hidden = true; };
+    if ($('#btnCopiarBorrador')) $('#btnCopiarBorrador').onclick = copiarBorrador;
+    if ($('#btnOtra')) $('#btnOtra').onclick = () => { if ($('#overlay')) $('#overlay').hidden = true; accionar('reiniciar', 'Empezar de nuevo'); };
 
-    $('#btnSend').onclick = enviarChatLibre;
-    $('#chatInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarChatLibre(); }
-    });
-    $('#chatInput').addEventListener('input', (e) => {
-      e.target.style.height = 'auto';
-      e.target.style.height = Math.min(110, e.target.scrollHeight) + 'px';
-      const s = store.get();
-      if (s.flujo === 'ESPERANDO_TEXTO') {
-        contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), e.target.value.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
-      }
-    });
+    if ($('#swError')) {
+      $('#swError').addEventListener('change', (e) => {
+        cfg.mock.TASA_ERROR = e.target.checked ? 0.35 : 0;
+        toast(e.target.checked ? 'Fallas simuladas activadas' : 'Fallas simuladas desactivadas');
+      });
+    }
+
+    if ($('#btnSend')) $('#btnSend').onclick = enviarChatLibre;
+    if ($('#chatInput')) {
+      $('#chatInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarChatLibre(); }
+      });
+      $('#chatInput').addEventListener('input', (e) => {
+        e.target.style.height = 'auto';
+        e.target.style.height = Math.min(110, e.target.scrollHeight) + 'px';
+        const s = store.get();
+        if (s.flujo === 'ESPERANDO_TEXTO') {
+          contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), e.target.value.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
+        }
+      });
+    }
   }
 
   function cargarEjemplo() {
     const s = store.get();
     if (s.flujo === 'ESPERANDO_TITULO') {
       const t = BACO.datos.ejemplo.titulo;
-      $('#fTitulo').value = t; store.setForm({ titulo: t });
+      if ($('#fTitulo')) $('#fTitulo').value = t;
+      store.setForm({ titulo: t });
       toast('Título de ejemplo cargado');
     } else if (s.flujo === 'ESPERANDO_TEXTO') {
       const c = BACO.datos.ejemplo.cuerpo;
-      $('#fCuerpo').value = c;
+      const fc = $('#fCuerpo');
+      if (fc) fc.value = c;
       store.setForm({ texto: c });
       estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: c }];
       renderBloques();
