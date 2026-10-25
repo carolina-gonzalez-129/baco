@@ -241,11 +241,11 @@ Endpoint unificado del orquestador determinista en servidor (`baco/server/servic
       "Contenido",
       "Plantilla y etiquetas",
       "Revisión",
-      "Aprobación"
+      "Conformidad"
     ]
   },
-  "mensaje": "Metadatos registrados. El borrador fue validado (Listo). ¿Confirmás aprobar o rechazar?",
-  "opciones": ["aprobar", "editar", "sanitizar", "rechazar", "volver", "reiniciar"],
+  "mensaje": "Metadatos registrados. El borrador fue validado (Listo).\n\nRevisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. Esto registra tu conformidad; no lo publica.",
+  "opciones": ["conforme", "editar", "sanitizar", "rechazar", "volver", "reiniciar"],
   "tags_acumulados": ["instructivo", "ventas", "facturacion"],
   "categorias_disponibles": [
     { "id": 21, "nombre": "Contabilidad" },
@@ -260,7 +260,9 @@ Endpoint unificado del orquestador determinista en servidor (`baco/server/servic
     "articulo_original_url": null,
     "titulo": "Configurar facturación electrónica en Ventas",
     "texto": "Para configurar el punto de venta...",
-    "texto_original_aprobado": null,
+    "texto_original_conforme": null,
+    "conforme": false,
+    "conforme_en": null,
     "tipo_plantilla": "instructivo",
     "categoria_id": 5,
     "tags": ["instructivo", "ventas", "facturacion"]
@@ -280,7 +282,7 @@ Endpoint unificado del orquestador determinista en servidor (`baco/server/servic
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `session_id` | `string` | Identificador de sesión activa |
-| `estado` | `EstadoFlujo` | Estado actual de la FSM (`ESPERANDO_TITULO`, `DECISION_TITULO`, `ESPERANDO_TEXTO`, `DECISION_TEXTO`, `ESPERANDO_PLANTILLA`, `ESPERANDO_METADATOS`, `REVISION_BORRADOR`, `SUBSANANDO_BORRADOR`, `APROBADO`, `RECHAZADO`) |
+| `estado` | `EstadoFlujo` | Estado actual de la FSM (`ESPERANDO_TITULO`, `DECISION_TITULO`, `ESPERANDO_TEXTO`, `DECISION_TEXTO`, `ESPERANDO_PLANTILLA`, `ESPERANDO_METADATOS`, `REVISION_BORRADOR`, `SUBSANANDO_BORRADOR`, `CONFORMIDAD_USUARIO`, `RECHAZADO`) |
 | `etapa` | `EtapaFlujo` | Progreso `actual` de `total` (1 a 5), `nombre` de la etapa actual y lista ordenada `etapas` |
 | `mensaje` | `string` | Respuesta conversacional de Baco para el turno actual |
 | `opciones` | `string[]` | Acciones o botones elegibles habilitados por el servidor en este estado |

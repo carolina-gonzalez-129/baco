@@ -2,12 +2,15 @@
 from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorRequest,
     ChatOrquestadorResponse,
+    EstadoFlujo,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.handlers import STATE_HANDLERS
 from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
+    MSG_CONFORMIDAD_REGISTRADA,
     MSG_SESION_EXPIRADA,
+    OPCIONES_CONFORMIDAD,
     OPCIONES_REINICIAR,
     msg_sesion_finalizada,
     obtener_ayuda_contextual,
@@ -43,6 +46,27 @@ async def manejar_turno(
     entrada_titulo = (req.titulo or req.mensaje or "").strip()
     if es_nueva and not entrada_titulo and not req.accion:
         return construir_respuesta(sesion, MENSAJE_BIENVENIDA, [])
+
+    if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
+        hubo_intento_edicion = bool(
+            req.texto is not None
+            or req.titulo is not None
+            or req.categoria_id is not None
+            or req.tags is not None
+            or opcion in ("editar", "sanitizar", "volver")
+        )
+        if hubo_intento_edicion:
+            sesion.estado = EstadoFlujo.REVISION_BORRADOR
+            if sesion.borrador:
+                sesion.borrador.conforme = False
+                sesion.borrador.conforme_en = None
+                sesion.borrador.conformidad_invalidada = True
+        elif opcion == "copiar_borrador":
+            return construir_respuesta(
+                sesion,
+                MSG_CONFORMIDAD_REGISTRADA,
+                OPCIONES_CONFORMIDAD,
+            )
 
     handler = STATE_HANDLERS.get(sesion.estado)
     if not handler:

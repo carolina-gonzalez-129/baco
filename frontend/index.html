@@ -45,7 +45,7 @@
         <div class="paso"><span class="pn">2</span> Contenido</div>
         <div class="paso"><span class="pn">3</span> Plantilla y etiquetas</div>
         <div class="paso"><span class="pn">4</span> Revisión</div>
-        <div class="paso"><span class="pn">5</span> Aprobación</div>
+        <div class="paso"><span class="pn">5</span> Conformidad</div>
       </div>
 
       <h4>Tags acumulados</h4>
@@ -112,7 +112,7 @@
 
             <div class="field" id="campoTexto">
               <label class="flabel" for="fCuerpo">Contenido <span class="req">*</span>
-                <span class="cont" id="contTexto">0/20</span>
+                <span class="cont" id="contTexto">0 / 6687</span>
               </label>
               <div class="edhead">
                 <button class="act" id="btnSubir">
@@ -124,8 +124,9 @@
                 <button class="act sel" id="btnEditor">Editor</button>
                 <button class="act" id="btnPreview">Vista previa</button>
               </div>
-              <textarea class="textarea" id="fCuerpo" placeholder="El cuerpo del artículo, en Markdown…"></textarea>
+              <textarea class="textarea" id="fCuerpo" placeholder="El cuerpo del artículo, en Markdown. Las imágenes, videos y documentos se cargan abajo, en Multimedia."></textarea>
               <div class="preview" id="preview" hidden></div>
+              <div class="panel-multimedia" id="panelMultimedia" hidden></div>
               <div class="editor-img-bar" id="editorImgBar" hidden></div>
             </div>
 
@@ -169,6 +170,10 @@
         <div class="thread scroll" id="thread"></div>
 
         <div class="composer">
+          <div class="composer-meta" id="chatComposerMeta" hidden>
+            <span class="cont" id="chatInputCont">0 / 6687 caracteres</span>
+            <span class="aviso-limite-texto-mini" id="chatInputAvisoMax" hidden>Supera el límite de 6687 caracteres</span>
+          </div>
           <div class="cbox">
             <textarea id="chatInput" rows="1" placeholder="Respondé acá o preguntale algo a BACO…"></textarea>
             <button class="send" id="btnSend" aria-label="Enviar">
@@ -188,25 +193,27 @@
       <div class="mi">
         <svg width="23" height="23" viewBox="0 0 16 16" fill="none"><path d="M4.2 8.3l2.6 2.6 5-5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
-      <h3>Artículo aprobado</h3>
-      <p>El borrador quedó aprobado y sanitizado, listo para publicar en la Base de Conocimiento.</p>
+      <h3>Conformidad registrada</h3>
+      <p>El borrador quedó validado y con tu conformidad registrada.</p>
     </div>
     <div class="mb"><div class="recap" id="recap"></div></div>
     <div class="mf">
       <button class="btn btn-ghost" id="btnCerrar">Cerrar</button>
-      <button class="btn btn-primary" id="btnOtra">Cargar otra</button>
+      <button class="btn btn-primary" id="btnCopiarBorrador">Copiar borrador</button>
+      <button class="btn btn-ghost" id="btnOtra">Cargar otra</button>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script src="js/config.js?v=20261023_2"></script>
-<script src="js/datos-mock.js?v=20261023_2"></script>
-<script src="js/api-mock.js?v=20261023_2"></script>
-<script src="js/api-http.js?v=20261023_2"></script>
-<script src="js/api.js?v=20261023_2"></script>
-<script src="js/estados.js?v=20261023_2"></script>
-<script src="js/app.js?v=20261023_2"></script>
+<script src="js/config.js?v=20261024_4"></script>
+<script src="js/datos-mock.js?v=20261024_4"></script>
+<script src="js/api-mock.js?v=20261024_4"></script>
+<script src="js/api-http.js?v=20261024_4"></script>
+<script src="js/api.js?v=20261024_4"></script>
+<script src="js/estados.js?v=20261024_4"></script>
+<script src="js/panel-multimedia.js?v=20261024_4"></script>
+<script src="js/app.js?v=20261024_4"></script>
 </body>
 </html>

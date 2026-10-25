@@ -36,7 +36,7 @@ API_KEY: 'el-API_KEY_SERVIDOR',
 | Endpoint | Cuándo |
 |---|---|
 | `POST /chat` | En cada paso del flujo |
-| `GET /chat/borrador` | Al llegar a `APROBADO`, para mostrar el resumen final |
+| `GET /chat/borrador` | Al llegar a `CONFORMIDAD_USUARIO`, para mostrar el resumen final |
 | `POST /chat/aplicar-plantilla` | Botón "Aplicar plantilla" del menú lateral |
 | `POST /chat/auditar-semantica` | Botón "Auditar con validador" |
 
@@ -84,7 +84,7 @@ Todo lo que devolvés se refleja en la pantalla:
 
 Ninguna de estas rompe nada: están resueltas con un plan B, pero quedarían mejor con backend.
 
-1. **Publicación.** El flujo termina en `APROBADO`. El panel muestra el resumen del borrador, pero no hay a dónde publicarlo.
+1. **Publicación.** El flujo termina en `CONFORMIDAD_USUARIO`. El panel muestra el resumen del borrador y permite copiarlo, pero no hay a dónde publicarlo.
 2. **Catálogo de categorías.** Hoy la categoría es un campo numérico. Vi tu comentario en `config_limites.py` sobre el desplegable: si exponés un endpoint con id y nombre, lo convierto en selector.
 3. **Catálogo de etiquetas.** Las sugerencias del panel salen de una lista local armada del export que nos pasó Ayelen. Con un endpoint, serían las reales.
 4. **Subida de archivos.** El botón lee `.txt` y `.md` en el navegador y los vuelca en el editor. PDF y Word necesitan extracción del lado del servidor.

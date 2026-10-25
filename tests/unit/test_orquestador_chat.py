@@ -8,7 +8,8 @@ from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
 from baco.server.services.orquestador import (
     manejar_turno,
-    obtener_borrador_aprobado,
+    obtener_borrador_conforme,
+    actualizar_borrador_texto,
 )
 from baco.server.services.orquestador.mensajes import MENSAJE_BIENVENIDA
 from baco.server.services.orquestador.sesion import SESIONES, SesionChat
@@ -100,7 +101,7 @@ def test_camino_coincidencia_titulo_enriquecer_con_datos_db_valida_y_aprueba(cli
     assert "Cargué el texto del artículo #101" in r3["mensaje"]
 
     # 4. Envía el texto con aportes/modificaciones -> avanza a REVISION_BORRADOR
-    r3b = client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO}).json()
+    r3b = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
     assert r3b["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3b["borrador"]["modo"] == "enriquecimiento"
     assert r3b["borrador"]["articulo_original_id"] == 101
@@ -109,15 +110,15 @@ def test_camino_coincidencia_titulo_enriquecer_con_datos_db_valida_y_aprueba(cli
     assert r3b["borrador"]["tags"] == ["instructivo", "ventas"]
     assert r3b["validacion"]["valido"] is True
 
-    # Mientras no esté APROBADO, no se expone el borrador externo (409 Conflict si existe pero no está aprobado)
-    assert obtener_borrador_aprobado(sid) is None
+    # Mientras no esté CONFORMIDAD_USUARIO, no se expone el borrador externo (409 Conflict si existe pero no está en conformidad)
+    assert obtener_borrador_conforme(sid) is None
     assert client.get("/chat/borrador").status_code == 409
     with TestClient(app, headers={"X-API-Key": API_KEY}) as c_inexistente:
         assert c_inexistente.get("/chat/borrador", headers={"X-Session-ID": "inexistente-123"}).status_code == 404
 
-    # 4. Revisión humana final -> aprueba y garantiza sanitización determinista
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "aprobar"}).json()
-    assert r4["estado"] == EstadoFlujo.APROBADO
+    # 4. Revisión humana final -> da conformidad y garantiza sanitización determinista
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
+    assert r4["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
 
     resp_borrador = client.get("/chat/borrador")
     assert resp_borrador.status_code == 200
@@ -155,7 +156,7 @@ def test_camino_descarta_titulo_duplicado_en_texto_y_enriquece(client, mock_busc
         "categoria_id": 3,
         "tags": ["soluciones", "afip"],
     }
-    r3 = client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO}).json()
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
     assert r3["estado"] == EstadoFlujo.DECISION_TEXTO
     assert r3["coincidencias"][0]["id"] == 305
 
@@ -182,7 +183,7 @@ def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(cli
         "link": "https://bc.finneg.com/t/402",
         "coincidencias": [(402, "Configuración de Punto de Venta", "https://bc.finneg.com/t/402")],
     }
-    client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO + " CUIT 20-30405060-7."})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO + " CUIT 20-30405060-9."})
 
     # Rechaza también la coincidencia de texto -> pide primero tipo de plantilla (Variante C1 - Parte A)
     r_plant = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
@@ -200,19 +201,12 @@ def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(cli
     assert r_val["borrador"]["modo"] == "nuevo"
     assert r_val["borrador"]["tags"] == ["instructivo", "ventas", "facturacion"]
     assert r_val["borrador"]["categoria_id"] == 4
-    assert r_val["validacion"]["valido"] is False  # Bloqueante por CUIT real
+    # Ahora es autosanitizante: ya reemplazó el CUIT automáticamente y es válido con aviso
+    assert r_val["validacion"]["valido"] is True
+    assert "[CUIT_OCULTO]" in r_val["borrador"]["texto"]
 
-    # No permite aprobar mientras haya errores bloqueantes
-    r_bloq = client.post("/chat", json={"session_id": sid, "accion": "aprobar"}).json()
-    assert r_bloq["estado"] == EstadoFlujo.REVISION_BORRADOR
-
-    # Sanitiza datos sensibles -> re-ejecuta validar_articulo y permite aprobar
-    r_san = client.post("/chat", json={"session_id": sid, "accion": "sanitizar"}).json()
-    assert r_san["validacion"]["valido"] is True
-    assert "20-12345678-9" in r_san["borrador"]["texto"]
-
-    r_ok = client.post("/chat", json={"session_id": sid, "accion": "aprobar"}).json()
-    assert r_ok["estado"] == EstadoFlujo.APROBADO
+    r_ok = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
+    assert r_ok["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
 
 
 def test_camino_sin_coincidencias_plantilla_metadatos_y_rechazo_humano(client, mock_buscador):
@@ -222,7 +216,7 @@ def test_camino_sin_coincidencias_plantilla_metadatos_y_rechazo_humano(client, m
     assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
 
     mock_buscador.evaluar_texto.return_value = None
-    r2 = client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO}).json()
+    r2 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
 
     r3 = client.post("/chat", json={"session_id": sid, "mensaje": "soluciones"}).json()
@@ -262,7 +256,7 @@ def test_validacion_cotas_texto_esperando_texto(client, mock_buscador):
     assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
 
     # Texto menor a 20 caracteres
-    r2 = client.post("/chat", json={"session_id": sid, "texto": "Texto muy corto"}).json()
+    r2 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": "Texto muy corto"}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
     assert "al menos 20 caracteres" in r2["mensaje"]
 
@@ -272,7 +266,7 @@ def test_edicion_borrador_con_longitud_invalida_no_rompe_y_muestra_bloqueante(cl
     sid = client.post("/chat", json={"mensaje": "Título Inicial Válido Para el Borrador"}).json()["session_id"]
 
     mock_buscador.evaluar_texto.return_value = None
-    client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "mensaje": "instructivo"})
     r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "ventas"]}).json()
     assert r_val["estado"] == EstadoFlujo.REVISION_BORRADOR
@@ -406,7 +400,7 @@ def test_enriquecer_articulo_existente_texto_db_exactamente_texto_max_crea_borra
 
     r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    r2b = client.post("/chat", json={"session_id": sid, "texto": texto_exacto}).json()
+    r2b = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_exacto}).json()
     assert r2b["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r2b["borrador"] is not None
     assert len(r2b["borrador"]["texto"]) == TEXTO_MAX
@@ -426,14 +420,14 @@ def test_aplicar_plantilla_con_session_id_pendiente_retorna_409(client):
 
     resp = client.post("/chat/aplicar-plantilla")
     assert resp.status_code == 409
-    assert "El borrador no está en estado APROBADO" in resp.json()["detail"]
+    assert "El borrador no está en estado CONFORMIDAD_USUARIO" in resp.json()["detail"]
 
 
-def test_aplicar_plantilla_aprobado_inyecta_prompt_y_sobreescribe_borrador(client):
-    sid = "sesion-aprobada-test"
+def test_aplicar_plantilla_conforme_inyecta_prompt_y_sobreescribe_borrador(client):
+    sid = "sesion-conforme-test"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.APROBADO,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
         titulo="Configurar Facturación Electrónica",
         texto=TEXTO_VALIDO,
         categoria_id=5,
@@ -442,6 +436,9 @@ def test_aplicar_plantilla_aprobado_inyecta_prompt_y_sobreescribe_borrador(clien
             modo="nuevo",
             titulo="Configurar Facturación Electrónica",
             texto=TEXTO_VALIDO,
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
+            texto_original_conforme=TEXTO_VALIDO,
             tipo_plantilla="instructivo",
             categoria_id=5,
             tags=["instructivo", "ventas"]
@@ -460,35 +457,52 @@ def test_aplicar_plantilla_aprobado_inyecta_prompt_y_sobreescribe_borrador(clien
     assert resp.status_code == 200
     assert resp.json()["response"] == plantilla_markdown
 
-    # Verificar que el prompt inyectado a Baco contiene la skill y los datos del borrador aprobado
+    # Verificar que el prompt inyectado a Baco contiene la skill y los datos del borrador en conformidad
     prompt_inyectado = mock_agente.call_args[0][0]
     assert "Skill solicitada: plantillas" in prompt_inyectado
     assert "Plantilla a aplicar: instructivo" in prompt_inyectado
     assert "Configurar Facturación Electrónica" in prompt_inyectado
     assert TEXTO_VALIDO in prompt_inyectado
 
-    # Verificar que se sobreescribió sesion.borrador.texto y se preservó el original
+    # Al modificarse el texto con la skill, la conformidad previa se invalida
+    assert SESIONES[sid].borrador.conforme is False
+    assert SESIONES[sid].borrador.conforme_en is None
+    assert SESIONES[sid].estado == EstadoFlujo.REVISION_BORRADOR
     assert SESIONES[sid].borrador.texto == plantilla_markdown
-    assert SESIONES[sid].borrador.texto_original_aprobado == TEXTO_VALIDO
+    assert SESIONES[sid].borrador.texto_original_conforme == TEXTO_VALIDO
 
-    # Verificar que al consultar el endpoint GET, el borrador contiene el markdown nuevo
+    # Mientras no vuelva a confirmar, el borrador en conformidad no es accesible (409)
+    resp_get_invalido = client.get("/chat/borrador", headers={"X-Session-ID": sid})
+    assert resp_get_invalido.status_code == 409
+
+    # Al volver a dar conformidad al borrador modificado
+    resp_confirmar = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "conforme"})
+    assert resp_confirmar.status_code == 200
+    assert resp_confirmar.json()["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+    assert SESIONES[sid].borrador.conforme is True
+    assert SESIONES[sid].borrador.conforme_en is not None
+
+    # Ahora sí se puede consultar el borrador vía GET
     resp_get = client.get("/chat/borrador", headers={"X-Session-ID": sid})
     assert resp_get.status_code == 200
     assert resp_get.json()["texto"] == plantilla_markdown
-    assert resp_get.json()["texto_original_aprobado"] == TEXTO_VALIDO
+    assert resp_get.json()["conforme"] is True
 
 
 def test_aplicar_plantilla_salida_insuficiente_retorna_502_y_preserva_borrador(client):
     sid = "sesion-llm-fail-test"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.APROBADO,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
         titulo="Configurar Facturación",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Configurar Facturación",
             texto=TEXTO_VALIDO,
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
+            texto_original_conforme=TEXTO_VALIDO,
             tipo_plantilla="instructivo",
         ),
     )
@@ -527,14 +541,14 @@ def test_auditar_semantica_con_session_id_pendiente_retorna_409(client):
 
     resp = client.post("/chat/auditar-semantica")
     assert resp.status_code == 409
-    assert "El borrador no está en estado APROBADO" in resp.json()["detail"]
+    assert "El borrador no está en estado CONFORMIDAD_USUARIO" in resp.json()["detail"]
 
 
-def test_auditar_semantica_aprobado_inyecta_prompt_y_no_sobreescribe_borrador(client):
+def test_auditar_semantica_conforme_inyecta_prompt_y_no_sobreescribe_borrador(client):
     sid = "sesion-validador-test"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.APROBADO,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
         titulo="Configurar Facturación Electrónica",
         texto=TEXTO_VALIDO,
         categoria_id=5,
@@ -543,6 +557,9 @@ def test_auditar_semantica_aprobado_inyecta_prompt_y_no_sobreescribe_borrador(cl
             modo="nuevo",
             titulo="Configurar Facturación Electrónica",
             texto=TEXTO_VALIDO,
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
+            texto_original_conforme=TEXTO_VALIDO,
             tipo_plantilla="instructivo",
             categoria_id=5,
             tags=["instructivo", "ventas"]
@@ -577,7 +594,7 @@ def test_exhaustividad_y_completitud_state_handlers():
     from baco.server.schemas.chat_orquestado import EstadoFlujo
     from baco.server.services.orquestador.handlers import STATE_HANDLERS
 
-    estados_terminales = {EstadoFlujo.APROBADO, EstadoFlujo.RECHAZADO}
+    estados_terminales = {EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO}
     estados_activos = set(EstadoFlujo) - estados_terminales
 
     assert set(STATE_HANDLERS.keys()) == estados_activos, (
@@ -606,6 +623,7 @@ def test_flujo_completo_con_cookies_sin_session_id_en_front(client, mock_buscado
         r2 = client.post(
             "/chat",
             json={
+                "accion": "confirmar_texto",
                 "texto": TEXTO_VALIDO,
                 "tags": ["instructivo", "ventas"],
                 "categoria_id": 5,
@@ -614,10 +632,10 @@ def test_flujo_completo_con_cookies_sin_session_id_en_front(client, mock_buscado
         assert r2.status_code == 200
         assert r2.json()["estado"] == EstadoFlujo.REVISION_BORRADOR
 
-        # 3. Aprobar borrador sin session_id
-        r3 = client.post("/chat", json={"accion": "aprobar"})
+        # 3. Dar conformidad al borrador sin session_id
+        r3 = client.post("/chat", json={"accion": "conforme"})
         assert r3.status_code == 200
-        assert r3.json()["estado"] == EstadoFlujo.APROBADO
+        assert r3.json()["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
 
         # 4. GET /chat/borrador sin session_id en path ni query
         r4 = client.get("/chat/borrador")
@@ -628,6 +646,16 @@ def test_flujo_completo_con_cookies_sin_session_id_en_front(client, mock_buscado
         r5 = client.post("/chat/aplicar-plantilla")
         assert r5.status_code == 200
         assert "Instructivo oficial" in r5.json()["response"]
+
+        # Al modificar el texto con la plantilla, la conformidad se invalida:
+        assert SESIONES[cookie_sid].borrador.conforme is False
+        assert SESIONES[cookie_sid].estado == EstadoFlujo.REVISION_BORRADOR
+
+        # El usuario vuelve a confirmar el borrador con la plantilla aplicada
+        r_reconf = client.post("/chat", json={"accion": "conforme"})
+        assert r_reconf.status_code == 200
+        assert r_reconf.json()["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+        assert SESIONES[cookie_sid].borrador.conforme is True
 
         # 6. POST /chat/auditar-semantica sin session_id en path
         r6 = client.post("/chat/auditar-semantica")
@@ -705,7 +733,7 @@ def test_enriquecer_consolida_texto_evitando_rechazo_por_texto_breve(client, moc
 
     # Enviar aporte breve (menor a TEXTO_MIN = 20 o 100 caracteres si fuera estricto)
     aporte_breve = "Válido para versión 2026."
-    r3 = client.post("/chat", json={"session_id": sid, "texto": aporte_breve}).json()
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": aporte_breve}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert TEXTO_VALIDO in r3["borrador"]["texto"]
     assert aporte_breve in r3["borrador"]["texto"]
@@ -718,11 +746,11 @@ def test_sanitizacion_aviso_privacidad_un_solo_turno(client, mock_buscador):
     r1 = client.post("/chat", json={"mensaje": "Procedimiento de Cobranzas Especiales"}).json()
     sid = r1["session_id"]
 
-    texto_con_cuit = TEXTO_VALIDO + " Contacto con CUIT 20-30405060-7."
-    r2 = client.post("/chat", json={"session_id": sid, "texto": texto_con_cuit}).json()
+    texto_con_cuit = TEXTO_VALIDO + " Contacto con CUIT 20-30405060-9."
+    r2 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_con_cuit}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert r2["aviso_privacidad"] is not None
-    assert "Aviso de privacidad" in r2["aviso_privacidad"]
+    assert "identificación personal" in r2["aviso_privacidad"].lower() or "privacidad" in r2["aviso_privacidad"].lower()
 
     # En el siguiente turno, el aviso de privacidad no debe persistir (aviso de un solo turno)
     r3 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
@@ -749,12 +777,12 @@ def test_enriquecer_con_cuit_emite_aviso_y_consolida(client, mock_buscador):
 
     client.post("/chat", json={"session_id": sid, "accion": "enriquecer"})
 
-    aporte_sensible = "Actualización: soporte para contribuyente CUIT 20-30405060-7."
-    r3 = client.post("/chat", json={"session_id": sid, "texto": aporte_sensible}).json()
+    aporte_sensible = "Actualización: soporte para contribuyente CUIT 20-30405060-9."
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": aporte_sensible}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3["aviso_privacidad"] is not None
-    assert "20-12345678-9" in r3["borrador"]["texto"]
-    assert "20-30405060-7" not in r3["borrador"]["texto"]
+    assert "[CUIT_OCULTO]" in r3["borrador"]["texto"]
+    assert "20-30405060-9" not in r3["borrador"]["texto"]
     assert TEXTO_VALIDO in r3["borrador"]["texto"]
 
 
@@ -765,7 +793,7 @@ def test_metadatos_tags_en_texto_y_categoria_default(client, mock_buscador):
     r1 = client.post("/chat", json={"mensaje": "Flujo de Pruebas de Metadatos y Categorías"}).json()
     sid = r1["session_id"]
 
-    client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     # Selecciona plantilla mediante 'texto'
     r_plant = client.post("/chat", json={"session_id": sid, "texto": "instructivo"}).json()
     assert r_plant["estado"] == EstadoFlujo.ESPERANDO_METADATOS
@@ -787,7 +815,7 @@ def test_ajuste_editorial_confirmar_aprueba(client, mock_buscador):
     r1 = client.post("/chat", json={"mensaje": "Cómo configurar el punto de venta AFIP"}).json()
     sid = r1["session_id"]
 
-    client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
     r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "afip"]}).json()
 
@@ -797,7 +825,7 @@ def test_ajuste_editorial_confirmar_aprueba(client, mock_buscador):
 
     # Redactor confirma explícitamente mantener la observación editorial
     r_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar"}).json()
-    assert r_conf["estado"] == EstadoFlujo.APROBADO
+    assert r_conf["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
     assert "observaciones de estilo confirmadas" in r_conf["mensaje"]
 
 
@@ -809,7 +837,7 @@ def test_ajuste_editorial_corregir_limpia_y_aprueba(client, mock_buscador):
     r1 = client.post("/chat", json={"mensaje": "Cómo configurar el punto de venta AFIP"}).json()
     sid = r1["session_id"]
 
-    client.post("/chat", json={"session_id": sid, "texto": TEXTO_VALIDO})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
     r_val = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "afip"]}).json()
     assert r_val["validacion"]["status"] == "Listo con ajustes sugeridos"
@@ -819,8 +847,8 @@ def test_ajuste_editorial_corregir_limpia_y_aprueba(client, mock_buscador):
     assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_edit["validacion"]["status"] == "Listo"
 
-    r_apr = client.post("/chat", json={"session_id": sid, "accion": "aprobar"}).json()
-    assert r_apr["estado"] == EstadoFlujo.APROBADO
+    r_apr = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
+    assert r_apr["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
 
 
 def test_contrato_ampliado_etapa_tags_acumulados_y_categorias_desde_db(client, mock_buscador):
@@ -863,7 +891,7 @@ def test_contrato_ampliado_etapa_tags_acumulados_y_categorias_desde_db(client, m
     assert "volver" in r1["opciones"]
 
     # Etapa 3 de 5: Envía texto -> ESPERANDO_PLANTILLA
-    r2 = client.post("/chat", json={"texto": TEXTO_VALIDO}).json()
+    r2 = client.post("/chat", json={"accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert r2["etapa"]["actual"] == 3
     assert r2["etapa"]["nombre"] == "Plantilla y etiquetas"
@@ -885,14 +913,14 @@ def test_contrato_ampliado_etapa_tags_acumulados_y_categorias_desde_db(client, m
     assert r4["tags_acumulados"] == ["instructivo", "ventas", "afip"]
     assert r4["borrador"]["categoria_id"] == 23
     assert r4["borrador"]["tags"] == ["instructivo", "ventas", "afip"]
-    assert "aprobar" in r4["opciones"]
+    assert "conforme" in r4["opciones"]
 
-    # Etapa 5 de 5: Aprueba -> APROBADO con resumen final
-    r5 = client.post("/chat", json={"accion": "aprobar"}).json()
-    assert r5["estado"] == EstadoFlujo.APROBADO
+    # Etapa 5 de 5: Da conformidad -> CONFORMIDAD_USUARIO con resumen final
+    r5 = client.post("/chat", json={"accion": "conforme"}).json()
+    assert r5["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
     assert r5["etapa"]["actual"] == 5
     assert r5["etapa"]["total"] == 5
-    assert r5["etapa"]["nombre"] == "Aprobación"
+    assert r5["etapa"]["nombre"] == "Conformidad"
     assert r5["tags_acumulados"] == ["instructivo", "ventas", "afip"]
     assert r5["borrador"]["categoria_id"] == 23
 
@@ -906,7 +934,7 @@ def test_seleccion_categoria_por_nombre_en_metadatos(client, mock_buscador):
     ]
 
     client.post("/chat", json={"titulo": "Configurar antigüedad acumulada en legajos"})
-    client.post("/chat", json={"texto": TEXTO_VALIDO})
+    client.post("/chat", json={"accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"accion": "instructivo"})
 
     # Usuario envía tag temático y el nombre de la categoría disponible
@@ -1031,7 +1059,7 @@ def test_actualizar_o_enriquecer_termina_busqueda_duplicados_sin_evaluar_texto(c
     assert r2["borrador"]["modo"] == "enriquecimiento"
 
     # 3. Envía texto con cambios
-    r3 = client.post("/chat", json={"session_id": r1["session_id"], "texto": TEXTO_VALIDO + " Novedades del mes."}).json()
+    r3 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "confirmar_texto", "texto": TEXTO_VALIDO + " Novedades del mes."}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3["borrador"]["titulo"] == "Novedades Impositivas Junio 2026"
 
@@ -1118,21 +1146,339 @@ def test_evaluar_texto_excluye_articulo_previamente_descartado(client, mock_busc
     assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert r2["borrador"]["modo"] == "nuevo"
     assert r2["borrador"]["titulo"] == "Facturación Electrónica AFIP"
+# =========================================================================
+# Tests PASO 2: Registro e invalidación de conformidad
+# =========================================================================
+
+def test_registro_conformidad_al_confirmar(client):
+    """Verifica que al confirmar se registre conforme=True y conforme_en=ISO timestamp."""
+    sid = "sesion-test-reg-conf"
+    SESIONES[sid] = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.REVISION_BORRADOR,
+        titulo="Título de prueba",
+        texto=TEXTO_VALIDO,
+        categoria_id=1,
+        tags=["instructivo", "ventas"],
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Título de prueba",
+            texto=TEXTO_VALIDO,
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            tags=["instructivo", "ventas"],
+            conforme=False,
+            conforme_en=None,
+        ),
+    )
+
+    resp = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "conforme"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+
+    ses = SESIONES[sid]
+    assert ses.borrador.conforme is True
+    assert ses.borrador.conforme_en is not None
+    # Verificar formato ISO
+    assert "T" in ses.borrador.conforme_en
+    assert ses.borrador.texto_original_conforme == TEXTO_VALIDO
 
 
+def test_invalida_conformidad_al_modificar_texto(client):
+    """Verifica que si el texto cambia (por edición o skill), la conformidad se invalide y vuelva a REVISION_BORRADOR."""
+    sid = "sesion-test-inv-conf"
+    SESIONES[sid] = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        titulo="Título de prueba",
+        texto=TEXTO_VALIDO,
+        categoria_id=1,
+        tags=["instructivo", "ventas"],
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Título de prueba",
+            texto=TEXTO_VALIDO,
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            tags=["instructivo", "ventas"],
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
+            texto_original_conforme=TEXTO_VALIDO,
+        ),
+    )
+
+    nuevo_texto = (
+        "Texto modificado con suficiente cantidad de caracteres para superar el límite mínimo "
+        "y verificar que al editar se invalida la conformidad previamente registrada por el usuario."
+    )
+
+    # 1. Modificación mediante acción de edición en el chat
+    resp = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={"accion": "editar", "texto": nuevo_texto},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["estado"] == EstadoFlujo.REVISION_BORRADOR
+
+    ses = SESIONES[sid]
+    assert ses.borrador.conforme is False
+    assert ses.borrador.conforme_en is None
+    assert ses.estado == EstadoFlujo.REVISION_BORRADOR
+
+    # 2. Modificación programática / vía skill (actualizar_borrador_texto)
+    # Primero volvemos a dar conformidad
+    client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "conforme"})
+    assert ses.borrador.conforme is True
+    assert ses.estado == EstadoFlujo.CONFORMIDAD_USUARIO
+
+    # Ahora una skill actualiza el texto
+    actualizar_borrador_texto(sid, nuevo_texto + "\n\nActualizado por skill.")
+    assert ses.borrador.conforme is False
+    assert ses.borrador.conforme_en is None
+    assert ses.estado == EstadoFlujo.REVISION_BORRADOR
 
 
+def test_no_puede_quedar_en_conformidad_con_texto_distinto_al_confirmado(client):
+    """Verifica que no se pueda quedar en CONFORMIDAD_USUARIO con texto distinto al que se confirmó."""
+    sid = "sesion-test-mismatch-conf"
+    SESIONES[sid] = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        titulo="Título de prueba",
+        texto=TEXTO_VALIDO,
+        categoria_id=1,
+        tags=["instructivo"],
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Título de prueba",
+            texto="Texto alterado fuera de los flujos normales que no coincide con el original",
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            tags=["instructivo"],
+            conforme=True,
+            conforme_en="2026-10-24T12:00:00Z",
+            texto_original_conforme=TEXTO_VALIDO,
+        ),
+    )
+
+    # Al intentar resolver o consultar el borrador, se detecta la discrepancia e invalida la conformidad
+    resp = client.get("/chat/borrador", headers={"X-Session-ID": sid})
+    assert resp.status_code == 409
+    assert "no está en estado CONFORMIDAD_USUARIO" in resp.json()["detail"]
+
+    ses = SESIONES[sid]
+    assert ses.borrador.conforme is False
+    assert ses.borrador.conforme_en is None
+    assert ses.estado == EstadoFlujo.REVISION_BORRADOR
 
 
+# =========================================================================
+# Tests PASO 3: Mensajes del flujo de conformidad
+# =========================================================================
+
+def test_mensajes_flujo_conformidad(client):
+    """Verifica los 3 mensajes requeridos: antes del botón, al confirmar y al invalidar por un cambio."""
+    sid = "sesion-test-mensajes-conf"
+    SESIONES[sid] = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.ESPERANDO_METADATOS,
+        titulo="Configuración de prueba",
+        texto=TEXTO_VALIDO,
+        categoria_id=1,
+        tags=["instructivo"],
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Configuración de prueba",
+            texto=TEXTO_VALIDO,
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            tags=["instructivo"],
+        ),
+    )
+
+    # 1. Antes del botón (al pasar a REVISION_BORRADOR con metadatos válidos)
+    r_meta = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={"tags": ["instructivo", "ventas"]},
+    ).json()
+    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert (
+        "Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. "
+        "Esto registra tu conformidad; no lo publica."
+    ) in r_meta["mensaje"]
+
+    # 2. Al confirmar (tocá Estoy conforme / accion: conforme)
+    r_conf = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={"accion": "conforme"},
+    ).json()
+    assert r_conf["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+    assert (
+        "✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedó listo. "
+        "Todavía no está publicado: la aprobación y publicación final las hace un administrador. "
+        "Podés copiar el borrador y cargarlo en la Base de Conocimiento."
+    ) in r_conf["mensaje"]
+    assert r_conf["opciones"] == ["copiar_borrador", "reiniciar"]
+
+    # Atajo de acción copiar_borrador
+    r_copiar = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={"accion": "copiar_borrador"},
+    ).json()
+    assert r_copiar["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+    assert r_copiar["opciones"] == ["copiar_borrador", "reiniciar"]
+
+    # 3. Si se invalida la conformidad por un cambio
+    texto_editado = TEXTO_VALIDO + "\n\nSe agrega una aclaración adicional que modifica el texto confirmado."
+    r_edit = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={"accion": "editar", "texto": texto_editado},
+    ).json()
+    assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad." in r_edit["mensaje"]
+    # Y vuelve a incluir el mensaje antes del botón para invitar a confirmar de nuevo
+    assert (
+        "Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. "
+        "Esto registra tu conformidad; no lo publica."
+    ) in r_edit["mensaje"]
 
 
+# =========================================================================
+# Tests PASO NUEVO: Evento confirmar_texto en ESPERANDO_TEXTO
+# =========================================================================
+
+def test_esperando_texto_acumula_sin_confirmar_y_solo_busca_al_confirmar_texto(client, mock_buscador):
+    """Mientras no se envía accion='confirmar_texto', el texto vive en texto_en_edicion sin disparar búsqueda."""
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    r1 = client.post("/chat", json={"mensaje": "Configurar percepción de IIBB en Compras"}).json()
+    sid = r1["session_id"]
+    assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+
+    # Envío parcial 1 sin confirmar_texto -> no llama a evaluar_texto ni avanza de estado
+    r_parcial1 = client.post("/chat", json={"mensaje": "Paso 1: Ingresar al maestro de impuestos."}).json()
+    assert r_parcial1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert "confirmar_texto" in r_parcial1["opciones"]
+    mock_buscador.evaluar_texto.assert_not_called()
+    assert "Paso 1" in SESIONES[sid].texto_en_edicion
+
+    # Envío parcial 2 sin confirmar_texto -> acumula en texto_en_edicion sin llamar a evaluar_texto
+    r_parcial2 = client.post(
+        "/chat",
+        json={"mensaje": "Paso 2: Configurar la alícuota correspondiente a la jurisdicción provincial."},
+    ).json()
+    assert r_parcial2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert "confirmar_texto" in r_parcial2["opciones"]
+    mock_buscador.evaluar_texto.assert_not_called()
+    assert "Paso 1" in SESIONES[sid].texto_en_edicion
+    assert "Paso 2" in SESIONES[sid].texto_en_edicion
+
+    # Recién al hacer clic en Confirmar (accion='confirmar_texto') se dispara evaluar_texto y avanza
+    r_confirm = client.post("/chat", json={"accion": "confirmar_texto"}).json()
+    mock_buscador.evaluar_texto.assert_called_once()
+    assert r_confirm["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert SESIONES[sid].texto_en_edicion == ""
 
 
+def test_confirmar_texto_vacio_devuelve_mensaje_amable_y_no_avanza(client, mock_buscador):
+    """Confirmar con texto vacío devuelve un mensaje amable y mantiene el estado ESPERANDO_TEXTO."""
+    mock_buscador.evaluar_titulo.return_value = None
+
+    r1 = client.post("/chat", json={"mensaje": "Configurar retenciones de Ganancias en Pagos"}).json()
+    sid = r1["session_id"]
+    assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+
+    r_vacio = client.post("/chat", json={"accion": "confirmar_texto", "texto": "   "}).json()
+    assert r_vacio["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert len(r_vacio["mensaje"]) > 15
+    mock_buscador.evaluar_texto.assert_not_called()
 
 
+def test_metadatos_heredados_aviso_y_aceptar(client, mock_buscador):
+    """Al enriquecer un artículo, se avisa de los metadatos heredados y se permite Aceptar."""
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia",
+        "link": "https://bc.finneg.com/t/501",
+        "coincidencias": [(501, "Guía de Liquidación de Sueldos", "https://bc.finneg.com/t/501")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 501,
+        "titulo": "Guía de Liquidación de Sueldos",
+        "url": "https://bc.finneg.com/t/501",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 39,
+        "tags": ["instructivo", "hcm"],
+    }
+    r1 = client.post("/chat", json={"mensaje": "Liquidación de Sueldos y Jornales"}).json()
+    sid = r1["session_id"]
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+
+    # Acepta enriquecer -> pasa a ESPERANDO_TEXTO
+    client.post("/chat", json={"session_id": sid, "accion": "enriquecer"})
+
+    # Confirma texto -> REVISION_BORRADOR con aviso de metadatos heredados
+    r_rev = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
+    assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_rev["aviso_metadatos_heredados"] is not None
+    assert "HCM" in r_rev["aviso_metadatos_heredados"] or "39" in r_rev["aviso_metadatos_heredados"]
+    assert "instructivo" in r_rev["aviso_metadatos_heredados"]
+    assert "aceptar" in r_rev["opciones"]
+    assert "rechazar" in r_rev["opciones"]
+
+    # Usuario pulsa 'aceptar' -> confirma metadatos heredados
+    r_acepta = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
+    assert r_acepta["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_acepta["borrador"]["categoria_id"] == 39
+    assert r_acepta["borrador"]["tags"] == ["instructivo", "hcm"]
+    assert r_acepta["borrador"]["metadatos_heredados_revisados"] is True
+    assert r_acepta["validacion"]["valido"] is True
 
 
+def test_metadatos_heredados_rechazar_bloquea_y_permite_carga_manual(client, mock_buscador):
+    """Al rechazar los metadatos heredados, pasan a la validación como no cargados (bloqueantes) y se pueden cargar a mano."""
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia",
+        "link": "https://bc.finneg.com/t/601",
+        "coincidencias": [(601, "Módulo de Gestión de Inventarios", "https://bc.finneg.com/t/601")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 601,
+        "titulo": "Módulo de Gestión de Inventarios",
+        "url": "https://bc.finneg.com/t/601",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 19,
+        "tags": ["instructivo", "inventarios"],
+    }
+    r1 = client.post("/chat", json={"mensaje": "Gestión de Inventarios y Depósitos"}).json()
+    sid = r1["session_id"]
 
+    client.post("/chat", json={"session_id": sid, "accion": "enriquecer"})
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
+
+    # Rechaza metadatos heredados -> borrador pasa a validación como si no hubiesen sido cargados
+    r_rech = client.post("/chat", json={"session_id": sid, "accion": "rechazar"}).json()
+    assert r_rech["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_rech["borrador"]["categoria_id"] is None
+    assert r_rech["borrador"]["tags"] == []
+    assert r_rech["validacion"]["valido"] is False
+    findings_campos = [f["field"] for f in r_rech["validacion"]["findings"]]
+    assert "categoria_id" in findings_campos
+    assert "tags" in findings_campos
+
+    # Ahora carga manualmente la categoría elegida del catálogo y las etiquetas
+    r_manual = client.post("/chat", json={"session_id": sid, "categoria_id": 24, "tags": ["instructivo", "compras"]}).json()
+    assert r_manual["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_manual["borrador"]["categoria_id"] == 24
+    assert r_manual["borrador"]["tags"] == ["instructivo", "compras"]
+    assert r_manual["validacion"]["valido"] is True
 
 
 

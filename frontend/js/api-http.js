@@ -4,7 +4,7 @@
    Endpoints (baco/server/app/api.py):
 
      POST /chat                      turno del orquestador
-     GET  /chat/borrador             borrador aprobado y sanitizado
+     GET  /chat/borrador             borrador en conformidad y sanitizado
      POST /chat/aplicar-plantilla    skill 'plantillas'
      POST /chat/auditar-semantica    skill 'validador'
 
@@ -50,7 +50,7 @@ BACO.apiHttp = (function () {
     try {
       res = await fetch(url(path), init);
     } catch (e) {
-      const err = new Error('No se pudo contactar al backend. Revisá que esté levantado, que BASE_URL sea correcta y que el panel corra en el puerto 5173.');
+      const err = new Error('No pude procesar tu consulta');
       err.codigo = 'SIN_CONEXION';
       throw err;
     }
@@ -112,9 +112,12 @@ BACO.apiHttp = (function () {
       return r;
     },
 
-    /* Borrador aprobado y sanitizado de la sesión activa */
-    borradorAprobado() {
+    /* Borrador en conformidad y sanitizado de la sesión activa */
+    borradorConforme() {
       return pedir('GET', '/chat/borrador');
+    },
+    borradorAprobado() {
+      return this.borradorConforme();
     },
 
     /* Skill 'plantillas': reestructura el borrador en su formato oficial.
@@ -126,6 +129,71 @@ BACO.apiHttp = (function () {
     /* Skill 'validador': auditoría semántica y de estilo */
     auditarSemantica() {
       return pedir('POST', '/chat/auditar-semantica', {});
+    },
+
+    /* Contenido adicional para flujo enriquecer / actualizar */
+    agregarContenidoAdicional(contenido, tipo = 'texto') {
+      return pedir('POST', '/chat/contenido-adicional', { contenido, tipo });
+    },
+    eliminarContenidoAdicional(itemId) {
+      return pedir('DELETE', '/chat/contenido-adicional/' + encodeURIComponent(itemId));
+    },
+    modificarContenidoAdicional(itemId, contenido, tipo = 'texto') {
+      return pedir('PUT', '/chat/contenido-adicional/' + encodeURIComponent(itemId), { contenido, tipo });
+    },
+    reordenarContenidoAdicional(ordenIds) {
+      return pedir('PUT', '/chat/contenido-adicional/reordenar', { orden_ids: ordenIds });
+    },
+    obtenerContenidoAdicional() {
+      return pedir('GET', '/chat/contenido-adicional');
+    },
+
+    /* Gestión atómica de recursos multimedia (independiente de flujos) */
+    obtenerRecursos() {
+      return pedir('GET', '/chat/recursos');
+    },
+    eliminarRecurso(recursoId) {
+      return pedir('DELETE', '/chat/recursos/' + encodeURIComponent(recursoId));
+    },
+    reordenarMultimedia(fromIndexOrVector, toIndex) {
+      if (typeof fromIndexOrVector === 'number' && typeof toIndex === 'number') {
+        return pedir('PUT', '/chat/recursos/reordenar', { from_index: fromIndexOrVector, to_index: toIndex });
+      }
+      if (Array.isArray(fromIndexOrVector)) {
+        if (fromIndexOrVector.length > 0 && typeof fromIndexOrVector[0] === 'number') {
+          return pedir('PUT', '/chat/recursos/reordenar', { orden_indices: fromIndexOrVector });
+        }
+        return pedir('PUT', '/chat/recursos/reordenar', { orden_ids: fromIndexOrVector });
+      }
+      return pedir('PUT', '/chat/recursos/reordenar', fromIndexOrVector || {});
+    },
+    agregarRecursoMultimedia(recurso) {
+      return pedir('POST', '/chat/recursos/agregar', recurso);
+    },
+    async subirRecursoMultimedia(file, posicion) {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (typeof posicion === 'number') {
+        fd.append('posicion', String(posicion));
+      }
+      const headers = {};
+      if (BACO.config.API_KEY) headers['X-API-Key'] = BACO.config.API_KEY;
+      if (sessionId) headers['X-Session-ID'] = sessionId;
+      const res = await fetch(url('/chat/recursos'), {
+        method: 'POST',
+        headers: headers,
+        credentials: 'include',
+        body: fd
+      });
+      if (!res.ok) {
+        let detalle = 'Error al subir recurso (' + res.status + ')';
+        try {
+          const err = await res.json();
+          if (err && err.detail) detalle = err.detail;
+        } catch (_) {}
+        throw new Error(detalle);
+      }
+      return await res.json();
     },
 
     /* Para que el panel pueda mostrar / limpiar la sesión */
