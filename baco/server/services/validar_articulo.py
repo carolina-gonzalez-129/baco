@@ -2,7 +2,6 @@ import re
 from typing import Any
 from baco.server.schemas.articulo import ArticuloSchema
 from baco.server.config_limites import (
-    TEXTO_MAX,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,

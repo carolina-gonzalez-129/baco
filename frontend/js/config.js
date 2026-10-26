@@ -31,7 +31,8 @@ BACO.config = {
   MIN_TITULO: 15,
   MAX_TITULO: 255,
   MIN_TEXTO: 20,
-  MAX_TEXTO: 6687,     // percentil 95 del largo de los artículos
+  MAX_TEXTO: 6687,                  // Límite máximo para uso de skills / agente
+  MAX_TEXTO_PERCENTIL_99: 16777,    // Cota máxima de admisión (percentil 99)
   MIN_TAGS: 2,
   MAX_TAGS: 5,         // límite habitual de Discourse
 

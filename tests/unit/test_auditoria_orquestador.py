@@ -276,7 +276,7 @@ def test_caso_7_reordenar_eliminar_y_enriquecer_decision_texto(client, mock_busc
 
 def test_caso_8_solo_recursos_sin_texto_y_cotas_sin_marcadores(client):
     """Decisión 8 (Caso 8):
-    - Validar texto efectivo descontando marcadores y medir las cotas (20 a 6687) sobre el texto sin marcadores.
+    - Validar texto efectivo descontando marcadores y medir las cotas (TEXTO_MIN a TEXTO_MAX / TEXTO_MAX_PERCENTIL_99) sobre el texto sin marcadores.
     """
     # 1. Borrador con solo marcadores y sin texto efectivo es rechazado en _obtener_texto_limpio_estricto
     borrador_solo_rec = BorradorSesion(
@@ -315,7 +315,7 @@ def test_caso_8_solo_recursos_sin_texto_y_cotas_sin_marcadores(client):
     )
     assert resp_bloques_vacio.status_code == 400
 
-    # 4. Un texto con exactamente TEXTO_MAX (6687) caracteres efectivos + marcadores [[recurso:rec_N]] NO excede TEXTO_MAX
+    # 4. Un texto con TEXTO_MAX (umbral de skills) caracteres efectivos + marcadores [[recurso:rec_N]] es admitido
     prosa_exacta = "A" * TEXTO_MAX
     texto_con_img = f"{prosa_exacta}\n\n![img](https://bc.finneg.com/uploads/1.png)"
     r_max = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_con_img}).json()

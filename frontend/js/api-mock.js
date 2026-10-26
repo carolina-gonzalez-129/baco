@@ -148,9 +148,9 @@ BACO.apiMock = (function () {
         description: 'El texto debe tener al menos ' + L.MIN_TEXTO + ' caracteres (actual: ' + texto.length + ').',
         action: 'Ampliar el contenido del artículo.' });
     }
-    if (texto.length > L.MAX_TEXTO) {
+    if (texto.length > L.MAX_TEXTO_PERCENTIL_99) {
       findings.push({ severity: 'Bloqueante', field: 'texto',
-        description: 'El texto supera los ' + L.MAX_TEXTO + ' caracteres (actual: ' + texto.length + ').',
+        description: 'El texto supera los ' + L.MAX_TEXTO_PERCENTIL_99 + ' caracteres (actual: ' + texto.length + ').',
         action: 'Dividir el artículo o resumirlo.' });
     }
     if (/\[Indicar[^\]]*\]/i.test(texto)) {
@@ -548,10 +548,10 @@ BACO.apiMock = (function () {
               sesion.borrador.texto_limpio = sesion.texto_en_edicion;
               sesion.borrador.texto = sesion.texto_en_edicion;
             }
-            if (sesion.texto_en_edicion.length > L.MAX_TEXTO) {
-              return resp('El artículo supera los ' + L.MAX_TEXTO + ' caracteres. Dividilo o resumilo.', opsTexto, avisoFrag);
+            if (sesion.texto_en_edicion.length > L.MAX_TEXTO_PERCENTIL_99) {
+              return resp('El artículo supera los ' + L.MAX_TEXTO_PERCENTIL_99 + ' caracteres. Dividilo o resumilo.', opsTexto, avisoFrag);
             }
-            return resp('Guardé tu texto en edición (' + sesion.texto_en_edicion.length + ' / ' + L.MAX_TEXTO + ' caracteres). Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá "Confirmar texto".', opsTexto, avisoFrag);
+            return resp('Guardé tu texto en edición (' + sesion.texto_en_edicion.length + ' / ' + L.MAX_TEXTO_PERCENTIL_99 + ' caracteres). Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá "Confirmar texto".', opsTexto, avisoFrag);
           }
 
           const textoIn = String(req.texto != null ? req.texto : (sesion.texto_en_edicion || req.mensaje || '')).trim();
@@ -559,8 +559,8 @@ BACO.apiMock = (function () {
           if (textoIn.length < L.MIN_TEXTO) {
             return resp('El contenido es muy corto: necesito al menos ' + L.MIN_TEXTO + ' caracteres.', ['volver']);
           }
-          if (textoIn.length > L.MAX_TEXTO) {
-            return resp('El artículo supera los ' + L.MAX_TEXTO + ' caracteres. Dividilo o resumilo.', ['descartar', 'reiniciar']);
+          if (textoIn.length > L.MAX_TEXTO_PERCENTIL_99) {
+            return resp('El artículo supera los ' + L.MAX_TEXTO_PERCENTIL_99 + ' caracteres. Dividilo o resumilo.', ['descartar', 'reiniciar']);
           }
           sesion.texto_en_edicion = '';
 

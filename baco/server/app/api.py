@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 from baco.server.config_limites import (
     PERMITIR_SUBIDA_RECURSOS,
     RECURSO_MAX_BYTES,
-    TEXTO_MAX,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
 )

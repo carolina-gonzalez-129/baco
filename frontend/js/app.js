@@ -854,7 +854,7 @@
 
     /* Contadores */
     if ($('#contTitulo')) contador($('#contTitulo'), s.form.titulo.length, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
-    if ($('#contTexto')) contadorTexto($('#contTexto'), $('#avisoMaxTexto'), s.form.texto.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
+    if ($('#contTexto')) contadorTexto($('#contTexto'), $('#avisoMaxTexto'), s.form.texto.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
     if ($('#contTags')) contador($('#contTags'),   s.form.tags.length,   cfg.MIN_TAGS,   'etiquetas', cfg.MAX_TAGS);
 
     const enEsperandoTexto = s.flujo === 'ESPERANDO_TEXTO';
@@ -878,7 +878,7 @@
           ? 'Sin cambios para guardar'
           : acc.label;
         const textoCorto = s.form.texto.trim().length < cfg.MIN_TEXTO;
-        const textoLargo = s.form.texto.length > cfg.MAX_TEXTO;
+        const textoLargo = s.form.texto.length > cfg.MAX_TEXTO_PERCENTIL_99;
         const tagsFaltan = (s.form.tags || []).length < cfg.MIN_TAGS;
         const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
         btn.title = btn.disabled && acc.campo === 'todo'
@@ -886,7 +886,7 @@
           : (btn.disabled && acc.campo === 'texto'
               ? (textoCorto
                   ? 'El texto debe tener al menos ' + cfg.MIN_TEXTO + ' caracteres'
-                  : (textoLargo ? 'El texto supera el máximo de ' + cfg.MAX_TEXTO + ' caracteres' : ''))
+                  : (textoLargo ? 'El texto supera el máximo de ' + cfg.MAX_TEXTO_PERCENTIL_99 + ' caracteres' : ''))
               : (btn.disabled && acc.campo === 'tags'
                   ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del desplegable.' : ''))
                   : ''));
@@ -1186,9 +1186,9 @@
 
   function listoParaEnviar(s, campo) {
     if (campo === 'titulo') return s.form.titulo.trim().length >= cfg.MIN_TITULO;
-    if (campo === 'texto')  return s.form.texto.trim().length >= cfg.MIN_TEXTO && s.form.texto.length <= cfg.MAX_TEXTO;
+    if (campo === 'texto')  return s.form.texto.trim().length >= cfg.MIN_TEXTO && s.form.texto.length <= cfg.MAX_TEXTO_PERCENTIL_99;
     if (campo === 'tags')   return s.form.tags.length >= cfg.MIN_TAGS && Number(s.form.categoria_id) > 1;
-    if (campo === 'todo') return hayCambios(s) && s.form.texto.length <= cfg.MAX_TEXTO;
+    if (campo === 'todo') return hayCambios(s) && s.form.texto.length <= cfg.MAX_TEXTO_PERCENTIL_99;
     return true;
   }
 
@@ -1406,13 +1406,13 @@
     }
     const texto = (s.form && typeof s.form.texto === 'string' ? s.form.texto : (fc ? fc.value : '')).trim();
     if (texto) {
-      if (texto.length > cfg.MAX_TEXTO) return;
+      if (texto.length > cfg.MAX_TEXTO_PERCENTIL_99) return;
       return enviarTurno({ accion: 'confirmar_texto', texto: texto }, 'Confirmar texto (' + texto.length + ' caracteres)');
     }
     const chatIn = $('#chatInput');
     const pendiente = chatIn ? chatIn.value.trim() : '';
     if (pendiente) {
-      if (pendiente.length > cfg.MAX_TEXTO) return;
+      if (pendiente.length > cfg.MAX_TEXTO_PERCENTIL_99) return;
       chatIn.value = '';
       chatIn.style.height = 'auto';
       return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + pendiente.length + ' caracteres)');
@@ -2549,7 +2549,7 @@
         e.target.style.height = Math.min(110, e.target.scrollHeight) + 'px';
         const s = store.get();
         if (s.flujo === 'ESPERANDO_TEXTO') {
-          contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), e.target.value.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO);
+          contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), e.target.value.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
         }
       });
     }
