@@ -811,6 +811,11 @@ BACO.apiMock = (function () {
     aplicarPlantilla() {
       return responder(() => {
         if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        if (sesion.borrador.skills_habilitadas === false) {
+          const e = err('VALIDACION', sesion.borrador.skills_motivo || 'Las skills de asistencia del agente están deshabilitadas para este borrador.');
+          e.http = 422;
+          throw e;
+        }
         const tipo = sesion.borrador.tipo_plantilla || 'instructivo';
         const plantilla = BACO.datos.plantillas[tipo] || '';
         const textoResultante = '## Objetivo\nInstructivo para configurar el módulo.\n\n## Pasos a seguir\n1. Abrir menú.\n2. Guardar.';
@@ -822,6 +827,11 @@ BACO.apiMock = (function () {
     auditarSemantica() {
       return responder(() => {
         if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        if (sesion.borrador.skills_habilitadas === false) {
+          const e = err('VALIDACION', sesion.borrador.skills_motivo || 'Las skills de asistencia del agente están deshabilitadas para este borrador.');
+          e.http = 422;
+          throw e;
+        }
         const v = validar(sesion.borrador);
         const lineas = v.findings.map((f) => '- **' + f.severity + '** (' + f.field + '): ' + f.description + ' → ' + f.action);
         const dictamen = '### Dictamen del validador\n\nEstado: **' + v.status + '**\n\n' +

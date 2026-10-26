@@ -904,6 +904,7 @@
     pintarValidacion(s);
     pintarOpciones(s);
     pintarImagenesDetectadas(s);
+    pintarEstadoSkills(s);
 
     if (estadoEditor.modo === 'preview') {
       const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
@@ -920,6 +921,48 @@
     if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
     const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.style.display = 'none'; }
     const bar = $('#editorImgBar'); if (bar) { bar.hidden = true; bar.style.display = 'none'; }
+  }
+
+  function pintarEstadoSkills(s) {
+    const b = s.borrador;
+    const btnPl = $('#btnPlantilla');
+    const btnAud = $('#btnAuditar');
+    const railAviso = $('#avisoSkillsRail');
+    const bannerSkills = $('#bannerSkills');
+
+    const deshabilitadas = !!(b && b.skills_habilitadas === false);
+    const motivo = (b && b.skills_motivo) || 'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+
+    if (btnPl) {
+      btnPl.disabled = deshabilitadas;
+      btnPl.classList.toggle('disabled', deshabilitadas);
+      btnPl.title = deshabilitadas ? motivo : 'Aplica la plantilla seleccionada al borrador';
+    }
+    if (btnAud) {
+      btnAud.disabled = deshabilitadas;
+      btnAud.classList.toggle('disabled', deshabilitadas);
+      btnAud.title = deshabilitadas ? motivo : 'Audita coherencia semántica y estilo con el validador';
+    }
+
+    if (railAviso) {
+      if (deshabilitadas) {
+        railAviso.hidden = false;
+        railAviso.innerHTML = '⚡ <b>Skills no disponibles:</b> ' + esc(motivo);
+      } else {
+        railAviso.hidden = true;
+        railAviso.innerHTML = '';
+      }
+    }
+
+    if (bannerSkills) {
+      if (deshabilitadas) {
+        bannerSkills.hidden = false;
+        bannerSkills.innerHTML = '<span>⚡ <b>Skills de IA deshabilitadas:</b> ' + esc(motivo) + '</span>';
+      } else {
+        bannerSkills.hidden = true;
+        bannerSkills.innerHTML = '';
+      }
+    }
   }
 
   /* Vista previa reactiva a partir de los bloques o texto del editor */
@@ -1437,6 +1480,12 @@
       decir('Todavía no hay un borrador armado. Las skills se habilitan recién cuando lleguemos a la revisión.');
       return;
     }
+    if (s.borrador && s.borrador.skills_habilitadas === false) {
+      const mot = s.borrador.skills_motivo || 'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+      toast('Skills deshabilitadas: ' + mot);
+      decir('⚠️ Las skills no están disponibles para este borrador:\n' + esc(mot));
+      return;
+    }
     burbuja('me', esc(etiqueta));
     const esperando = burbuja('bot', '<div class="typing"><i></i><i></i><i></i></div>' +
       '<div class="lento">El agente puede tardar varios segundos…</div>');
@@ -1473,7 +1522,14 @@
       renderBloques();
       ultimoFallo = { tipo: 'agente', metodo: metodo, etiqueta: etiqueta };
       mostrarError(e);
-      decir('El agente no respondió: ' + esc(e.message));
+      const es422 = e.http === 422 || (e.message && e.message.includes('422'));
+      if (es422) {
+        const detalle = e.message || (s.borrador && s.borrador.skills_motivo) || 'Skills deshabilitadas por el servidor.';
+        toast('Skills deshabilitadas (422)');
+        decir('⚠️ Las skills no están disponibles para este borrador:\n' + esc(detalle));
+      } else {
+        decir('El agente no respondió: ' + esc(e.message));
+      }
     }
   }
 

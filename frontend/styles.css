@@ -69,7 +69,10 @@ input,textarea,select{font-family:inherit}
 .rail{background:var(--navy-800);color:rgba(255,255,255,.7);padding:16px 10px;display:flex;flex-direction:column;gap:3px;min-height:0}
 .rail h4{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.35);margin:6px 0 8px;padding:0 8px;font-weight:700}
 .rail h4:not(:first-child){margin-top:20px}
-.navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:600;color:rgba(255,255,255,.66)}
+.navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:600;color:rgba(255,255,255,.66);cursor:pointer;transition:all .15s ease}
+.navitem:hover:not(:disabled){background:rgba(255,255,255,.08);color:#fff}
+.navitem:disabled, .navitem.disabled{opacity:.35;cursor:not-allowed;pointer-events:auto}
+.aviso-skills-rail{font-size:11px;color:#fcd34d;padding:4px 8px;margin-bottom:6px;border-radius:5px;background:rgba(245,158,11,.16);line-height:1.35;border-left:2px solid #f59e0b}
 .navitem.on{background:var(--navy-600);color:#fff}
 .navitem svg{flex:none;opacity:.85}
 .navitem .badge{margin-left:auto;font-family:var(--mono);font-size:10px;background:var(--coral);color:#fff;padding:1px 6px;border-radius:20px}
@@ -511,6 +514,8 @@ input,textarea,select{font-family:inherit}
 .banner.aviso{background:var(--info-soft);border-bottom-color:var(--info-line);color:var(--info)}
 .banner.aviso span{color:var(--ink)}
 .banner.aviso .cerrar{color:var(--info)}
+.banner-skills, .banner.skills{background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:10px 16px;border-radius:6px;margin:8px 0;display:flex;align-items:center;gap:10px;font-size:12.5px;line-height:1.4}
+.banner-skills b{color:#78350f;font-weight:700}
 .btn-peligro{background:var(--stop);color:#fff}
 .btn-peligro:hover:not(:disabled){background:#A32E22}
 
