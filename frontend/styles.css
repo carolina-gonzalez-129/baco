@@ -855,7 +855,7 @@ input,textarea,select{font-family:inherit}
 /* Botón Confirmar siempre visible */
 .editor-bloques-footer {
   margin-top: 8px;
-  display: flex;
+  display: none;
   justify-content: flex-end;
   position: sticky;
   bottom: 0;

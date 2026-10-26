@@ -1,7 +1,7 @@
 TITULO_MIN = 15
 TITULO_MAX = 255
 TEXTO_MIN = 20
-##VALE PARA LAS SKILLS
+# límite para skills / agente
 TEXTO_MAX = 6687
 TAGS_MIN = 2
 TAGS_MAX = 5

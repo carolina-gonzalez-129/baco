@@ -178,7 +178,9 @@
         const r = b.recurso;
         const ref = r.url || r.referencia || '';
         const nom = r.nombre || 'Recurso';
-        if (r.tipo === 'imagen') {
+        if (!ref && r.id && /^rec_\d+$/.test(r.id)) {
+          partes.push('[[recurso:' + r.id + ']]');
+        } else if (r.tipo === 'imagen') {
           partes.push('![' + nom + '](' + ref + ')');
         } else if (r.tipo === 'documento' || r.tipo === 'archivo') {
           partes.push('[' + nom + '|attachment](' + ref + ')');
@@ -413,10 +415,22 @@
     if (b.previewUrl) {
       URL.revokeObjectURL(b.previewUrl);
     }
+    const recId = (b.tipo === 'recurso' && b.recurso) ? b.recurso.id : null;
     estadoEditor.bloques.splice(idx, 1);
 
     if (!estadoEditor.bloques.length) {
       estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: '' });
+    }
+    if (recId) {
+      const s = store.get();
+      if (s.borrador) {
+        if (s.borrador.recursos && s.borrador.recursos[recId]) {
+          delete s.borrador.recursos[recId];
+        }
+        if (Array.isArray(s.borrador.multimedia)) {
+          s.borrador.multimedia = s.borrador.multimedia.filter((r) => (r.id || r) !== recId);
+        }
+      }
     }
     renderBloques();
     sincronizarTextoConStore();
@@ -600,14 +614,36 @@
   function reconstruirBloques(textoLimpio, recs) {
     textareasMap.clear();
     const recsArray = Array.isArray(recs) ? recs : Object.values(recs || {});
-    if (textoLimpio && /\[\[R\d+\]\]/.test(textoLimpio)) {
-      const partes = textoLimpio.split(/(\[\[R\d+\]\])/g);
+    const recsPorId = new Map();
+    recsArray.forEach((r, i) => {
+      const id = r.id || ('rec_' + (i + 1));
+      recsPorId.set(id, r);
+    });
+
+    const regexSplit = /(\[\[recurso:[a-zA-Z0-9_\-]+\]\]|\[\[R\d+\]\])/g;
+    if (textoLimpio && (regexSplit.test(textoLimpio) || /\[\[recurso:[a-zA-Z0-9_\-]+\]\]/.test(textoLimpio))) {
+      const partes = textoLimpio.split(/(\[\[recurso:[a-zA-Z0-9_\-]+\]\]|\[\[R\d+\]\])/g);
       const nuevosBloques = [];
       partes.forEach((p) => {
-        const match = p.match(/^\[\[R(\d+)\]\]$/);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          const r = recsArray[num - 1] || { id: 'rec_' + num, nombre: 'Recurso ' + num, tipo: 'otro', url: '' };
+        const mRec = p.match(/^\[\[recurso:([a-zA-Z0-9_\-]+)\]\]$/);
+        const mR = p.match(/^\[\[R(\d+)\]\]$/);
+        if (mRec) {
+          const id = mRec[1];
+          const r = recsPorId.get(id) || { id: id, nombre: id, tipo: 'otro', url: '' };
+          nuevosBloques.push({
+            id: genId(),
+            tipo: 'recurso',
+            cargando: false,
+            recurso: {
+              id: r.id || id,
+              tipo: r.tipo || 'otro',
+              nombre: r.nombre || id,
+              url: r.referencia || r.url || ''
+            }
+          });
+        } else if (mR) {
+          const num = parseInt(mR[1], 10);
+          const r = recsArray[num - 1] || recsPorId.get('rec_' + num) || { id: 'rec_' + num, nombre: 'Recurso ' + num, tipo: 'otro', url: '' };
           nuevosBloques.push({
             id: genId(),
             tipo: 'recurso',
@@ -716,7 +752,9 @@
       /* El backend avisa cuando anonimizó datos sensibles solo */
       if (r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
 
-      decir(nl2br(r.mensaje), r.opciones);
+      const esEsperaMetadatos = (typeof r.mensaje === 'string' && r.mensaje.includes('Esperando confirmación o rechazo de los metadatos heredados'));
+      const tieneMetaPendiente = esEsperaMetadatos || (r.estado === 'REVISION_BORRADOR' && !!(r.aviso_metadatos_heredados || (r.borrador && r.borrador.metadatos_anteriores && !r.borrador.metadatos_heredados_revisados)));
+      decir(nl2br(r.mensaje), tieneMetaPendiente ? [] : r.opciones);
 
       if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO') mostrarConforme();
     } catch (e) {
@@ -867,21 +905,34 @@
     pintarOpciones(s);
     pintarImagenesDetectadas(s);
 
-    sincronizarBloquesDesdeStore(s);
-    renderBloques();
-
-    const prev = $('#preview');
-    if (prev && !prev.hidden) {
-      prev.innerHTML = renderMd(textoVistaPrevia(s));
+    if (estadoEditor.modo === 'preview') {
+      const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
+      const prev = $('#preview');
+      if (prev) {
+        prev.hidden = false;
+        prev.innerHTML = renderMd(textoVistaPrevia(s));
+      }
+    } else {
+      const fc = $('#fCuerpo'); if (fc) fc.hidden = false;
+      const prev = $('#preview');
+      if (prev) prev.hidden = true;
     }
+    if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
+    const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.style.display = 'none'; }
+    const bar = $('#editorImgBar'); if (bar) { bar.hidden = true; bar.style.display = 'none'; }
   }
 
-  /* Vista previa reactiva a partir de los bloques del editor */
+  /* Vista previa reactiva a partir de los bloques o texto del editor */
   function textoVistaPrevia(s) {
-    if (estadoEditor && estadoEditor.bloques && estadoEditor.bloques.length) {
-      return componerTextoDesdeBloques();
+    const cuerpo = (s && s.form && typeof s.form.texto === 'string') ? s.form.texto : '';
+    if (window.BACO && window.BACO.panelMultimedia && typeof window.BACO.panelMultimedia.componerVistaPrevia === 'function') {
+      const listaRecs = window.BACO.panelMultimedia.lista ? window.BACO.panelMultimedia.lista(s) : [];
+      return window.BACO.panelMultimedia.componerVistaPrevia(cuerpo, listaRecs, s);
     }
-    return (s && s.form && s.form.texto) || '';
+    if (s && s.borrador && typeof s.borrador.texto === 'string' && s.borrador.texto.trim()) {
+      return s.borrador.texto;
+    }
+    return cuerpo;
   }
 
   function pintarStepper(s, etapaActual) {
@@ -1250,6 +1301,8 @@
     const barra = $('#opcionesBarra');
     barra.innerHTML = '';
     if (!s.opciones.length) return;
+    const tieneMetaPendiente = s.flujo === 'REVISION_BORRADOR' && !!(s.aviso_metadatos_heredados || (s.borrador && s.borrador.metadatos_anteriores && !s.borrador.metadatos_heredados_revisados));
+    if (tieneMetaPendiente) return;
     s.opciones.forEach((op) => {
       /* Si la acción principal ya es confirmar_texto (el botón principal del panel izquierdo),
          no la duplicamos en opcionesBarra para no tener dos botones idénticos uno al lado del otro. */
@@ -1304,7 +1357,11 @@
 
   function confirmarTexto() {
     const s = store.get();
-    const texto = (s.form && typeof s.form.texto === 'string' ? s.form.texto : '').trim();
+    const fc = $('#fCuerpo');
+    if (fc && fc.value !== s.form.texto) {
+      store.setForm({ texto: fc.value });
+    }
+    const texto = (s.form && typeof s.form.texto === 'string' ? s.form.texto : (fc ? fc.value : '')).trim();
     if (texto) {
       if (texto.length > cfg.MAX_TEXTO) return;
       return enviarTurno({ accion: 'confirmar_texto', texto: texto }, 'Confirmar texto (' + texto.length + ' caracteres)');
@@ -1339,6 +1396,40 @@
     }, 'Guardar cambios');
   }
 
+  /* Elimina los marcadores markdown de sección (ej. "## Objetivo" -> "Objetivo") */
+  function limpiarMarcadoresSeccion(texto) {
+    if (!texto || typeof texto !== 'string') return '';
+    return texto.replace(/^#{1,6}\s+/gm, '');
+  }
+
+  /* Transfiere el texto limpio (sin marcadores ##) al panel izquierdo (Editor y Vista previa) */
+  function transferirTextoAlPanelIzquierdo(texto, avisoToast = true) {
+    const s = store.get();
+    const textoLimpio = limpiarMarcadoresSeccion(texto);
+    const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
+
+    store.setForm({ texto: textoLimpio });
+    if (s.borrador) {
+      s.borrador.texto_limpio = textoLimpio;
+      if (s.borrador.texto != null) s.borrador.texto = textoLimpio;
+    }
+
+    const fc = $('#fCuerpo');
+    if (fc) fc.value = textoLimpio;
+
+    reconstruirBloques(textoLimpio, recs);
+    renderBloques();
+
+    const prev = $('#preview');
+    if (prev && !prev.hidden) {
+      prev.innerHTML = renderMd(textoVistaPrevia(store.get()));
+    }
+
+    if (avisoToast) {
+      toast('Texto transferido al panel de carga (sin marcadores ##)');
+    }
+  }
+
   /* ---- skills del agente: endpoints dedicados ---- */
   async function invocarAgente(metodo, etiqueta) {
     const s = store.get();
@@ -1349,13 +1440,37 @@
     burbuja('me', esc(etiqueta));
     const esperando = burbuja('bot', '<div class="typing"><i></i><i></i><i></i></div>' +
       '<div class="lento">El agente puede tardar varios segundos…</div>');
+    estadoEditor.enviando = true;
+    renderBloques();
     try {
-      const r = await api[metodo]();
+      const r = typeof metodo === 'string'
+        ? await api[metodo]()
+        : (api.chat ? await api.chat(metodo.prompt) : await api.prompt(metodo));
       esperando.remove();
+      estadoEditor.enviando = false;
+      renderBloques();
       ultimoFallo = null;
-      decir('<div class="respuesta-agente">' + nl2br(r.response) + '</div>', [], true);
+
+      const textoRespuesta = (r && (r.texto_resultante || r.response)) || '';
+
+      // Transferir automáticamente al panel izquierdo (sin marcadores ##)
+      if (textoRespuesta) {
+        transferirTextoAlPanelIzquierdo(textoRespuesta, true);
+      }
+
+      const msgHtml = '<div class="respuesta-agente">' + nl2br(r.response) + '</div>' +
+        '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">↖ Transferido al panel de carga (clic para volver a transferir)</button></div>';
+      const bubbleEl = decir(msgHtml, [], true);
+      if (bubbleEl) {
+        const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
+        if (btnTransf) {
+          btnTransf.onclick = () => transferirTextoAlPanelIzquierdo(textoRespuesta, true);
+        }
+      }
     } catch (e) {
       esperando.remove();
+      estadoEditor.enviando = false;
+      renderBloques();
       ultimoFallo = { tipo: 'agente', metodo: metodo, etiqueta: etiqueta };
       mostrarError(e);
       decir('El agente no respondió: ' + esc(e.message));
@@ -1443,9 +1558,13 @@
     if (ancho) b.querySelector('.bubble').classList.add('ancha');
     /* En el panel derecho (BACO Companion) nunca se muestra el botón "Confirmar texto" */
     const opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto');
-    if (opcionesCompanion.length) {
+    const esEsperaMetadatos = (typeof html === 'string' && html.includes('Esperando confirmación o rechazo de los metadatos heredados'));
+    const sActual = store.get();
+    const tieneMetaPendiente = esEsperaMetadatos || (sActual.flujo === 'REVISION_BORRADOR' && !!(sActual.aviso_metadatos_heredados || (sActual.borrador && sActual.borrador.metadatos_anteriores && !sActual.borrador.metadatos_heredados_revisados)));
+    const opcionesCompanionFinal = tieneMetaPendiente ? [] : opcionesCompanion;
+    if (opcionesCompanionFinal.length) {
       const cont = el('div', 'acciones');
-      opcionesCompanion.forEach((op) => {
+      opcionesCompanionFinal.forEach((op) => {
         const def = BACO.OPCIONES[op] || { label: op, estilo: 'btn-ghost' };
         const btn = el('button', 'btn btn-sm ' + def.estilo, esc(def.label));
         btn.onclick = () => accionar(op, def.label);
@@ -1453,6 +1572,7 @@
       });
       b.querySelector('.bubble').insertBefore(cont, b.querySelector('.stamp'));
     }
+    return b;
   }
 
   async function enviarChatLibre() {
@@ -2280,18 +2400,22 @@
     }
     if ($('#btnEditor')) {
       $('#btnEditor').onclick = () => {
-        if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = false;
-        const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
+        if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
+        const fc = $('#fCuerpo'); if (fc) fc.hidden = false;
         const pr = $('#preview'); if (pr) pr.hidden = true;
         $('#btnEditor').classList.add('sel');
         if ($('#btnPreview')) $('#btnPreview').classList.remove('sel');
         estadoEditor.modo = 'edicion';
-        renderBloques();
+        if (fc) fc.focus();
       };
     }
     if ($('#btnPreview')) {
       $('#btnPreview').onclick = () => {
-        sincronizarTextoConStore();
+        const fc = $('#fCuerpo');
+        if (fc) {
+          fc.hidden = true;
+          store.setForm({ texto: fc.value });
+        }
         let pr = $('#preview');
         if (!pr && $('#campoTexto')) {
           pr = el('div', 'preview');
@@ -2303,7 +2427,6 @@
           pr.hidden = false;
         }
         if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
-        const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
         $('#btnPreview').classList.add('sel');
         if ($('#btnEditor')) $('#btnEditor').classList.remove('sel');
         estadoEditor.modo = 'preview';

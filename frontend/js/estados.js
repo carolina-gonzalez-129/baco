@@ -69,6 +69,8 @@ BACO.SEVERIDAD = {
 /* Texto de cada botón de `opciones` que devuelve el backend */
 BACO.OPCIONES = {
   confirmar_texto:   { label: 'Confirmar texto',         estilo: 'btn-primary' },
+  quitar_recursos:   { label: 'Quitar recursos (usar skills)',    estilo: 'btn-dark' },
+  seguir_con_recursos: { label: 'Seguir con recursos (sin skills)', estilo: 'btn-ghost' },
   enriquecer:        { label: 'Enriquecer el existente', estilo: 'btn-dark' },
   actualizar:        { label: 'Actualizar el existente', estilo: 'btn-dark' },
   descartar:         { label: 'Es un tema distinto',     estilo: 'btn-ghost' },
@@ -164,6 +166,7 @@ BACO.store = (function () {
       estado.coincidencias = r.coincidencias || [];
       estado.borrador = r.borrador || null;
       estado.validacion = r.validacion || null;
+      estado.aviso_metadatos_heredados = r.aviso_metadatos_heredados || null;
       /* Criterio único del backend: mini panel multimedia operativo tras buscar_duplicados.
          undefined = respuesta sin el campo (p. ej. mock viejo): el panel decide con su fallback. */
       estado.multimedia_habilitada = (typeof r.multimedia_habilitada === 'boolean') ? r.multimedia_habilitada : undefined;

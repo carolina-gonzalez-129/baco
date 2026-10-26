@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, ValidationInfo, computed_field, field_validator, model_validator
 
-from baco.server.config_limites import TEXTO_MAX, TITULO_MAX
+from baco.server.config_limites import TEXTO_MAX, TEXTO_MAX_PERCENTIL_99, TITULO_MAX
 from baco.server.schemas.validacion import ValidarFormatoResponse
 from baco.server.schemas.recurso import Recurso
 
@@ -71,7 +71,12 @@ class BorradorSesion(BaseModel):
     articulo_original_url: Optional[str] = None
     titulo: str
     recursos: Dict[str, Recurso] = Field(default_factory=dict)
+    ultimo_id_recurso: int = Field(
+        default=0,
+        description="Contador monotónico por borrador que nunca reutiliza el ID de un recurso eliminado.",
+    )
     texto_limpio: str = ""
+    texto_base_limpio: str = ""
     texto_en_edicion: str = ""
     orden_multimedia: List[int] = Field(
         default_factory=list,
@@ -106,6 +111,9 @@ class BorradorSesion(BaseModel):
     @classmethod
     def preparar_datos_borrador(cls, data: Any) -> Any:
         if isinstance(data, dict):
+            # Seguridad: el cliente no puede forzar flags calculados por el servidor
+            data.pop("skills_habilitadas", None)
+            data.pop("skills_motivo", None)
             txt = data.get("texto")
             txt_limpio = data.get("texto_limpio")
             if (not txt_limpio) and txt:
@@ -116,6 +124,48 @@ class BorradorSesion(BaseModel):
                     data["recursos"] = recs
             data.pop("texto", None)
         return data
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def skills_habilitadas(self) -> bool:
+        """Indica si las skills del agente están habilitadas para el borrador.
+
+        Calculado estrictamente en el servidor:
+        False si el largo efectivo (sin marcadores) supera TEXTO_MAX (6687) o si el borrador tiene recursos.
+        """
+        from baco.server.config_limites import TEXTO_MAX
+        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+
+        largo = len(texto_efectivo_sin_marcadores(self.texto_limpio or ""))
+        if largo > TEXTO_MAX:
+            return False
+        if bool(self.recursos):
+            return False
+        return True
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def skills_motivo(self) -> Optional[str]:
+        """Texto explicativo del motivo por el cual las skills están deshabilitadas."""
+        from baco.server.config_limites import TEXTO_MAX
+        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+
+        largo = len(texto_efectivo_sin_marcadores(self.texto_limpio or ""))
+        supera_largo = largo > TEXTO_MAX
+        tiene_recursos = bool(self.recursos)
+        if supera_largo and tiene_recursos:
+            return (
+                f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
+                f"({largo} caracteres recibidos) y el borrador contiene recursos multimedia."
+            )
+        if supera_largo:
+            return (
+                f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
+                f"({largo} caracteres recibidos)."
+            )
+        if tiene_recursos:
+            return "El borrador contiene recursos multimedia. Las skills de IA solo admiten texto plano sin recursos."
+        return None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -133,6 +183,12 @@ class BorradorSesion(BaseModel):
         """
         if not v or not isinstance(v, str):
             return v
+        marcadores_legacy_r = re.findall(r"\[\[R\d+\]\]", v)
+        if marcadores_legacy_r:
+            raise ValueError(
+                f"El texto contiene marcadores no canónicos ({', '.join(marcadores_legacy_r)}). "
+                f"El marcador canónico único es [[recurso:rec_N]]."
+            )
         marcadores_recurso = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", v)
         if not marcadores_recurso:
             return v
@@ -160,6 +216,12 @@ class BorradorSesion(BaseModel):
         for i, r in enumerate(items):
             r.orden = i
         self.recursos = {r.id: r for r in items}
+        max_num = self.ultimo_id_recurso
+        for rid in self.recursos:
+            m = re.fullmatch(r"rec_(\d+)", str(rid))
+            if m:
+                max_num = max(max_num, int(m.group(1)))
+        self.ultimo_id_recurso = max_num
         vec = list(range(len(items)))
         self.orden_multimedia = list(vec)
         self.posiciones = list(vec)
@@ -173,29 +235,42 @@ class BorradorSesion(BaseModel):
 
     def reorder(self, from_index: int, to_index: int) -> List[Recurso]:
         """Reordena los recursos multimedia moviendo el elemento en from_index a to_index."""
+        from baco.server.services.orquestador.recursos_service import permutar_marcadores_en_texto
         items = sorted(self.recursos.values(), key=lambda r: r.orden)
         if not (0 <= from_index < len(items) and 0 <= to_index < len(items)):
             raise ValueError(f"Índices de reordenamiento fuera de rango: from_index={from_index}, to_index={to_index} (total: {len(items)})")
+        ids_antes = [r.id for r in items]
         item = items.pop(from_index)
         items.insert(to_index, item)
+        ids_despues = [r.id for r in items]
+        if self.texto_limpio:
+            self.texto_limpio = permutar_marcadores_en_texto(self.texto_limpio, ids_antes, ids_despues)
         self._sincronizar_orden_recursos(items)
         return items
 
     def reordenar_por_ids(self, orden_ids: List[str]) -> List[Recurso]:
         """Reordena los recursos multimedia según una lista ordenada de IDs."""
-        items_map = {r.id: r for r in self.recursos.values()}
+        from baco.server.services.orquestador.recursos_service import permutar_marcadores_en_texto
+        items_antes = sorted(self.recursos.values(), key=lambda r: r.orden)
+        ids_antes = [r.id for r in items_antes]
+        items_map = {r.id: r for r in items_antes}
         nuevos: List[Recurso] = []
         for rid in orden_ids:
             if rid in items_map:
                 nuevos.append(items_map.pop(rid))
         for sobrante in sorted(items_map.values(), key=lambda r: r.orden):
             nuevos.append(sobrante)
+        ids_despues = [r.id for r in nuevos]
+        if self.texto_limpio:
+            self.texto_limpio = permutar_marcadores_en_texto(self.texto_limpio, ids_antes, ids_despues)
         self._sincronizar_orden_recursos(nuevos)
         return nuevos
 
     def reordenar_por_indices(self, orden_indices: List[int]) -> List[Recurso]:
         """Reordena los recursos multimedia según una lista ordenada de índices."""
+        from baco.server.services.orquestador.recursos_service import permutar_marcadores_en_texto
         items = sorted(self.recursos.values(), key=lambda r: r.orden)
+        ids_antes = [r.id for r in items]
         nuevos: List[Recurso] = []
         vistos = set()
         for idx in orden_indices:
@@ -205,11 +280,15 @@ class BorradorSesion(BaseModel):
         for i, item in enumerate(items):
             if i not in vistos:
                 nuevos.append(item)
+        ids_despues = [r.id for r in nuevos]
+        if self.texto_limpio:
+            self.texto_limpio = permutar_marcadores_en_texto(self.texto_limpio, ids_antes, ids_despues)
         self._sincronizar_orden_recursos(nuevos)
         return nuevos
 
     def eliminar_multimedia(self, elemento: Union[str, int]) -> Optional[Recurso]:
         """Elimina un recurso multimedia por ID (str) o por índice (int) y actualiza el vector."""
+        from baco.server.services.orquestador.recursos_service import eliminar_marcador_recurso_de_texto
         items = sorted(self.recursos.values(), key=lambda r: r.orden)
         if isinstance(elemento, int) or (
             isinstance(elemento, str) and elemento.isdigit() and elemento not in self.recursos
@@ -223,7 +302,13 @@ class BorradorSesion(BaseModel):
             if rec_id not in self.recursos:
                 return None
 
+        m = re.fullmatch(r"rec_(\d+)", str(rec_id))
+        if m:
+            self.ultimo_id_recurso = max(self.ultimo_id_recurso, int(m.group(1)))
+
         eliminado = self.recursos.pop(rec_id, None)
+        if self.texto_limpio:
+            self.texto_limpio = eliminar_marcador_recurso_de_texto(self.texto_limpio, rec_id)
         restantes = [r for r in items if r.id != rec_id]
         self._sincronizar_orden_recursos(restantes)
         return eliminado
@@ -242,6 +327,9 @@ class BorradorSesion(BaseModel):
         """Sincroniza el diccionario de recursos, sus atributos orden y los vectores numéricos."""
         for i, r in enumerate(items_ordenados):
             r.orden = i
+            m = re.fullmatch(r"rec_(\d+)", str(r.id))
+            if m:
+                self.ultimo_id_recurso = max(self.ultimo_id_recurso, int(m.group(1)))
         self.recursos = {r.id: r for r in items_ordenados}
         vec = list(range(len(items_ordenados)))
         self.orden_multimedia = list(vec)
@@ -293,8 +381,14 @@ class ChatOrquestadorRequest(BaseModel):
     @field_validator("texto", "mensaje", mode="before")
     @classmethod
     def validar_longitud_texto(cls, v: Optional[str]) -> Optional[str]:
-        if v and len(v) > TEXTO_MAX:
-            raise ValueError(f"El texto supera los {TEXTO_MAX} caracteres. Dividilo o resumilo.")
+        if v and len(v) > TEXTO_MAX_PERCENTIL_99:
+            from baco.server.services.orquestador.recursos_service import (
+                extraer_recursos_y_texto_limpio,
+                texto_efectivo_sin_marcadores,
+            )
+            tl, _ = extraer_recursos_y_texto_limpio(str(v))
+            if len(texto_efectivo_sin_marcadores(tl)) > TEXTO_MAX_PERCENTIL_99:
+                raise ValueError(f"El texto supera los {TEXTO_MAX_PERCENTIL_99} caracteres. Dividilo o resumilo.")
         return v
 
     @field_validator("titulo", mode="before")
@@ -338,6 +432,14 @@ class ChatOrquestadorResponse(BaseModel):
     multimedia_habilitada: bool = Field(
         default=False,
         description="True una vez superada buscar_duplicados (en cualquier rama): el mini panel multimedia está operativo.",
+    )
+    skills_habilitadas: bool = Field(
+        default=True,
+        description="Indica si las skills del agente están habilitadas para el borrador actual (calculado en el servidor).",
+    )
+    skills_motivo: Optional[str] = Field(
+        default=None,
+        description="Motivo explicativo si las skills están deshabilitadas.",
     )
     validacion: Optional[ValidarFormatoResponse] = None
     aviso_privacidad: Optional[str] = Field(

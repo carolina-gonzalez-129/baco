@@ -27,8 +27,8 @@ BACO.apiMock = (function () {
     SERIE_DECISION:       ['actualizar', 'descartar', 'volver'],
     ENRIQUECER_CONTINUAR: ['enriquecer', 'continuar', 'volver'],
     PLANTILLAS:           ['instructivo', 'soluciones', 'volver'],
-    REVISION_VALIDO:      ['conforme', 'editar', 'sanitizar', 'rechazar', 'volver', 'reiniciar'],
-    REVISION_BLOQUEANTE:  ['editar', 'sanitizar', 'rechazar', 'volver', 'reiniciar'],
+    REVISION_VALIDO:      ['conforme', 'editar', 'rechazar'],
+    REVISION_BLOQUEANTE:  ['editar', 'rechazar'],
     REINICIAR:            ['reiniciar']
   };
 
@@ -233,6 +233,8 @@ BACO.apiMock = (function () {
       'actualizar': 'actualizar', 'actualizo': 'actualizar',
       'no': 'descartar', '2': 'descartar', 'descartar': 'descartar', 'continuar': 'continuar',
       'confirmar_texto': 'confirmar_texto', 'confirmar texto': 'confirmar_texto',
+      'quitar_recursos': 'quitar_recursos', 'quitar recursos': 'quitar_recursos',
+      'seguir_con_recursos': 'seguir_con_recursos', 'seguir con recursos': 'seguir_con_recursos', 'continuar_con_recursos': 'seguir_con_recursos',
       'conforme': 'conforme', 'estoy conforme': 'conforme', 'aprobar': 'conforme', 'apruebo': 'conforme', 'confirmar': 'conforme', 'omitir': 'conforme',
       'copiar borrador': 'copiar_borrador', 'copiar_borrador': 'copiar_borrador', 'copiar': 'copiar_borrador',
       'rechazar': 'rechazar', 'rechazo': 'rechazar', 'cancelar': 'rechazar',
@@ -269,7 +271,7 @@ BACO.apiMock = (function () {
     RECHAZADO: 5
   };
 
-  function resp(mensaje, opciones, aviso) {
+  function resp(mensaje, opciones, aviso, avisoMeta) {
     const s = sesion;
     const actual = MAPA_ETAPAS[s.estado] || 1;
     const tagsAcum = s.borrador
@@ -298,7 +300,8 @@ BACO.apiMock = (function () {
       borrador: s.borrador ? JSON.parse(JSON.stringify(s.borrador)) : null,
       texto_limpio: s.borrador ? (s.borrador.texto_limpio != null ? s.borrador.texto_limpio : (s.borrador.texto || '')) : (s.texto_limpio || s.texto_en_edicion || s.texto || null),
       validacion: s.validacion || null,
-      aviso_privacidad: aviso || null
+      aviso_privacidad: aviso || null,
+      aviso_metadatos_heredados: avisoMeta || null
     };
   }
 
@@ -352,33 +355,33 @@ BACO.apiMock = (function () {
 
   function avanzar(prefijo, aviso) {
     const b = sesion.borrador;
+    marcar();
+    if (b.metadatos_anteriores && !b.metadatos_heredados_revisados) {
+      const catNom = b.metadatos_anteriores.categoria_nombre || ('Categoría ' + b.metadatos_anteriores.categoria_id);
+      const tagsStr = (b.metadatos_anteriores.tags || []).join(', ') || 'ninguna';
+      const avisoMeta = 'El artículo en su versión anterior tenía asociada la categoría "' + catNom + '" y las etiquetas: [' + tagsStr + ']. ' +
+        'Podés tocar "Aceptar" para conservar estos metadatos o "Rechazar" si preferís definirlos manualmente.';
+      const r = validarBorrador(prefijo);
+      const ops = ['aceptar', 'rechazar'].concat(r.ops.filter((o) => o !== 'aceptar' && o !== 'rechazar'));
+      return resp((prefijo || '') + 'Esperando confirmación o rechazo de los metadatos heredados en el panel izquierdo.', ops, aviso, avisoMeta);
+    }
+
     const pl = b.tipo_plantilla || tipoPlantilla(b.tags);
     if (pl) { b.tipo_plantilla = pl; b.tags = combinarTags(pl, b.tags); }
 
     if (!b.tipo_plantilla) {
-      marcar();
       sesion.estado = 'ESPERANDO_PLANTILLA';
       return resp((prefijo || '') + '¿Qué plantilla corresponde para este artículo: instructivo o soluciones?',
         OPS.PLANTILLAS, aviso);
     }
     const catValida = b.categoria_id != null && Number(b.categoria_id) > 1;
     if (b.tags.length < lim().MIN_TAGS || !catValida) {
-      marcar();
       sesion.estado = 'ESPERANDO_METADATOS';
       return resp((prefijo || '') + 'Aplico la plantilla "' + b.tipo_plantilla + '". Ingresá al menos una etiqueta temática ' +
         'y seleccioná la categoría desde el menú desplegable en el formulario de la izquierda.',
         ['volver'], aviso);
     }
-    marcar();
     const r = validarBorrador(prefijo);
-    if (b.metadatos_anteriores && !b.metadatos_heredados_revisados) {
-      const catNom = b.metadatos_anteriores.categoria_nombre || ('Categoría ' + b.metadatos_anteriores.categoria_id);
-      const tagsStr = (b.metadatos_anteriores.tags || []).join(', ') || 'ninguna';
-      const avisoMeta = 'El artículo en su versión anterior tenía asociada la categoría "' + catNom + '" y las etiquetas: [' + tagsStr + ']. ' +
-        'Podés tocar "Aceptar" para conservar estos metadatos o "Rechazar" si preferís definirlos manualmente.';
-      const ops = ['aceptar', 'rechazar'].concat(r.ops.filter((o) => o !== 'aceptar' && o !== 'rechazar'));
-      return resp(avisoMeta + '\n\n' + r.msg, ops, aviso);
-    }
     return resp(r.msg, r.ops, aviso);
   }
 
@@ -494,6 +497,9 @@ BACO.apiMock = (function () {
             marcar();
             sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
             (sesion.coincidencias || []).forEach((c) => {
+              if (c.tipo_coincidencia === 'serie' || (c.titulo && c.titulo.toLowerCase().includes('serie'))) {
+                sesion.descarto_serie = true;
+              }
               if (c.id && !sesion.articulos_descartados_ids.includes(c.id)) {
                 sesion.articulos_descartados_ids.push(c.id);
               }
@@ -504,8 +510,8 @@ BACO.apiMock = (function () {
               const avisoDisp = avisoPrivacidad(limpioDisp.cambios);
               sesion.texto = limpioDisp.texto_sanitizado;
               sesion.texto_limpio = limpioDisp.texto_sanitizado;
-              const hitTxt = buscarSimilares(sesion.texto, 'texto');
-              if (hitTxt && !sesion.articulos_descartados_ids.includes(hitTxt.id)) {
+              const hitTxt = (sesion.texto.length >= 400) ? buscarSimilares(sesion.texto, 'texto') : null;
+              if (hitTxt && !sesion.articulos_descartados_ids.includes(hitTxt.id) && !(sesion.descarto_serie && hitTxt.tipo_coincidencia === 'serie')) {
                 sesion.coincidencias = [hitTxt];
                 sesion.estado = 'DECISION_TEXTO';
                 return resp('Encontré un artículo que explica prácticamente lo mismo en el contenido: "' +
@@ -568,14 +574,25 @@ BACO.apiMock = (function () {
           if (sesion.borrador && sesion.borrador.modo === 'enriquecimiento') {
             sesion.borrador.texto = sesion.texto;
             sesion.borrador.texto_limpio = sesion.texto;
+            if (sesion.borrador.recursos) {
+              const marcadores = new Set((sesion.texto.match(/\[\[recurso:([^\]]+)\]\]/g) || []).map(m => m.slice(10, -2)));
+              const recsFilt = {};
+              Object.entries(sesion.borrador.recursos).forEach(([k, r]) => {
+                if (marcadores.has(k) || (r.referencia && sesion.texto.includes(r.referencia)) || (r.url && sesion.texto.includes(r.url))) {
+                  recsFilt[k] = r;
+                }
+              });
+              sesion.borrador.recursos = recsFilt;
+              sesion.borrador.multimedia = Object.values(recsFilt);
+            }
             if (req.categoria_id != null) sesion.borrador.categoria_id = req.categoria_id;
             if (req.tags != null) sesion.borrador.tags = req.tags;
             return avanzar('Sumé tu texto al borrador sobre #' + sesion.borrador.articulo_original_id + '. ', aviso);
           }
 
-          const hit = buscar(sesion.texto + ' ' + sesion.titulo);
+          const hit = (sesion.texto.length >= 400) ? buscar(sesion.texto + ' ' + sesion.titulo) : null;
           sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
-          if (hit && !sesion.articulos_descartados_ids.includes(hit.id)) {
+          if (hit && !sesion.articulos_descartados_ids.includes(hit.id) && !(sesion.descarto_serie && hit.tipo_coincidencia === 'serie')) {
             marcar();
             sesion.coincidencias = [hit];
             sesion.estado = 'DECISION_TEXTO';
@@ -643,6 +660,10 @@ BACO.apiMock = (function () {
         /* ---- ESPERANDO_PLANTILLA ---- */
         if (sesion.estado === 'ESPERANDO_PLANTILLA') {
           const b = sesion.borrador;
+          if (req.texto != null && req.texto.trim()) {
+            b.texto = req.texto;
+            b.texto_limpio = req.texto;
+          }
           if (req.categoria_id != null) b.categoria_id = req.categoria_id;
           const pl = tipoPlantilla(req.tags || [], opcion);
           if (!pl) return resp('Elegí instructivo o soluciones para seguir.', OPS.PLANTILLAS);
@@ -726,18 +747,17 @@ BACO.apiMock = (function () {
 
           if (opcion === 'aceptar' || opcion === 'aceptar_metadatos') {
             b.metadatos_heredados_revisados = true;
-            const r = validarBorrador('Se confirmaron los metadatos de la versión anterior. ');
-            return resp(r.msg, r.ops);
+            return avanzar('Se confirmaron los metadatos de la versión anterior. ');
           }
 
           if (opcion === 'rechazar_metadatos' || (opcion === 'rechazar' && b.metadatos_anteriores && !b.metadatos_heredados_revisados)) {
             b.metadatos_heredados_revisados = true;
+            b.tipo_plantilla = null;
             b.categoria_id = null;
             b.tags = [];
             sesion.categoria_id = null;
             sesion.tags = [];
-            const r = validarBorrador('Se descartaron los metadatos heredados. ');
-            return resp(r.msg, r.ops);
+            return avanzar('Se descartaron los metadatos heredados. ');
           }
 
           if (opcion === 'editar') {
@@ -793,7 +813,9 @@ BACO.apiMock = (function () {
         if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
         const tipo = sesion.borrador.tipo_plantilla || 'instructivo';
         const plantilla = BACO.datos.plantillas[tipo] || '';
-        return { response: '## Borrador reestructurado con la plantilla "' + tipo + '"\n\n' + plantilla };
+        const textoResultante = '## Objetivo\nInstructivo para configurar el módulo.\n\n## Pasos a seguir\n1. Abrir menú.\n2. Guardar.';
+        sesion.borrador.texto_limpio = textoResultante;
+        return { response: '## Borrador reestructurado con la plantilla "' + tipo + '"\n\n' + plantilla, texto_resultante: textoResultante };
       }, cfg().LATENCIA_AGENTE_MS);
     },
 
@@ -802,8 +824,9 @@ BACO.apiMock = (function () {
         if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
         const v = validar(sesion.borrador);
         const lineas = v.findings.map((f) => '- **' + f.severity + '** (' + f.field + '): ' + f.description + ' → ' + f.action);
-        return { response: '### Dictamen del validador\n\nEstado: **' + v.status + '**\n\n' +
-          (lineas.length ? lineas.join('\n') : 'Sin observaciones.') };
+        const dictamen = '### Dictamen del validador\n\nEstado: **' + v.status + '**\n\n' +
+          (lineas.length ? lineas.join('\n') : 'Sin observaciones.');
+        return { response: dictamen, texto_resultante: sesion.borrador.texto_limpio || sesion.borrador.texto || dictamen };
       }, cfg().LATENCIA_AGENTE_MS);
     },
 

@@ -184,6 +184,26 @@ def validar_formato(
     texto_str = texto if isinstance(texto, str) else ""
     tags_objetos = [Tag(name=t.strip()) for t in (tags or []) if isinstance(t, str) and t.strip()]
 
+    from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+    if texto_str and len(texto_efectivo_sin_marcadores(texto_str)) > TEXTO_MAX:
+        sanit = sanitizar_borrador(texto=texto_str, titulo=titulo_str)
+        return ValidarFormatoToolOutput(
+            valido=False,
+            status=StatusValidacionEnum.PENDIENTE,
+            titulo_sanitizado=sanit.get("titulo_sanitizado"),
+            texto_sanitizado=sanit.get("texto_sanitizado"),
+            hallazgos=[
+                HallazgoTool(
+                    severidad="Bloqueante",
+                    campo="texto",
+                    descripcion=f"El texto debe tener entre {TEXTO_MIN} y {TEXTO_MAX} caracteres (recibidos: {len(texto_efectivo_sin_marcadores(texto_str))}).",
+                    accion=f"Ajustar la extensión del cuerpo para que tenga entre {TEXTO_MIN} y {TEXTO_MAX} caracteres.",
+                )
+            ],
+            longitud_texto=len(texto_efectivo_sin_marcadores(texto_str)),
+            tags_count=len(tags_objetos),
+        )
+
     try:
         articulo = ArticuloSchema(
             id=0,

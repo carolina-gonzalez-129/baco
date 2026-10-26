@@ -14,10 +14,41 @@ OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
 OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
 OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
-OPCIONES_REVISION_VALIDO = ["conforme", "editar", "sanitizar", "rechazar", "volver", "reiniciar"]
-OPCIONES_REVISION_BLOQUEANTE = ["editar", "sanitizar", "rechazar", "volver", "reiniciar"]
+OPCIONES_REVISION_VALIDO = ["conforme", "editar", "rechazar"]
+OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
+OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
+
+MSG_OPCIONES_RECURSOS_SKILLS = (
+    "El texto ingresado contiene recursos multimedia (imágenes o enlaces a archivos). "
+    "Las skills de asistencia de IA (aplicación de plantilla y auditoría semántica) solo admiten texto plano sin recursos.\n\n"
+    "Podés elegir cómo querés continuar:\n"
+    "- **Quitar recursos**: se retirarán las referencias multimedia para habilitar las skills de IA.\n"
+    "- **Seguir con recursos**: conservarás las imágenes y adjuntos en el borrador, pero las skills quedarán deshabilitadas."
+)
+
+MSG_VOLVER_TITULO = (
+    "Volvemos al paso anterior. Ingresá un nuevo título para tu artículo:"
+)
+MSG_VOLVER_TEXTO = (
+    "Volvemos al paso anterior. Ingresá el texto corregido para tu artículo:"
+)
+MSG_VOLVER_TEXTO_ACTUALIZADO = (
+    "Volvemos al paso anterior. Ingresá el texto actualizado para tu artículo:"
+)
+MSG_VOLVER_PLANTILLA = (
+    "Volvemos a la selección de formato. ¿Qué plantilla preferís para este artículo?"
+)
+MSG_VOLVER_METADATOS = (
+    "Volvemos al paso anterior. Podés redefinir las etiquetas o tags para clasificar tu artículo:"
+)
+MSG_VOLVER_ENRIQUECER_O_DESCARTAR = (
+    "Volvemos al paso anterior. ¿Deseás enriquecer el artículo encontrado o descartarlo?"
+)
+MSG_OPERACION_CANCELADA = (
+    "Operación cancelada. Mantenemos tu borrador intacto:\n\n"
+)
 
 MSG_SIN_COINCIDENCIAS_TITULO = (
     "No encontré nada similar. Por favor, enviame el texto o desarrollo del artículo."
@@ -233,27 +264,27 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
         ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
         return (
             " Encontré un artículo similar en la base. Podés enriquecerlo/actualizarlo, descartarlo para escribir uno nuevo con este título, o tocar 'volver' para ingresar otro título.",
-            ops + ["volver"],
+            list(ops),
         )
     if est == EstadoFlujo.ESPERANDO_TEXTO:
         if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
             return (
-                "  Cargamos el artículo existente. Podés editarlo o sumar contenido nuevo desde el panel izquierdo. También podés tocar 'descartar' si preferís escribir tu propio texto desde cero, o 'reiniciar'.",
-                ["descartar", "reiniciar"],
+                "  Cargamos el artículo existente. Podés editarlo o sumar contenido nuevo desde el panel izquierdo. También podés tocar 'descartar' si preferís escribir tu propio texto desde cero, o 'volver'.",
+                ["confirmar_texto", "descartar", "volver"],
             )
         return (
             "  Necesito el texto o los pasos de tu artículo (al menos 20 caracteres). Pegalo o redactalo acá abajo cuando gustes, o tocá 'volver' para cambiar el título.",
-            ["volver"],
+            ["confirmar_texto", "volver"],
         )
     if est == EstadoFlujo.DECISION_TEXTO:
         return (
             "  Encontré un artículo con contenido muy parecido. Podés elegir 'enriquecer' para sumar tu aporte, 'continuar' para publicar tu texto propio, o 'volver' para modificar tu texto.",
-            OPCIONES_ENRIQUECER_CONTINUAR + ["volver"],
+            list(OPCIONES_ENRIQUECER_CONTINUAR),
         )
     if est == EstadoFlujo.ESPERANDO_PLANTILLA:
         return (
             "  Seleccioná la plantilla que mejor se ajuste a tu documento ('instructivo' o 'soluciones'), o tocá 'volver' para revisar el texto.",
-            OPCIONES_PLANTILLAS + ["volver"],
+            list(OPCIONES_PLANTILLAS),
         )
     if est == EstadoFlujo.ESPERANDO_METADATOS:
         plantilla = (sesion.borrador.tipo_plantilla if sesion.borrador else "") or ""
@@ -271,12 +302,12 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             )
         if sesion.validacion and not sesion.validacion.valido:
             return (
-                "El borrador tiene puntos pendientes obligatorios. Podés tocar 'editar' para corregirlos, 'sanitizar' si hay datos sensibles, o 'rechazar' para cancelar.",
-                OPCIONES_REVISION_BLOQUEANTE,
+                "El borrador tiene puntos pendientes obligatorios. Podés tocar 'editar' para corregirlos o 'rechazar' para cancelar.",
+                list(OPCIONES_REVISION_BLOQUEANTE),
             )
         return (
             " El borrador está listo para confirmar. Podés tocar 'conforme' para registrar tu conformidad, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
-            OPCIONES_REVISION_VALIDO,
+            list(OPCIONES_REVISION_VALIDO),
         )
     if est in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO):
         return (

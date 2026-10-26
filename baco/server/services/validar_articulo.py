@@ -3,6 +3,7 @@ from typing import Any
 from baco.server.schemas.articulo import ArticuloSchema
 from baco.server.config_limites import (
     TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,
     TITULO_MIN,
@@ -610,9 +611,11 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     texto_sanitizado = datos_sanitizados["texto_sanitizado"]
     titulo_sanitizado = datos_sanitizados["titulo_sanitizado"]
 
+    from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+
     articulo.texto = texto_sanitizado
     articulo.titulo = titulo_sanitizado
-    longitud_texto = len(texto_sanitizado)
+    longitud_texto = len(texto_efectivo_sin_marcadores(texto_sanitizado))
 
     # 2. Si se reemplazaron PIIs o secretos, avisar al usuario de forma no bloqueante para preservarle
     if datos_sanitizados["reemplazos_total"] > 0:
@@ -682,12 +685,12 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
             description=f"El texto es muy breve ({longitud_texto} caracteres). Se requieren al menos {TEXTO_MIN} caracteres.",
             action=f"Detallar mejor el problema, pasos a seguir o contexto técnico para superar los {TEXTO_MIN} caracteres."
         ))
-    elif longitud_texto > TEXTO_MAX:
+    elif longitud_texto > TEXTO_MAX_PERCENTIL_99:
         findings.append(_finding(
             severity="Bloqueante",
             field="texto",
-            description=f"El texto excede el límite permitido ({longitud_texto} caracteres recibidos, máximo {TEXTO_MAX}).",
-            action=f"Reducir la extensión del contenido para no superar {TEXTO_MAX} caracteres."
+            description=f"El texto excede el límite permitido ({longitud_texto} caracteres recibidos, máximo {TEXTO_MAX_PERCENTIL_99}).",
+            action=f"Reducir la extensión del contenido para no superar {TEXTO_MAX_PERCENTIL_99} caracteres."
         ))
     elif re.search(r"\[Indicar[^]]*]", texto_sanitizado, re.IGNORECASE):
         findings.append(_finding(

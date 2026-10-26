@@ -1,14 +1,7 @@
--- ============================================================================
--- BACO - Seed de demostración con 35 artículos 100% sintéticos
--- Incluye embeddings ONNX precalculados:
---   * embedding_titulo: paraphrase-multilingual-MiniLM-L12-v2 (384 dims)
---   * embedding_texto : intfloat/multilingual-e5-base (768 dims)
--- Sin datos reales ni información personal (PII).
--- ============================================================================
 
 BEGIN;
 
--- 1. Categorías sintéticas
+
 INSERT INTO public.categorias (id, nombre) VALUES
     (10, 'Facturación y Ventas'),
     (20, 'Compras y Proveedores'),
@@ -19,7 +12,7 @@ INSERT INTO public.categorias (id, nombre) VALUES
     (70, 'Novedades de Versión')
 ON CONFLICT (id) DO UPDATE SET nombre = EXCLUDED.nombre;
 
--- 2. Tags sintéticos
+
 INSERT INTO public.tags (id, name, slug) VALUES
     (1, 'instructivo', 'instructivo'),
     (2, 'solucion', 'solucion'),
@@ -33,7 +26,7 @@ INSERT INTO public.tags (id, name, slug) VALUES
     (10, 'novedades', 'novedades')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug;
 
--- 3. Artículos sintéticos con embeddings precalculados
+
 INSERT INTO public.articulos (id, titulo, categoria_id, url, texto, embedding_titulo, embedding_texto, actualizado) VALUES (
     1001,
     'Cómo configurar un punto de venta electrónico en el módulo de facturación',

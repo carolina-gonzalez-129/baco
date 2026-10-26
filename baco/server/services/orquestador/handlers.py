@@ -5,6 +5,7 @@ from starlette.concurrency import run_in_threadpool
 
 from baco.server.config_limites import (
     TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,
     TITULO_MIN,
@@ -23,6 +24,8 @@ from baco.server.services.orquestador.mensajes import (
     MSG_DESCARTAR_COINCIDENCIA_TITULO,
     MSG_ELEGIR_PLANTILLA,
     MSG_OPERACION_CANCELADA,
+    MSG_OPCIONES_RECURSOS_SKILLS,
+    OPCIONES_RECURSOS_SKILLS,
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
     MSG_SIN_COINCIDENCIAS_TITULO,
@@ -154,8 +157,8 @@ async def handle_decision_titulo(
         texto_base_limpio, recs_base = extraer_recursos_y_texto_limpio(
             texto_base, ultimo_id=sesion.ultimo_id_recurso
         )
-        if validar_longitud_maxima(texto_base_limpio, TEXTO_MAX, "texto"):
-            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
+        if validar_longitud_maxima(texto_base_limpio, TEXTO_MAX_PERCENTIL_99, "texto"):
+            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX_PERCENTIL_99), ["descartar", "reiniciar"])
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_enviado = (req.texto or "").strip()
@@ -212,7 +215,7 @@ async def handle_decision_titulo(
             ultimo_id_recurso=max_id,
         )
 
-        err = validar_longitud(texto_limpio, TEXTO_MIN, TEXTO_MAX, "texto")
+        err = validar_longitud(texto_limpio, TEXTO_MIN, TEXTO_MAX_PERCENTIL_99, "texto")
         if err:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
             return construir_respuesta(sesion, err, ["confirmar_texto", "descartar", "volver"])
@@ -383,9 +386,30 @@ async def handle_esperando_texto(
         if (sesion.borrador and sesion.borrador.modo == "enriquecimiento")
         else ["confirmar_texto", "volver"]
     )
-    es_confirmacion = opcion == "confirmar_texto" or (
-        req.accion and req.accion.strip().lower() in ("confirmar_texto", "confirmar texto", "confirmar")
-    )
+    prefijo_resultado_recursos = ""
+    if opcion == "quitar_recursos":
+        sesion.recursos = {}
+        sesion.orden_multimedia = []
+        sesion.posiciones = []
+        if sesion.texto_en_edicion:
+            sesion.texto_en_edicion = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", sesion.texto_en_edicion).strip()
+        if sesion.texto_limpio:
+            sesion.texto_limpio = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", sesion.texto_limpio).strip()
+        if sesion.borrador is not None:
+            sesion.borrador.recursos = {}
+            sesion.borrador.orden_multimedia = []
+            sesion.borrador.posiciones = []
+            if sesion.borrador.texto_limpio:
+                sesion.borrador.texto_limpio = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", sesion.borrador.texto_limpio).strip()
+        prefijo_resultado_recursos = "Se quitaron los recursos multimedia. Las skills del agente quedan habilitadas para este borrador.\n\n"
+        es_confirmacion = True
+    elif opcion == "seguir_con_recursos":
+        prefijo_resultado_recursos = "Continuamos conservando los recursos multimedia en el borrador (las skills de asistencia quedan deshabilitadas).\n\n"
+        es_confirmacion = True
+    else:
+        es_confirmacion = opcion == "confirmar_texto" or (
+            req.accion and req.accion.strip().lower() in ("confirmar_texto", "confirmar texto", "confirmar")
+        )
 
     if not es_confirmacion:
         fragmento = (req.texto if req.texto is not None else (req.mensaje or "")).strip()
@@ -421,9 +445,9 @@ async def handle_esperando_texto(
             nuevo_borrador_txt = fragmento_limpio
 
         largo_efectivo = len(texto_efectivo_sin_marcadores(nuevo_borrador_txt))
-        if largo_efectivo > TEXTO_MAX:
+        if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
-            return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), ops_texto)
+            return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), ops_texto)
 
         max_id_frag = max(ultimo_id_prev, _max_num_recurso(recs_combinados))
         sesion.actualizar_contenido_borrador(
@@ -435,10 +459,25 @@ async def handle_esperando_texto(
             tags=req.tags,
         )
 
-        msg_edicion = (
-            f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX} caracteres). "
-            "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
-        )
+        if bool(recs_combinados):
+            return construir_respuesta(
+                sesion,
+                MSG_OPCIONES_RECURSOS_SKILLS,
+                OPCIONES_RECURSOS_SKILLS,
+                aviso_privacidad=aviso_priv_frag,
+            )
+
+        if largo_efectivo > TEXTO_MAX:
+            msg_edicion = (
+                f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX_PERCENTIL_99} caracteres). "
+                f"Tené en cuenta que al superar los {TEXTO_MAX} caracteres, las skills del agente quedan deshabilitadas. "
+                "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
+            )
+        else:
+            msg_edicion = (
+                f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX} caracteres). "
+                "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
+            )
         return construir_respuesta(sesion, msg_edicion, ops_texto, aviso_privacidad=aviso_priv_frag)
 
     if req.texto is not None:
@@ -449,12 +488,18 @@ async def handle_esperando_texto(
             and (sesion.borrador is None or sesion.borrador.modo != "enriquecimiento")
         ):
             texto_raw = f"{sesion.texto_en_edicion}\n\n{req.texto.strip()}".strip()
-    elif req.mensaje is not None and req.mensaje.strip().lower() not in ("confirmar_texto", "confirmar texto", "confirmar"):
+    elif req.mensaje is not None and req.mensaje.strip().lower() not in (
+        "confirmar_texto", "confirmar texto", "confirmar",
+        "quitar_recursos", "quitar recursos", "seguir_con_recursos", "seguir con recursos"
+    ):
         texto_raw = req.mensaje.strip()
         if sesion.texto_en_edicion and req.mensaje.strip() != sesion.texto_en_edicion.strip():
             texto_raw = f"{sesion.texto_en_edicion}\n\n{req.mensaje.strip()}".strip()
     else:
-        texto_raw = (sesion.texto_en_edicion or "").strip()
+        texto_raw = (sesion.texto_limpio or sesion.texto_en_edicion or "").strip()
+
+    if opcion == "quitar_recursos":
+        texto_raw = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", texto_raw).strip()
 
     if not texto_raw:
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO")
@@ -495,9 +540,22 @@ async def handle_esperando_texto(
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
             return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
 
-        if largo_efectivo > TEXTO_MAX:
+        if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
-            return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), [])
+            return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
+
+        if bool(recursos) and opcion not in ("quitar_recursos", "seguir_con_recursos", "confirmar_texto"):
+            sesion.actualizar_contenido_borrador(
+                texto_limpio=texto_limpio,
+                texto_base_limpio=texto_limpio,
+                texto_en_edicion=texto_limpio,
+                recursos=recursos,
+            )
+            return construir_respuesta(
+                sesion,
+                MSG_OPCIONES_RECURSOS_SKILLS,
+                OPCIONES_RECURSOS_SKILLS,
+            )
 
         recursos_finales = sincronizar_recursos_con_marcadores(texto_limpio, recursos)
         max_id_enriq = max(
@@ -513,8 +571,9 @@ async def handle_esperando_texto(
             categoria_id=req.categoria_id,
             tags=req.tags,
         )
+        pref_enriq = f"{prefijo_resultado_recursos}{prefijo_borrador_creado(sesion.borrador.articulo_original_id)}"
         return avanzar_a_metadatos_o_revision(
-            sesion, prefijo_borrador_creado(sesion.borrador.articulo_original_id), aviso_privacidad=aviso_priv
+            sesion, pref_enriq, aviso_privacidad=aviso_priv
         )
 
     texto_limpio, recursos, err_marcadores = procesar_recursos_y_marcadores(
@@ -527,14 +586,28 @@ async def handle_esperando_texto(
         sesion.registrar_fallo("MARCADORES_MANUALES")
         return construir_respuesta(sesion, err_marcadores, ["volver"])
 
+    if bool(recursos) and opcion not in ("quitar_recursos", "seguir_con_recursos", "confirmar_texto"):
+        max_id_nuevo = max(sesion.ultimo_id_recurso, _max_num_recurso(recursos))
+        sesion.actualizar_contenido_borrador(
+            texto_limpio=texto_limpio,
+            texto_en_edicion=texto_limpio,
+            recursos=recursos,
+            ultimo_id_recurso=max_id_nuevo,
+        )
+        return construir_respuesta(
+            sesion,
+            MSG_OPCIONES_RECURSOS_SKILLS,
+            OPCIONES_RECURSOS_SKILLS,
+        )
+
     largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
     if largo_efectivo < TEXTO_MIN:
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
         return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
 
-    if largo_efectivo > TEXTO_MAX:
+    if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
-        return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX, intento), [])
+        return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
 
     sanit_txt = sanitizar_borrador(texto=texto_limpio, titulo=sesion.titulo)
     texto_sanitizado = sanit_txt["texto_sanitizado"]
@@ -583,8 +656,9 @@ async def handle_esperando_texto(
         tags=list(sesion.tags),
     )
     sesion.texto = txt_rec
+    pref_final = f"{prefijo_resultado_recursos}{PREFIJO_SIN_DUPLICADOS}"
     return avanzar_a_metadatos_o_revision(
-        sesion, PREFIJO_SIN_DUPLICADOS, aviso_privacidad=aviso_privacidad
+        sesion, pref_final, aviso_privacidad=aviso_privacidad
     )
 
 
@@ -607,8 +681,8 @@ async def handle_decision_texto(
         elegido.texto_original = texto_base
 
         texto_base_limpio, recs_base = extraer_recursos_y_texto_limpio(texto_base)
-        if validar_longitud_maxima(texto_base_limpio, TEXTO_MAX, "texto"):
-            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
+        if validar_longitud_maxima(texto_base_limpio, TEXTO_MAX_PERCENTIL_99, "texto"):
+            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX_PERCENTIL_99), ["descartar", "reiniciar"])
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_aporte = (req.texto or "").strip() or (sesion.texto or "").strip() or (sesion.texto_limpio or "").strip()
@@ -622,8 +696,8 @@ async def handle_decision_texto(
             tl_aporte_remap = f"{texto_base_limpio}\n\n{tl_aporte_remap}".strip()
         texto_limpio, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, tl_aporte_remap)
 
-        if validar_longitud_maxima(texto_limpio, TEXTO_MAX, "texto"):
-            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX), ["descartar", "reiniciar"])
+        if validar_longitud_maxima(texto_limpio, TEXTO_MAX_PERCENTIL_99, "texto"):
+            return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX_PERCENTIL_99), ["descartar", "reiniciar"])
 
         es_serie = elegido.tipo_coincidencia == "serie" or opcion == "actualizar"
         titulo_borrador = (sesion.titulo or req.titulo or elegido.titulo).strip() if es_serie else elegido.titulo
@@ -996,7 +1070,7 @@ def _aplicar_mutaciones_borrador(
         if aviso_txt:
             aviso_priv_edicion = f"{aviso_priv_edicion}\n{aviso_txt}" if aviso_priv_edicion else aviso_txt
 
-        err_txt = validar_longitud_maxima(txt_verif, TEXTO_MAX, "texto")
+        err_txt = validar_longitud_maxima(txt_verif, TEXTO_MAX_PERCENTIL_99, "texto")
         if err_txt:
             return construir_respuesta(sesion, err_txt, ops_actuales)
 
