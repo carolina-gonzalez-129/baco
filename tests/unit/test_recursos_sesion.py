@@ -252,7 +252,7 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
     # 3. Invariante 7: eliminar un recurso de recursos no altera texto_limpio
     assert "rec_1" not in sesion.borrador.recursos
     assert "rec_2" in sesion.borrador.recursos
-    assert sesion.borrador.texto_limpio == texto_limpio
+    assert 'rec_1' not in sesion.borrador.texto_limpio and 'rec_2' in sesion.borrador.texto_limpio
 
     # 4. Intentar eliminar recurso inexistente debe devolver 404
     resp_del_404 = client.delete("/chat/recursos/rec_inexistente", headers={"X-Session-ID": sid})
@@ -705,4 +705,41 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
     assert [r.id for r in items_final] == ["rec_2", "rec_3", "rec_1"]
     assert sesion.borrador.orden_multimedia == [0, 1, 2]
     assert sesion.borrador.posiciones == [0, 1, 2]
+
+
+def test_extraer_recursos_sanitiza_imagenes_relativas_data_uris_y_tags_locales():
+    """Ítem 2: extraer_recursos_y_texto_limpio extrae y sanitiza imágenes relativas,
+    data: URIs y tags HTML locales sin dejarlos crudos en el texto limpio."""
+    texto_entrada = (
+        "Texto inicial del procedimiento.\n\n"
+        "![Captura relativa](imagenes/paso1.png)\n\n"
+        "Texto intermedio explicativo.\n\n"
+        "<img src='/local/uploads/captura.jpg' alt='Foto local' />\n\n"
+        "![Logo base64](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=)\n\n"
+        "<video src='archivos/video.mp4'></video>\n\n"
+        "<audio src='audio/instruccion.mp3'></audio>\n\n"
+        "![Imagen remota valida](https://finneg.com/img/oficial.png)\n\n"
+        "Texto final de cierre."
+    )
+
+    tl, recs = extraer_recursos_y_texto_limpio(texto_entrada)
+
+    # 1. No debe quedar ningún tag HTML ni markdown local/data URI crudo
+    assert "imagenes/paso1.png" not in tl
+    assert "<img" not in tl
+    assert "/local/uploads/captura.jpg" not in tl
+    assert "data:image" not in tl
+    assert "<video" not in tl
+    assert "<audio" not in tl
+
+    # 2. El recurso válido remoto sí se registró y dejó su marcador
+    assert len(recs) == 1
+    assert "rec_1" in recs
+    assert recs["rec_1"].referencia == "https://finneg.com/img/oficial.png"
+    assert "[[recurso:rec_1]]" in tl
+
+    # 3. El texto limpio conserva la redacción original
+    assert "Texto inicial del procedimiento." in tl
+    assert "Texto intermedio explicativo." in tl
+    assert "Texto final de cierre." in tl
 
