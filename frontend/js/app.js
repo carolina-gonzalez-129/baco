@@ -1066,7 +1066,7 @@
     const b = s.borrador;
     const metaAnt = b && b.metadatos_anteriores;
     const etapaPostTexto = s.flujo !== 'ESPERANDO_TITULO' && s.flujo !== 'DECISION_TITULO' && s.flujo !== 'ESPERANDO_TEXTO' && s.flujo !== 'DECISION_TEXTO';
-    const pendiente = etapaPostTexto && metaAnt && !b.metadatos_heredados_revisados;
+    const pendiente = (etapaPostTexto || !!s.aviso_metadatos_heredados) && metaAnt && !b.metadatos_heredados_revisados;
 
     if (pendiente) {
       const nomCat = metaAnt.categoria_nombre || nombreCategoria(s, metaAnt.categoria_id);
@@ -1608,7 +1608,9 @@
     if (ancho) b.querySelector('.bubble').classList.add('ancha');
     /* En el panel derecho (BACO Companion) nunca se muestra el botón "Confirmar texto" */
     const opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto');
-    const opcionesCompanionFinal = opcionesCompanion;
+    const sActual = store.get();
+    const tieneMetaPendiente = (sActual.flujo === 'REVISION_BORRADOR' && !!(sActual.aviso_metadatos_heredados || (sActual.borrador && sActual.borrador.metadatos_anteriores && !sActual.borrador.metadatos_heredados_revisados)));
+    const opcionesCompanionFinal = tieneMetaPendiente ? [] : opcionesCompanion;
     if (opcionesCompanionFinal.length) {
       const cont = el('div', 'acciones');
       opcionesCompanionFinal.forEach((op) => {
