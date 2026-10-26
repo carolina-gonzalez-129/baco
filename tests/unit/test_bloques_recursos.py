@@ -1,6 +1,7 @@
 import io
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from fastapi import HTTPException
 
 import pytest
 from fastapi.testclient import TestClient
@@ -117,9 +118,9 @@ def test_derivar_desde_bloques_funcion_pura_y_marcadores():
     # Marcadores correlativos en texto_limpio
     esperado = (
         "Primer párrafo explicativo.\n\n"
-        "[[R1]]\n\n"
+        "[[recurso:rec_1]]\n\n"
         "Segundo párrafo con instrucciones intermedias.\n\n"
-        "[[R2]]"
+        "[[recurso:rec_2]]"
     )
     assert texto_limpio == esperado
 
@@ -166,7 +167,7 @@ def test_derivar_desde_bloques_idempotencia_e_ids_estables():
     # Pasada 1
     t1, recs1, _ = derivar_desde_bloques(bloques)
     assert "rec_1" in recs1
-    assert t1 == "Paso 1\n\n[[R1]]"
+    assert t1 == "Paso 1\n\n[[recurso:rec_1]]"
 
     # Pasada 2 (idempotencia pasando recs1 como recursos_previos)
     t2, recs2, _ = derivar_desde_bloques(bloques, recursos_previos=recs1)
@@ -197,7 +198,7 @@ def test_agregar_recurso_no_altera_texto_limpio():
         BloqueItem(tipo="texto", contenido="Párrafo B"),
     ]
     t_nuevo, recs, _ = derivar_desde_bloques(bloques_nuevos)
-    assert t_nuevo == "Párrafo A\n\n[[R1]]\n\nPárrafo B"
+    assert t_nuevo == "Párrafo A\n\n[[recurso:rec_1]]\n\nPárrafo B"
     # Los párrafos A y B no sufrieron alteraciones
     assert "Párrafo A" in t_nuevo
     assert "Párrafo B" in t_nuevo
@@ -239,14 +240,15 @@ def test_reordenar_y_eliminar_recursos_sin_alterar_texto():
 # =========================================================================
 
 def test_sanitizar_url_recurso_elimina_query_fragmento_y_credenciales():
-    """sanitizar_url_recurso debe eliminar query strings, fragmentos y credenciales embebidas."""
+    """sanitizar_url_recurso debe eliminar parámetros sensibles, fragmentos y credenciales embebidas, conservando query no sensible."""
     url_con_todo = "https://usuario:token_secreto@dominio.com:8443/archivos/reporte.pdf?auth=xyz&id=10#pagina=2"
     url_limpia = sanitizar_url_recurso(url_con_todo)
 
-    assert url_limpia == "https://dominio.com:8443/archivos/reporte.pdf"
+    assert url_limpia == "https://dominio.com:8443/archivos/reporte.pdf?id=10"
     assert "token_secreto" not in url_limpia
     assert "usuario" not in url_limpia
     assert "auth=xyz" not in url_limpia
+    assert "id=10" in url_limpia
     assert "#pagina=2" not in url_limpia
 
 
@@ -288,7 +290,7 @@ def test_rechazo_svg_estricto_en_url_y_mime():
 
 
 def test_rechazo_marcadores_inyectados_por_el_usuario():
-    """Si el usuario escribe manualmente [[R1]] o [[R2]] en un bloque de texto, debe ser rechazado."""
+    """Si el usuario escribe manualmente [[R1]] o [[recurso:rec_1]] en un bloque de texto, debe ser rechazado."""
     # 1. En el schema BloqueItem
     with pytest.raises(ValidationError, match="marcadores reservados"):
         BloqueItem(tipo="texto", contenido="Intentando inyectar [[R1]] manualmente en el texto.")
@@ -301,17 +303,19 @@ def test_rechazo_marcadores_inyectados_por_el_usuario():
 
 
 def test_rechazo_url_duplicada_y_limites_tamano_en_request():
-    """ConfirmarBloquesRequest rechaza URLs duplicadas y violación de límites de tamaño y cantidad."""
-    # 1. URL duplicada en la misma petición
-    with pytest.raises(ValidationError, match="duplicada"):
-        ConfirmarBloquesRequest(
-            bloques=[
-                BloqueItem(tipo="texto", contenido="A"),
-                BloqueItem(tipo="recurso", recurso=RecursoBloqueInput(url="https://finneg.com/doc.pdf")),
-                BloqueItem(tipo="texto", contenido="B"),
-                BloqueItem(tipo="recurso", recurso=RecursoBloqueInput(url="https://finneg.com/doc.pdf?v=2")),
-            ]
-        )
+    """ConfirmarBloquesRequest permite reutilizar la misma URL (ambos marcadores al mismo rec_id) y valida límites de tamaño y cantidad."""
+    # 1. URL repetida en la misma petición reutiliza su rec_id
+    req_rep = ConfirmarBloquesRequest(
+        bloques=[
+            BloqueItem(tipo="texto", contenido="A"),
+            BloqueItem(tipo="recurso", recurso=RecursoBloqueInput(url="https://finneg.com/doc.pdf")),
+            BloqueItem(tipo="texto", contenido="B"),
+            BloqueItem(tipo="recurso", recurso=RecursoBloqueInput(url="https://finneg.com/doc.pdf?token=secret")),
+        ]
+    )
+    tl_rep, recs_rep, _ = derivar_desde_bloques(req_rep.bloques)
+    assert len(recs_rep) == 1
+    assert tl_rep.count("[[recurso:rec_1]]") == 2
 
     # 2. Supera tamaño individual (>10 MB)
     with pytest.raises(ValidationError, match="tamaño máximo"):
@@ -372,7 +376,7 @@ def test_hide_input_in_errors_y_validacion_cruzada():
 
 def test_skill_plantillas_descarta_respuesta_si_marcadores_no_coinciden():
     """Si la skill altera, elimina o agrega marcadores, se descarta su respuesta y se conserva el borrador."""
-    texto_original = "Introducción al sistema.\n\n[[R1]]\n\nPasos finales.\n\n[[R2]]"
+    texto_original = "Introducción al sistema.\n\n[[recurso:rec_1]]\n\nPasos finales.\n\n[[recurso:rec_2]]"
     borrador = BorradorSesion(
         modo="nuevo",
         titulo="Guía de Instalación",
@@ -384,38 +388,30 @@ def test_skill_plantillas_descarta_respuesta_si_marcadores_no_coinciden():
         tipo_plantilla="instructivo",
     )
 
-    # Mock del agente que 'olvidó' el marcador [[R2]]
-    mock_agente_omite = MagicMock(return_value="Introducción al sistema maquetada.\n\n[[R1]]\n\nPasos sin marcador.")
-    resultado = ejecutar_skill_plantillas("sesion_skill_test", borrador, mock_agente_omite)
+    mock_agente = MagicMock()
+    with pytest.raises(HTTPException) as exc_info:
+        ejecutar_skill_plantillas("sesion_skill_test", borrador, mock_agente)
 
-    # Debe retornar el texto anterior intacto con aviso de descarte
-    assert texto_original in resultado
-    assert "Se descartó la respuesta de la skill" in resultado
-    assert "marcadores de recursos no coinciden exactamente" in resultado
-    assert "[[R2]]" in resultado
+    assert exc_info.value.status_code == 400
+    assert "recursos multimedia" in exc_info.value.detail
+    mock_agente.assert_not_called()
 
 
-def test_skill_plantillas_acepta_cuando_marcadores_coinciden_exactamente():
-    """Si la skill respeta exactamente los marcadores y su orden, se acepta la respuesta."""
-    texto_original = "Párrafo A.\n\n[[R1]]\n\nPárrafo B.\n\n[[R2]]"
+def test_skill_plantillas_acepta_cuando_no_hay_recursos():
+    """Si el borrador no tiene recursos, la skill plantillas procesa el texto puro sin requerir marcadores."""
+    texto_original = "Párrafo A descriptivo del sistema.\n\nPárrafo B con las instrucciones de instalación."
     borrador = BorradorSesion(
         modo="nuevo",
         titulo="Guía de Instalación",
         texto_limpio=texto_original,
-        recursos={
-            "rec_1": Recurso(id="rec_1", tipo="imagen", nombre="Img 1", referencia="https://finneg.com/1.png", orden=0),
-            "rec_2": Recurso(id="rec_2", tipo="imagen", nombre="Img 2", referencia="https://finneg.com/2.png", orden=1),
-        },
+        recursos={},
         tipo_plantilla="instructivo",
     )
 
-    # Mock del agente que maqueta pero conserva [[R1]] y [[R2]] exactamente en orden
     texto_maquetado = (
         "## Guía de Instalación\n\n"
         "### Introducción\nPárrafo A maquetado profesionalmente por BACO.\n\n"
-        "[[R1]]\n\n"
-        "### Procedimiento\nPárrafo B detallado paso a paso según estándar corporativo.\n\n"
-        "[[R2]]"
+        "### Procedimiento\nPárrafo B detallado paso a paso según estándar corporativo."
     )
     mock_agente_ok = MagicMock(return_value=texto_maquetado)
 
@@ -423,7 +419,7 @@ def test_skill_plantillas_acepta_cuando_marcadores_coinciden_exactamente():
         resultado = ejecutar_skill_plantillas("sesion_skill_ok", borrador, mock_agente_ok)
 
     assert resultado == texto_maquetado
-    assert "Se descartó" not in resultado
+    mock_agente_ok.assert_called_once()
 
 
 # =========================================================================
@@ -468,7 +464,7 @@ def test_endpoint_post_chat_bloques(client):
     data = resp.json()
 
     assert data["session_id"] == sid
-    assert data["texto_limpio"] == "Sección inicial del artículo.\n\n[[R1]]\n\nSección secundaria posterior al diagrama."
+    assert data["texto_limpio"] == "Sección inicial del artículo.\n\n[[recurso:rec_1]]\n\nSección secundaria posterior al diagrama."
     assert len(data["recursos"]) == 1
     rec = data["recursos"][0]
     assert rec["id"] == "rec_1"
@@ -526,7 +522,7 @@ def test_endpoint_post_chat_bloques_autosanitiza_pii_y_avisa(client):
     assert "juan@empresa.com" not in data["texto_limpio"]
     assert "[CUIT_OCULTO]" in data["texto_limpio"]
     assert "usuario@ejemplo.com" in data["texto_limpio"]
-    assert "[[R1]]" in data["texto_limpio"]
+    assert "[[recurso:rec_1]]" in data["texto_limpio"]
 
     # Aviso debe contener advertencia de privacidad y conteo de recursos
     assert "preservarte" in data["aviso"]

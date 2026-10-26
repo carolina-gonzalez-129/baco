@@ -169,42 +169,13 @@ def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recur
     with pytest.raises(AttributeError):
         borrador.texto = "Intento de sobreescritura directa"
 
-def test_verificar_marcadores_detecta_faltante_sobrante_repetido_y_reordenado():
-    """Cambio 2: verificar_marcadores valida coincidencia exacta en cantidad, IDs y orden."""
-    from baco.server.services.agente_service import verificar_marcadores
-
-    texto_in = "Paso 1: [[recurso:rec_1]]\n\nPaso 2: [[recurso:rec_2]]"
-
-    # 1. Coincidencia exacta -> True
-    valido, esp, obt = verificar_marcadores(texto_in, "Texto format\n\n[[recurso:rec_1]]\n\n[[recurso:rec_2]]")
-    assert valido is True
-    assert esp == ["[[recurso:rec_1]]", "[[recurso:rec_2]]"]
-    assert obt == ["[[recurso:rec_1]]", "[[recurso:rec_2]]"]
-
-    # 2. Faltante -> False
-    valido_faltante, _, obt_faltante = verificar_marcadores(texto_in, "Solo [[recurso:rec_1]]")
-    assert valido_faltante is False
-    assert obt_faltante == ["[[recurso:rec_1]]"]
-
-    # 3. Sobrante / Inventado -> False
-    valido_sobrante, _, _ = verificar_marcadores(texto_in, "[[recurso:rec_1]] [[recurso:rec_2]] [[recurso:rec_extra]]")
-    assert valido_sobrante is False
-
-    # 4. Repetido -> False
-    valido_repetido, _, _ = verificar_marcadores(texto_in, "[[recurso:rec_1]] [[recurso:rec_2]] [[recurso:rec_2]]")
-    assert valido_repetido is False
-
-    # 5. Reordenado -> False
-    valido_reordenado, _, _ = verificar_marcadores(texto_in, "[[recurso:rec_2]] primero y luego [[recurso:rec_1]]")
-    assert valido_reordenado is False
-
-
-def test_skill_plantillas_con_marcador_inventado_por_modelo_descarta_tras_reintento():
-    """Cambio 2: si el modelo inventa o mueve marcadores, se reintenta 1 vez; si persiste se descarta."""
+def test_skill_plantillas_rechaza_borrador_con_recursos_o_marcadores():
+    """La aplicación de skills y los recursos son mutuamente excluyentes: corta con HTTPException 400 y no llama al modelo."""
     from unittest.mock import MagicMock
+    from fastapi import HTTPException
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
-    texto_original = "Paso 1: Configurar cuenta.\n\n[[recurso:rec_1]]\n\nPaso 2: Verificar saldos."
+    texto_original = "Paso 1: Configurar cuenta.\n\nPaso 2: Verificar saldos."
     r1 = Recurso(id="rec_1", tipo="imagen", nombre="img.png", referencia="https://bc.finneg.com/1.png", orden=0)
     borrador = BorradorSesion(
         modo="nuevo",
@@ -214,44 +185,37 @@ def test_skill_plantillas_con_marcador_inventado_por_modelo_descarta_tras_reinte
         tipo_plantilla="instructivo",
     )
 
-    # El modelo devuelve respuesta con marcador inventado [[recurso:rec_inventado_llm]] en ambos intentos
-    mock_baco = MagicMock(return_value="## Instructivo\nPaso 1\n[[recurso:rec_1]]\n[[recurso:rec_inventado_llm]]")
-    resultado = ejecutar_skill_plantillas("ses_step5_test", borrador, mock_baco)
+    mock_baco = MagicMock()
+    import pytest
+    with pytest.raises(HTTPException) as exc:
+        ejecutar_skill_plantillas("ses_step5_test", borrador, mock_baco)
 
-    # Debe haber llamado 2 veces (intento original + 1 reintento)
-    assert mock_baco.call_count == 2
-    # El resultado debe conservar el borrador anterior intacto y avisar del descarte
-    assert texto_original in resultado
-    assert "Se descartó la respuesta de la skill" in resultado
-    assert "no coinciden exactamente" in resultado
+    assert exc.value.status_code == 400
+    mock_baco.assert_not_called()
 
 
-def test_skill_plantillas_con_reintento_exitoso_acepta_segunda_respuesta():
-    """Cambio 2: si el modelo corrige los marcadores en el reintento, se acepta la respuesta."""
+def test_skill_plantillas_acepta_texto_puro_sin_recursos():
+    """Si el borrador no contiene recursos ni marcadores, la skill procesa el texto puro normalmente."""
     from unittest.mock import MagicMock, patch
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
-    texto_original = "Paso 1: Configuración.\n\n[[recurso:rec_1]]\n\nPaso 2: Finalización."
-    r1 = Recurso(id="rec_1", tipo="imagen", nombre="img.png", referencia="https://bc.finneg.com/1.png", orden=0)
+    texto_original = "Paso 1: Configuración inicial.\n\nPaso 2: Finalización del proceso."
     borrador = BorradorSesion(
         modo="nuevo",
         titulo="Instructivo Contable",
         texto_limpio=texto_original,
-        recursos={"rec_1": r1},
+        recursos={},
         tipo_plantilla="instructivo",
     )
 
-    # Intento 1: omitió el marcador. Intento 2 (reintento): lo conservó correctamente.
-    respuesta_mala = "## Instructivo\nTexto sin marcador maquetado con estilo formal."
-    respuesta_buena = "## Instructivo Oficial\nPaso 1 maquetado.\n\n[[recurso:rec_1]]\n\nPaso 2 maquetado."
+    respuesta_buena = "## Instructivo Oficial\n\n### Procedimiento\nPaso 1 y Paso 2 maquetados correctamente."
+    mock_baco = MagicMock(return_value=respuesta_buena)
 
-    mock_baco = MagicMock(side_effect=[respuesta_mala, respuesta_buena])
     with patch("baco.server.services.agente_service.actualizar_borrador_texto"):
         resultado = ejecutar_skill_plantillas("ses_retry_ok", borrador, mock_baco)
 
-    assert mock_baco.call_count == 2
+    assert mock_baco.call_count == 1
     assert resultado == respuesta_buena
-    assert "Se descartó" not in resultado
 
 def test_componer_texto_publicable_sustituye_marcadores_inline_sin_seccion_final_recursos():
     """Cambio 4: componer_texto_publicable sustituye cada marcador por su Markdown

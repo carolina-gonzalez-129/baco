@@ -12,8 +12,9 @@ from baco.server.services.agente_service import (
 from baco.server.services.orquestador.sesion import gestor_sesiones
 
 
-def test_agente_nunca_recibe_url_de_recurso_cuando_texto_limpio_esta_definido():
-    """El agente solo recibe texto_limpio y nunca las URLs de los recursos del borrador."""
+def test_skills_rechazan_si_borrador_tiene_recursos_o_marcadores_y_no_llaman_al_modelo():
+    """Guarda defensiva: si el borrador contiene recursos o marcadores/tags multimedia,
+    se corta con error 400 y el modelo nunca es invocado."""
     sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
     sid = sesion.session_id
 
@@ -25,110 +26,126 @@ def test_agente_nunca_recibe_url_de_recurso_cuando_texto_limpio_esta_definido():
             referencia="https://bc.finneg.com/uploads/original/error_123.png",
             orden=0,
         ),
-        "rec_2": Recurso(
-            id="rec_2",
-            tipo="video",
-            nombre="Video",
-            referencia="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            orden=1,
-        ),
     }
 
-    borrador = BorradorSesion(
+    # Caso 1: borrador con diccionario de recursos poblado
+    borrador_con_recursos = BorradorSesion(
         modo="nuevo",
         titulo="Cómo configurar el sistema contable",
-        texto="Texto compuesto con URLs https://bc.finneg.com/uploads/original/error_123.png",
         texto_limpio="Texto completamente limpio para configurar el sistema contable paso a paso.",
         recursos=recs,
         tipo_plantilla="instructivo",
         conforme=True,
     )
-    sesion.borrador = borrador
 
-    prompts_recibidos = []
+    mock_baco = MagicMock()
 
-    def mock_baco(prompt: str) -> str:
-        prompts_recibidos.append(prompt)
-        return (
-            "## Cómo configurar el sistema contable\n\n"
-            "### Pasos a seguir\n\n"
-            "Texto formateado por el modelo cumpliendo con la longitud mínima requerida."
-        )
+    with pytest.raises(HTTPException) as exc1:
+        ejecutar_skill_plantillas(sid, borrador_con_recursos, mock_baco)
+    assert exc1.value.status_code == 400
+    assert "recursos multimedia" in exc1.value.detail
+    mock_baco.assert_not_called()
 
-    # 1. Probar skill plantillas
-    ejecutar_skill_plantillas(sid, borrador, mock_baco)
-    assert len(prompts_recibidos) == 1
-    prompt_plantillas = prompts_recibidos[0]
-    assert "https://bc.finneg.com/uploads/original/error_123.png" not in prompt_plantillas
-    assert "https://www.youtube.com/watch?v=dQw4w9WgXcQ" not in prompt_plantillas
-    assert "Texto completamente limpio para configurar el sistema contable" in prompt_plantillas
+    with pytest.raises(HTTPException) as exc2:
+        ejecutar_skill_validador(borrador_con_recursos, mock_baco)
+    assert exc2.value.status_code == 400
+    assert "recursos multimedia" in exc2.value.detail
+    mock_baco.assert_not_called()
 
-    # 2. Probar skill validador sobre un nuevo borrador con texto_limpio original
-    borrador_validador = BorradorSesion(
+    # Caso 2: borrador sin dict de recursos pero con marcador [[recurso:rec_1]] en el texto
+    borrador_con_marcador = BorradorSesion(
         modo="nuevo",
         titulo="Cómo configurar el sistema contable",
-        texto="Texto compuesto con URLs https://bc.finneg.com/uploads/original/error_123.png",
-        texto_limpio="Texto original a auditar para configurar el sistema contable.",
-        recursos=recs,
+        texto_limpio="Texto preliminar con marcador [[recurso:rec_1]] en el cuerpo.",
+        recursos={"rec_1": recs["rec_1"]},
+        tipo_plantilla="instructivo",
         conforme=True,
     )
-    ejecutar_skill_validador(borrador_validador, mock_baco)
-    assert len(prompts_recibidos) == 2
-    prompt_validador = prompts_recibidos[1]
-    assert "https://bc.finneg.com/uploads/original/error_123.png" not in prompt_validador
-    assert "https://www.youtube.com/watch?v=dQw4w9WgXcQ" not in prompt_validador
-    assert "Texto original a auditar para configurar el sistema contable" in prompt_validador
+    borrador_con_marcador.recursos = {}  # forzamos recursos vacíos para aislar el check de texto
+
+    with pytest.raises(HTTPException) as exc3:
+        ejecutar_skill_plantillas(sid, borrador_con_marcador, mock_baco)
+    assert exc3.value.status_code == 400
+    assert "marcadores de recursos" in exc3.value.detail
+    mock_baco.assert_not_called()
+
+    # Caso 3: texto con tag HTML multimedia
+    borrador_con_html = BorradorSesion(
+        modo="nuevo",
+        titulo="Cómo configurar el sistema contable",
+        texto_limpio="Texto que contiene un tag <img src='https://ejemplo.com/foto.png'> en el cuerpo.",
+        tipo_plantilla="instructivo",
+        conforme=True,
+    )
+
+    with pytest.raises(HTTPException) as exc4:
+        ejecutar_skill_plantillas(sid, borrador_con_html, mock_baco)
+    assert exc4.value.status_code == 400
+    assert "tags multimedia" in exc4.value.detail
+    mock_baco.assert_not_called()
+
+    # Caso 4: texto con imagen Markdown
+    borrador_con_md = BorradorSesion(
+        modo="nuevo",
+        titulo="Cómo configurar el sistema contable",
+        texto_limpio="Texto que contiene una imagen ![captura](https://ejemplo.com/foto.png) en Markdown.",
+        tipo_plantilla="instructivo",
+        conforme=True,
+    )
+
+    with pytest.raises(HTTPException) as exc5:
+        ejecutar_skill_plantillas(sid, borrador_con_md, mock_baco)
+    assert exc5.value.status_code == 400
+    assert "tags multimedia" in exc5.value.detail
+    mock_baco.assert_not_called()
 
 
-def test_agente_deriva_texto_limpio_si_esta_vacio_sin_filtrar_urls():
-    """Si texto_limpio está vacío, se deriva con extraer_recursos_y_texto_limpio y nunca llega la URL al agente."""
+def test_skills_aceptan_texto_puro_sin_recursos_y_permiten_marcadores_pii():
+    """El agente procesa correctamente texto sin recursos y acepta marcadores PII anonimizados."""
     sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
     sid = sesion.session_id
 
-    url_imagen = "https://bc.finneg.com/uploads/default/original/pantalla.png"
-    url_video = "https://www.youtube.com/watch?v=abcxyz"
-    texto_raw = (
-        f"Pasos preliminares para la configuración:\n\n"
-        f"![captura]({url_imagen})\n\n"
-        f"Continuar con la validación de credenciales según el video:\n\n"
-        f"{url_video}"
+    texto_con_pii = (
+        "Pasos para ingresar al ERP Finnegans con credenciales protegidas:\n\n"
+        "1. Ingresar usuario 'admin' y clave [CONTRASENA_OCULTA].\n"
+        "2. Validar token [TOKEN_OCULTO] de autenticación de dos factores.\n"
+        "3. Confirmar que el comprobante pertenezca a la empresa con CUIT 30-12345678-9."
     )
 
     borrador = BorradorSesion(
         modo="nuevo",
-        titulo="Guía con medios embebidos",
-        texto=texto_raw,
-        texto_limpio="",
+        titulo="Ingreso seguro al sistema",
+        texto_limpio=texto_con_pii,
         tipo_plantilla="instructivo",
         conforme=True,
     )
-    sesion.borrador = borrador
 
     prompts_recibidos = []
 
     def mock_baco(prompt: str) -> str:
         prompts_recibidos.append(prompt)
         return (
-            "## Guía con medios embebidos\n\n"
-            "### Pasos a seguir\n\n"
-            "[[recurso:rec_1]]\n\n"
-            "[[recurso:rec_2]]\n\n"
-            "Texto formateado por el modelo cumpliendo con la longitud mínima requerida."
+            "## Ingreso seguro al sistema\n\n"
+            "### Objetivo\n"
+            "Describir el proceso de autenticación con credenciales anonimizadas.\n\n"
+            "### Procedimiento\n"
+            "1. Ingresar con clave [CONTRASENA_OCULTA].\n"
+            "2. Validar token [TOKEN_OCULTO] de seguridad."
         )
 
-    ejecutar_skill_plantillas(sid, borrador, mock_baco)
-
+    # 1. Probar plantillas
+    resultado = ejecutar_skill_plantillas(sid, borrador, mock_baco)
     assert len(prompts_recibidos) == 1
-    prompt = prompts_recibidos[0]
+    assert "[CONTRASENA_OCULTA]" in prompts_recibidos[0]
+    assert "[TOKEN_OCULTO]" in prompts_recibidos[0]
+    assert "REGLA CRÍTICA DE MARCADORES MULTIMEDIA" not in prompts_recibidos[0]
+    assert "[CONTRASENA_OCULTA]" in resultado
 
-    # Ninguna URL de recurso multimedia debe haber llegado al agente
-    assert url_imagen not in prompt
-    assert url_video not in prompt
-    # Debe haber llegado el texto limpio extraído
-    assert "Pasos preliminares para la configuración" in prompt
-    assert "Continuar con la validación de credenciales" in prompt
-    # Se deben haber poblado los recursos en el borrador
-    assert len(borrador.recursos) > 0
+    # 2. Probar validador
+    resultado_val = ejecutar_skill_validador(borrador, mock_baco)
+    assert len(prompts_recibidos) == 2
+    assert "[CONTRASENA_OCULTA]" in prompts_recibidos[1]
+    assert resultado_val is not None
 
 
 def test_agente_corta_con_error_claro_si_no_hay_texto():
