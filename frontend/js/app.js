@@ -16,7 +16,10 @@
 
   const api = BACO.api;
   const store = BACO.store;
-  const cfg = BACO.config;
+  const cfg = BACO.config || {};
+  if (!cfg.MAX_TEXTO_PERCENTIL_99) {
+    cfg.MAX_TEXTO_PERCENTIL_99 = 16777;
+  }
 
   const $ = (s) => document.querySelector(s);
   const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
@@ -1160,23 +1163,25 @@
   }
 
   function contadorTexto(nodo, nodoAviso, actual, minimo, maximo) {
+    const max = maximo || cfg.MAX_TEXTO_PERCENTIL_99 || 16777;
+    const min = minimo || cfg.MIN_TEXTO || 20;
     if (nodo) {
-      nodo.textContent = actual + ' / ' + maximo + ' caracteres';
-      if (actual > maximo) {
+      nodo.textContent = actual + ' / ' + max + ' caracteres';
+      if (actual > max) {
         nodo.className = 'cont exceso';
-      } else if (actual > 0 && actual < minimo) {
+      } else if (actual > 0 && actual < min) {
         nodo.className = 'cont falta';
-      } else if (actual >= minimo) {
+      } else if (actual >= min) {
         nodo.className = 'cont ok';
       } else {
         nodo.className = 'cont';
       }
     }
     if (nodoAviso) {
-      if (actual > maximo) {
-        const sobran = actual - maximo;
+      if (actual > max) {
+        const sobran = actual - max;
         nodoAviso.hidden = false;
-        nodoAviso.textContent = 'El texto supera el límite máximo permitido de ' + maximo + ' caracteres (excede por ' + sobran + '). Acortalo o dividilo para poder confirmar.';
+        nodoAviso.textContent = 'El texto supera el límite máximo permitido de ' + max + ' caracteres (excede por ' + sobran + '). Acortalo o dividilo para poder confirmar.';
       } else {
         nodoAviso.hidden = true;
         nodoAviso.textContent = '';
