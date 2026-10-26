@@ -2,7 +2,11 @@ import re
 from typing import List
 from fastapi import HTTPException
 
-from baco.server.config_limites import TEXTO_MAX, TEXTO_MIN
+from baco.server.config_limites import (
+    BUFFER_CARACTERES_PROMPT_XML,
+    TEXTO_MAX,
+    TEXTO_MIN,
+)
 from baco.server.schemas.chat_orquestado import BorradorSesion
 from baco.server.services.orquestador import actualizar_borrador_texto
 from baco.server.services.orquestador.recursos_service import (
@@ -48,7 +52,7 @@ def _escapar_delimitadores_xml(texto: str) -> str:
         return ""
     texto_seguro = texto.replace("</borrador_contenido>", "&lt;/borrador_contenido&gt;")
     texto_seguro = texto_seguro.replace("<borrador_contenido>", "&lt;borrador_contenido&gt;")
-    return texto_seguro[: TEXTO_MAX + 500]
+    return texto_seguro[: TEXTO_MAX + BUFFER_CARACTERES_PROMPT_XML]
 
 
 def _obtener_texto_limpio_estricto(borrador: BorradorSesion) -> str:
