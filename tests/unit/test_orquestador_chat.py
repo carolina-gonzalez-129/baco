@@ -1626,5 +1626,30 @@ def test_revision_borrador_live_edit_autosanitiza_pii_inmediatamente(client, moc
     assert "20-30405060-9" not in sesion.texto_limpio
 
 
+def test_evaluar_texto_recibe_texto_sin_marcadores_recursos(client, mock_buscador):
+    """Ítem 4: Verifica que handlers.py invoque buscador.evaluar_texto con el texto
+    efectivo sin marcadores [[recurso:...]] ni tags multimedia."""
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    r1 = client.post("/chat", json={"mensaje": "Título para prueba de búsqueda limpia"}).json()
+    sid = r1["session_id"]
+
+    texto_con_imagen = (
+        "Texto de procedimiento técnico con caracteres suficientes para superar el mínimo requerido.\n\n"
+        "![Captura del paso](https://bc.finneg.com/uploads/paso1.png)\n\n"
+        "Continuación de la explicación detallada del sistema."
+    )
+
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_con_imagen})
+
+    assert mock_buscador.evaluar_texto.called
+    texto_busqueda_usado = mock_buscador.evaluar_texto.call_args[0][0]
+    assert "[[recurso:" not in texto_busqueda_usado
+    assert "https://bc.finneg.com" not in texto_busqueda_usado
+    assert "paso1.png" not in texto_busqueda_usado
+    assert "Texto de procedimiento técnico" in texto_busqueda_usado
+
+
 
 
