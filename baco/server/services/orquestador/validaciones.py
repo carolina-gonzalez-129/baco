@@ -869,6 +869,7 @@ def avanzar_a_metadatos_o_revision(
 
     # Prioridad 1: Si hay metadatos heredados de una versión anterior y todavía no fueron confirmados/revisados:
     if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        sesion.estado = EstadoFlujo.REVISION_BORRADOR
         cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
             DICCIONARIO_OFICIAL_CATEGORIAS.get(b.metadatos_anteriores.get("categoria_id"), f"Categoría {b.metadatos_anteriores.get('categoria_id')}")
             if b.metadatos_anteriores.get("categoria_id") else "Sin categoría"

@@ -1067,7 +1067,8 @@
     if (!bannerAviso) return;
     const b = s.borrador;
     const metaAnt = b && b.metadatos_anteriores;
-    const pendiente = metaAnt && !b.metadatos_heredados_revisados;
+    const etapaPostTexto = s.flujo !== 'ESPERANDO_TITULO' && s.flujo !== 'DECISION_TITULO' && s.flujo !== 'ESPERANDO_TEXTO' && s.flujo !== 'DECISION_TEXTO';
+    const pendiente = etapaPostTexto && metaAnt && !b.metadatos_heredados_revisados;
 
     if (pendiente) {
       const nomCat = metaAnt.categoria_nombre || nombreCategoria(s, metaAnt.categoria_id);
