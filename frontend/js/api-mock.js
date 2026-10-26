@@ -362,8 +362,8 @@ BACO.apiMock = (function () {
       const avisoMeta = 'El artículo en su versión anterior tenía asociada la categoría "' + catNom + '" y las etiquetas: [' + tagsStr + ']. ' +
         'Podés tocar "Aceptar" para conservar estos metadatos o "Rechazar" si preferís definirlos manualmente.';
       const r = validarBorrador(prefijo);
-      const ops = ['conforme', 'editar', 'aceptar', 'rechazar'].concat(r.ops.filter((o) => !['conforme', 'editar', 'aceptar', 'rechazar'].includes(o)));
-      return resp(r.msg, ops, aviso, avisoMeta);
+      const ops = ['aceptar', 'rechazar'];
+      return resp((prefijo || '') + 'Esperando confirmación o rechazo de los metadatos heredados en el panel izquierdo.', ops, aviso, avisoMeta);
     }
 
     const pl = b.tipo_plantilla || tipoPlantilla(b.tags);

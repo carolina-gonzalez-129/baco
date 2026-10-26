@@ -880,12 +880,11 @@ def avanzar_a_metadatos_o_revision(
             "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
         )
         msg_val, ops_val = validar_borrador(sesion, prefijo)
-        ops = ["conforme", "editar", "aceptar", "rechazar"] + [
-            o for o in ops_val if o not in ("conforme", "editar", "aceptar", "rechazar")
-        ]
+        mensaje_espera = f"{prefijo}Esperando confirmación o rechazo de los metadatos heredados en el panel izquierdo."
+        ops = ["aceptar", "rechazar"] + [o for o in ops_val if o not in ("aceptar", "rechazar")]
         return construir_respuesta(
             sesion,
-            msg_val,
+            mensaje_espera,
             ops,
             aviso_privacidad=aviso_privacidad,
             aviso_metadatos_heredados=aviso_meta,
