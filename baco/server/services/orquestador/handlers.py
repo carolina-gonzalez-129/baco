@@ -796,6 +796,10 @@ async def handle_esperando_metadatos(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
+    if opcion in ("aceptar", "aceptar_metadatos", "rechazar_metadatos"):
+        resp_meta = _gestionar_metadatos_heredados(sesion, opcion)
+        if resp_meta is not None:
+            return resp_meta
     if opcion == "volver":
         sesion.limpiar_fallos("ESPERANDO_METADATOS")
         sesion.estado = EstadoFlujo.ESPERANDO_PLANTILLA
