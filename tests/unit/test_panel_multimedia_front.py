@@ -203,7 +203,14 @@ def test_vista_previa_respeta_formato_original_api():
     const textoModificado = "Paso 1 modificado.\\n\\nPaso 2 modificado.";
     const prevModificado = BACO.panelMultimedia.componerVistaPrevia(textoModificado, items, s);
 
-    console.log(JSON.stringify({ prevInicio, prevSinImg, prevConNuevo, prevModificado }));
+    // 5. Si el usuario confirma su texto nuevo y el borrador se actualiza con el texto nuevo:
+    const sConfirmado = {
+        coincidencias: [{ texto_original: textoApi }],
+        borrador: { texto_limpio: textoModificado, texto: textoModificado }
+    };
+    const prevConfirmado = BACO.panelMultimedia.componerVistaPrevia(textoModificado, items, sConfirmado);
+
+    console.log(JSON.stringify({ prevInicio, prevSinImg, prevConNuevo, prevModificado, prevConfirmado }));
     """
     r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
     res = json.loads(r.stdout)
@@ -221,6 +228,10 @@ def test_vista_previa_respeta_formato_original_api():
 
     # 4. Al modificar el texto desde el editor, la vista previa refleja el texto modificado
     assert "Paso 1 modificado." in res["prevModificado"]
+
+    # 5. Luego de confirmar el texto nuevo, no resucita el texto original de la API
+    assert "Paso 1 modificado." in res["prevConfirmado"]
+    assert "Paso 1: abrir configuracion." not in res["prevConfirmado"]
 
 
 def test_layout_formulario_sin_banner_coincidencias_y_editor_amplio():

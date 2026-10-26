@@ -159,7 +159,7 @@ def test_evaluar_texto_exacto_y_embeddings():
     # Coincidencia por embeddings (franja media 0.90-0.92: revisar / similares)
     with patch.object(buscador, "buscar_por_texto", return_value=[]), \
          patch.object(buscador, "buscar_en_embeddings", return_value=[(50, "Similar 50", "https://bc.finneg.com/50", 0.85, 0.9, 0.88)]):
-        res = buscador.evaluar_texto("Texto similar", headers=True, titulo="Titulo")
+        res = buscador.evaluar_texto("Texto similar con longitud suficiente explicativa " * 10, headers=True, titulo="Titulo")
         assert res is not None
         assert res["link"] == "https://bc.finneg.com/50"
         assert "prácticamente lo mismo" in res["mensaje"]
@@ -167,7 +167,7 @@ def test_evaluar_texto_exacto_y_embeddings():
     # Coincidencia por embeddings (franja alta >= 0.92: casi seguro duplicado)
     with patch.object(buscador, "buscar_por_texto", return_value=[]), \
          patch.object(buscador, "buscar_en_embeddings", return_value=[(51, "Duplicado Semántico", "https://bc.finneg.com/51", 0.95, 0.85, 0.93)]):
-        res_alto = buscador.evaluar_texto("Texto casi idéntico", headers=True, titulo="Titulo")
+        res_alto = buscador.evaluar_texto("Texto casi idéntico con longitud suficiente explicativa " * 10, headers=True, titulo="Titulo")
         assert res_alto is not None
         assert res_alto["link"] == "https://bc.finneg.com/51"
         assert "prácticamente lo mismo" in res_alto["mensaje"]
@@ -370,7 +370,7 @@ def test_evaluar_texto_descarta_coincidencia_exacta_si_difiere_en_pais_o_webinar
     mock_cur.fetchall.return_value = [(1, "Localización Bolivia", "https://bc.finneg.com/1")]
     with patch.object(buscador, "buscar_en_embeddings", return_value=[]) as mock_embeddings:
         res = buscador.evaluar_texto(
-            texto="Descargue el paquete de instalación adjunto.",
+            texto="Descargue el paquete de instalación adjunto con las instrucciones completas para la configuración requerida. " * 5,
             headers=False,
             titulo="Localización Ecuador"
         )

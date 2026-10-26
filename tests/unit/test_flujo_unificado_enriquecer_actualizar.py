@@ -156,9 +156,17 @@ def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, moc
         mock_bc.return_value = (TEXTO_CON_IMAGEN, 10, ["ventas", "afip"])
         r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
-    # DEBE DETENERSE en ESPERANDO_PLANTILLA obligatoriamente
-    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
-    assert r3["opciones"] == ["instructivo", "soluciones", "volver"]
+    # Primero pide confirmación de metadatos heredados
+    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["aviso_metadatos_heredados"] is not None
+    assert "aceptar" in r3["opciones"]
+
+    # Al aceptar, como no tenía tag de plantilla ('instructivo' ni 'soluciones'),
+    # se detiene en ESPERANDO_PLANTILLA
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert "instructivo" in r4["opciones"]
+    assert "soluciones" in r4["opciones"]
 
 
 def test_decision_texto_actualizar_adopta_nuevo_titulo(client, mock_buscador):
@@ -201,7 +209,13 @@ def test_articulo_enriquecido_con_menos_de_2_tags_se_detiene_en_metadatos(client
         mock_bc.return_value = (TEXTO_CON_IMAGEN, 12, ["instructivo"])
         r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
-    # Tiene 1 tag, requiere mínimo 2 -> se detiene en ESPERANDO_METADATOS
-    assert r3["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "volver" in r3["opciones"]
+    # Primero pide confirmación de metadatos heredados
+    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["aviso_metadatos_heredados"] is not None
+    assert "aceptar" in r3["opciones"]
+
+    # Al aceptar, como tiene 1 tag y requiere mínimo 2 -> se detiene en ESPERANDO_METADATOS
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "volver" in r4["opciones"]
 

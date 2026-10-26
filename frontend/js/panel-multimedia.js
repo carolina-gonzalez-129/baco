@@ -63,21 +63,30 @@ BACO.panelMultimedia = (function () {
     const cuerpo = String(textoLimpio || '').trim();
     const listaActual = items || [];
 
-    // Si el borrador contiene el texto completo original de la API (con los medios integrados en su orden):
-    const textoCompletoBorrador = (s && s.borrador && typeof s.borrador.texto === 'string')
-      ? s.borrador.texto.trim()
-      : ((s && s.coincidencias && s.coincidencias[0] && s.coincidencias[0].texto_original) ||
-         (s && s.borrador && s.borrador.texto_original_aprobado) || '');
+    // Texto original de la API (si existe en las coincidencias o en el borrador inicial)
+    const textoOriginalApi = ((s && s.coincidencias && s.coincidencias[0] && s.coincidencias[0].texto_original) ||
+      (s && s.borrador && s.borrador.texto_original_aprobado) || '').trim();
 
-    const textoLimpioBase = (s && s.borrador && typeof s.borrador.texto_limpio === 'string')
-      ? s.borrador.texto_limpio.trim()
-      : '';
+    // El texto base limpio original sin markdown de imágenes ni adjuntos
+    const textoOriginalLimpioApi = (s && s.borrador && typeof s.borrador.texto_base_limpio === 'string' && s.borrador.texto_base_limpio.trim())
+      ? s.borrador.texto_base_limpio.trim()
+      : (textoOriginalApi
+          ? textoOriginalApi
+              .replace(/!\[([^\]]*)\]\([^\)]+\)/g, '')
+              .replace(/\[([^\]]+)\|attachment\]\([^\)]+\)/g, '')
+              .replace(/\[\[recurso:[a-zA-Z0-9_\-]+\]\]/g, '')
+              .replace(/\r\n/g, '\n')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim()
+          : '');
 
-    const esBase = (!cuerpo || cuerpo === textoLimpioBase);
+    // La vista previa solo refleja el formato intercalado de la API cuando el texto en el editor
+    // coincide exactamente con el texto base original de la API (es decir, el usuario aún no lo modificó ni borró).
+    const esBase = Boolean(textoOriginalApi && textoOriginalLimpioApi && cuerpo && cuerpo === textoOriginalLimpioApi);
 
     // Cuando la persona no ha alterado el texto en el editor, la vista previa refleja exactamente el texto de la API
-    if (textoCompletoBorrador && esBase) {
-      let resultado = textoCompletoBorrador;
+    if (esBase) {
+      let resultado = textoOriginalApi;
       const urlsActivas = new Set(listaActual.map((r) => String(r.referencia || '').trim()).filter(Boolean));
       const urlsOriginales = new Set();
 
@@ -108,21 +117,32 @@ BACO.panelMultimedia = (function () {
         resultado = resultado ? resultado + '\n\n' + bloqueNuevos : bloqueNuevos;
       }
 
-      return resultado.trim();
+      return resultado.replace(/\n{3,}/g, '\n\n').trim();
     }
 
     // Si el usuario modificó el texto en el editor (o es un artículo nuevo):
-    if (!listaActual.length) return cuerpo;
+    if (!listaActual.length) return cuerpo.replace(/\[\[recurso:[a-zA-Z0-9_\-]+\]\]/g, '').trim();
+
+    let resultado = cuerpo;
+    const recsMap = new Map();
+    listaActual.forEach((r) => {
+      if (r.id) recsMap.set(r.id, r);
+    });
+
+    resultado = resultado.replace(/\[\[recurso:([a-zA-Z0-9_\-]+)\]\]/g, (match, id) => {
+      const r = recsMap.get(id);
+      return r ? aMarkdown(r) : '';
+    });
 
     // Recursos que ya estén tipeados en el texto del editor no se duplican
     const recursosFaltantes = listaActual.filter((r) => {
       const ref = String(r.referencia || '').trim();
-      return !ref || !cuerpo.includes(ref);
+      return !ref || (!resultado.includes(ref) && !cuerpo.includes(r.id));
     });
 
-    if (!recursosFaltantes.length) return cuerpo;
+    if (!recursosFaltantes.length) return resultado;
     const seccionNuevos = SECCION_RECURSOS_TITULO + '\n\n' + recursosFaltantes.map(aMarkdown).join('\n\n');
-    return cuerpo ? cuerpo + '\n\n' + seccionNuevos : seccionNuevos;
+    return resultado ? resultado + '\n\n' + seccionNuevos : seccionNuevos;
   }
 
   function pintarItem(r, idx, total, deshabilitado) {

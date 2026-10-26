@@ -1,6 +1,6 @@
 import re
 from typing import Any, Dict, List, Literal, Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from baco.server.config_limites import (
@@ -12,9 +12,41 @@ from baco.server.config_limites import (
 TipoRecurso = Literal["imagen", "video", "audio", "documento", "otro"]
 OrigenRecurso = Literal["existente", "subido"]
 
+PARAMETROS_QUERY_SENSIBLES = frozenset({
+    "token",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "auth",
+    "authorization",
+    "key",
+    "api_key",
+    "apikey",
+    "secret",
+    "client_secret",
+    "sig",
+    "signature",
+    "x-amz-signature",
+    "x-amz-credential",
+    "x-amz-security-token",
+    "password",
+    "passwd",
+    "pwd",
+    "jwt",
+    "session",
+    "session_id",
+    "credential",
+    "credentials",
+})
+
+_RE_PARAM_SENSIBLE = re.compile(
+    r"(?:token|secret|key|sig|auth|password|passwd|pwd|credential|session)",
+    re.IGNORECASE,
+)
+
 
 def sanitizar_url_recurso(url: str) -> str:
-    """Sanitiza una URL eliminando query string, fragmento y credenciales embebidas."""
+    """Sanitiza una URL eliminando credenciales embebidas, fragmento y parámetros sensibles de la query."""
     if not url or not isinstance(url, str):
         raise ValueError("La URL del recurso no puede estar vacía.")
     u = url.strip()
@@ -27,13 +59,23 @@ def sanitizar_url_recurso(url: str) -> str:
     port_part = f":{partes.port}" if partes.port else ""
     netloc = f"{hostname}{port_part}"
     path = partes.path or "/"
-    url_limpia = urlunsplit((partes.scheme, netloc, path, "", ""))
 
-    # Bloqueo estricto de SVG
+    # Bloqueo estricto de SVG sobre el path sin query
     if path.lower().endswith(".svg") or ".svg" in path.lower():
         raise ValueError("No se permiten archivos SVG por razones de seguridad.")
 
-    return url_limpia
+    query_limpia = ""
+    if partes.query:
+        pares = parse_qsl(partes.query, keep_blank_values=True)
+        pares_filtrados = [
+            (k, v)
+            for k, v in pares
+            if k.strip().lower() not in PARAMETROS_QUERY_SENSIBLES
+            and not _RE_PARAM_SENSIBLE.search(k.strip())
+        ]
+        query_limpia = urlencode(pares_filtrados, doseq=True)
+
+    return urlunsplit((partes.scheme, netloc, path, query_limpia, ""))
 
 
 class Recurso(BaseModel):
@@ -83,8 +125,8 @@ class BloqueItem(BaseModel):
                 raise ValueError("Un bloque de tipo 'texto' debe incluir 'contenido' con texto no vacío.")
             if self.recurso is not None:
                 raise ValueError("Un bloque de tipo 'texto' no debe incluir el campo 'recurso'.")
-            if re.search(r"\[\[R\d+\]\]", self.contenido):
-                raise ValueError("El bloque de texto no puede contener marcadores reservados del sistema como [[R1]].")
+            if re.search(r"\[\[(?:recurso:[a-zA-Z0-9_\-]+|R\d+)\]\]", self.contenido):
+                raise ValueError("El bloque de texto no puede contener marcadores reservados del sistema como [[recurso:rec_1]].")
         elif self.tipo == "recurso":
             if self.recurso is None and not self.contenido:
                 raise ValueError("Un bloque de tipo 'recurso' debe incluir 'recurso' o una URL en 'contenido'.")
@@ -110,13 +152,12 @@ class ConfirmarBloquesRequest(BaseModel):
         total_bytes = 0
         for b in self.bloques:
             if b.tipo == "recurso" and b.recurso:
-                total_recursos += 1
                 url_limpia = b.recurso.url
-                if url_limpia in urls_vistas:
-                    raise ValueError(f"URL de recurso duplicada: {url_limpia}")
-                urls_vistas.add(url_limpia)
-                if b.recurso.tamano_bytes:
-                    total_bytes += b.recurso.tamano_bytes
+                if url_limpia not in urls_vistas:
+                    urls_vistas.add(url_limpia)
+                    total_recursos += 1
+                    if b.recurso.tamano_bytes:
+                        total_bytes += b.recurso.tamano_bytes
         if total_recursos > MAX_RECURSOS_POR_SESION:
             raise ValueError(
                 f"Se supera el límite máximo de {MAX_RECURSOS_POR_SESION} recursos permitidos por borrador."

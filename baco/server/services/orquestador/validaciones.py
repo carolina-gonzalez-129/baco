@@ -26,7 +26,13 @@ from baco.server.services.orquestador.mensajes import (
     msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
-from baco.server.services.orquestador.recursos_service import extraer_recursos_y_texto_limpio
+from baco.server.services.orquestador.recursos_service import (
+    _max_num_recurso,
+    componer_texto_publicable,
+    extraer_recursos_y_texto_limpio,
+    fusionar_texto_y_recursos_sin_colision,
+    texto_efectivo_sin_marcadores,
+)
 from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
 
 ETAPAS_FLUJO: List[str] = [
@@ -378,7 +384,11 @@ async def cargar_catalogos_sesion(sesion: SesionChat, buscador: Optional[Buscado
 
 
 def validar_longitud(texto: str, min_c: int, max_c: int, campo: str) -> Optional[str]:
-    l = len(texto.strip())
+    l = (
+        len(texto_efectivo_sin_marcadores(texto))
+        if campo == "texto"
+        else len(texto.strip())
+    )
     if l < min_c:
         return msg_error_longitud_minima(campo, min_c)
     if l > max_c:
@@ -387,7 +397,12 @@ def validar_longitud(texto: str, min_c: int, max_c: int, campo: str) -> Optional
 
 
 def validar_longitud_maxima(texto: str, max_c: int, campo: str) -> Optional[str]:
-    if len(texto.strip()) > max_c:
+    l = (
+        len(texto_efectivo_sin_marcadores(texto))
+        if campo == "texto"
+        else len(texto.strip())
+    )
+    if l > max_c:
         return msg_error_longitud_maxima(campo, max_c)
     return None
 
@@ -397,7 +412,7 @@ def consolidar_texto_enriquecimiento(
 ) -> Tuple[str, Optional[str]]:
     """
     Sanitiza el aporte y lo consolida con el texto base del artículo existente.
-    Preserva intacto el texto proveniente de la API (texto_base), aplicando la
+    Preserva siempre el texto proveniente de la API (texto_base), aplicando la
     autosanitización únicamente sobre el aporte o las adiciones del usuario.
     Retorna: (texto_consolidado, aviso_privacidad).
     """
@@ -431,7 +446,7 @@ def consolidar_texto_enriquecimiento(
     aviso_priv = sanit.get("aviso_privacidad")
 
     if aporte_limpio and base:
-        if len(aporte_limpio) < min(len(base) * 0.4, 250):
+        if len(aporte_limpio) <= 70:
             return f"{base}\n\n{aporte_limpio}", aviso_priv
         return aporte_limpio, aviso_priv
     return (aporte_limpio or base), aviso_priv
@@ -440,10 +455,26 @@ def consolidar_texto_enriquecimiento(
 def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest) -> None:
     if req.titulo is not None and req.titulo.strip():
         sesion.titulo = req.titulo.strip()
-    if req.texto is not None and req.texto.strip():
-        sanit = sanitizar_borrador(texto=req.texto.strip(), titulo=sesion.titulo)
-        sesion.texto = sanit["texto_sanitizado"]
+    if (
+        req.texto is not None
+        and req.texto.strip()
+        and sesion.estado == EstadoFlujo.ESPERANDO_TITULO
+    ):
+        tl, recs = extraer_recursos_y_texto_limpio(
+            req.texto.strip(),
+            recursos_previos=sesion.recursos,
+            ultimo_id=sesion.ultimo_id_recurso,
+        )
+        tl, recs_merged = fusionar_texto_y_recursos_sin_colision(
+            tl, sesion.recursos, recs, ultimo_id=sesion.ultimo_id_recurso
+        )
+        sanit = sanitizar_borrador(texto=tl, titulo=sesion.titulo)
         sesion.texto_limpio = sanit["texto_sanitizado"]
+        sesion.recursos = recs_merged
+        sesion.ultimo_id_recurso = max(sesion.ultimo_id_recurso, _max_num_recurso(recs_merged))
+        sesion.orden_multimedia = list(range(len(recs_merged)))
+        sesion.posiciones = list(range(len(recs_merged)))
+        sesion.texto = componer_texto_publicable(sesion.texto_limpio, sesion.recursos)
     if req.categoria_id is not None:
         sesion.categoria_id = req.categoria_id
     if req.tags is not None:
@@ -651,6 +682,10 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "actualizar": "actualizar", "actualizo": "actualizar",
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
         "confirmar_texto": "confirmar_texto", "confirmar texto": "confirmar_texto",
+        "quitar_recursos": "quitar_recursos", "quitar recursos": "quitar_recursos", "quitar": "quitar_recursos",
+        "seguir_con_recursos": "seguir_con_recursos", "seguir con recursos": "seguir_con_recursos",
+        "continuar_con_recursos": "seguir_con_recursos", "continuar con recursos": "seguir_con_recursos",
+        "con recursos": "seguir_con_recursos", "sin skills": "seguir_con_recursos",
         "conforme": "conforme", "estoy conforme": "conforme", "estoy_conforme": "conforme", "aprobar": "conforme", "apruebo": "conforme", "confirmar": "conforme", "confirmado": "conforme", "omitir": "conforme",
         "aceptar": "aceptar_metadatos", "acepto": "aceptar_metadatos", "aceptar_metadatos": "aceptar_metadatos", "aceptar metadatos": "aceptar_metadatos", "conservar": "aceptar_metadatos", "conservar metadatos": "aceptar_metadatos",
         "rechazar_metadatos": "rechazar_metadatos", "rechazar metadatos": "rechazar_metadatos",
@@ -679,6 +714,34 @@ def construir_respuesta(
         if sesion.borrador is not None
         else (sesion.texto_limpio or sesion.texto_en_edicion or None)
     )
+    if sesion.borrador is not None:
+        skills_hab = sesion.borrador.skills_habilitadas
+        skills_mot = sesion.borrador.skills_motivo
+    else:
+        from baco.server.config_limites import TEXTO_MAX
+        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+
+        largo = len(texto_efectivo_sin_marcadores(txt_limpio_actual or ""))
+        supera_largo = largo > TEXTO_MAX
+        tiene_recursos = bool(sesion.recursos)
+        if supera_largo or tiene_recursos:
+            skills_hab = False
+            if supera_largo and tiene_recursos:
+                skills_mot = (
+                    f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
+                    f"({largo} caracteres recibidos) y el borrador contiene recursos multimedia."
+                )
+            elif supera_largo:
+                skills_mot = (
+                    f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
+                    f"({largo} caracteres recibidos)."
+                )
+            else:
+                skills_mot = "El borrador contiene recursos multimedia. Las skills de IA solo admiten texto plano sin recursos."
+        else:
+            skills_hab = True
+            skills_mot = None
+
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
         estado=sesion.estado,
@@ -692,6 +755,8 @@ def construir_respuesta(
         borrador=sesion.borrador,
         texto_limpio=txt_limpio_actual,
         multimedia_habilitada=multimedia_habilitada(sesion),
+        skills_habilitadas=skills_hab,
+        skills_motivo=skills_mot,
         validacion=sesion.validacion,
         aviso_privacidad=aviso_privacidad,
         aviso_metadatos_heredados=aviso_metadatos_heredados,
@@ -724,22 +789,32 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
             valido=False,
             status="Pendiente",
             findings=findings,
-            resumen={"longitud_texto": len(texto_eval or ""), "tags_count": len(b.tags or [])},
+            resumen={
+                "longitud_texto": len(texto_efectivo_sin_marcadores(texto_eval or "")),
+                "tags_count": len(b.tags or []),
+            },
         )
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
         detalle = "\n".join(f"- [{f['severity']}] {f['field']}: {f['description']}" for f in findings)
         return (
             f"{prefijo}Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n{detalle}\n"
-            "Podés tocar 'editar' para corregirlos, 'sanitizar' si necesitás limpiar datos personales, o 'rechazar' para cancelar.",
+            "Podés tocar 'editar' para corregirlos o 'rechazar' para cancelar.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
     res = validar_texto_y_estructura_post_duplicados(articulo)
     valido = res["status"] != "Pendiente"
-    if b.modo == "enriquecimiento" and sesion.coincidencias and sesion.coincidencias[0].texto_original:
-        texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+    if b.modo == "enriquecimiento" and (
+        b.texto_base_limpio or (sesion.coincidencias and sesion.coincidencias[0].texto_original)
+    ):
+        texto_base_limpio = (
+            b.texto_base_limpio
+            if b.texto_base_limpio
+            else extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())[0]
+        )
         texto_preservado, aviso_preservado = consolidar_texto_enriquecimiento(texto_base_limpio, texto_eval)
         b.texto_limpio = texto_preservado
+        b.texto_base_limpio = texto_preservado
         res["texto_sanitizado"] = texto_preservado
         res["aviso_privacidad"] = aviso_preservado
     elif res.get("texto_sanitizado"):
@@ -765,7 +840,7 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in bloqueantes)
         return (
             f"{prefijo}Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n{detalle}\n"
-            "Podés tocar 'editar' para corregirlos, 'sanitizar' si necesitás limpiar datos personales, o 'rechazar' para cancelar.",
+            "Podés tocar 'editar' para corregirlos o 'rechazar' para cancelar.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
@@ -792,6 +867,28 @@ def avanzar_a_metadatos_o_revision(
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
 
+    # Prioridad 1: Si hay metadatos heredados de una versión anterior y todavía no fueron confirmados/revisados:
+    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
+            DICCIONARIO_OFICIAL_CATEGORIAS.get(b.metadatos_anteriores.get("categoria_id"), f"Categoría {b.metadatos_anteriores.get('categoria_id')}")
+            if b.metadatos_anteriores.get("categoria_id") else "Sin categoría"
+        )
+        tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
+        aviso_meta = (
+            f"El artículo en su versión anterior tenía asociada la categoría '{cat_nom}' y las etiquetas: [{tags_str}]. "
+            "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
+        )
+        msg_val, ops_val = validar_borrador(sesion, prefijo)
+        mensaje_espera = f"{prefijo}Esperando confirmación o rechazo de los metadatos heredados en el panel izquierdo."
+        ops = ["aceptar", "rechazar"] + [o for o in ops_val if o not in ("aceptar", "rechazar")]
+        return construir_respuesta(
+            sesion,
+            mensaje_espera,
+            ops,
+            aviso_privacidad=aviso_privacidad,
+            aviso_metadatos_heredados=aviso_meta,
+        )
+
     plantilla = b.tipo_plantilla or extraer_tipo_plantilla(b.tags)
     if plantilla:
         b.tipo_plantilla = plantilla
@@ -807,28 +904,6 @@ def avanzar_a_metadatos_o_revision(
         sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
         return construir_respuesta(
             sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), ["volver"], aviso_privacidad=aviso_privacidad
-        )
-
-    # Si hay metadatos heredados de una versión anterior y todavía no fueron confirmados/revisados:
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
-            DICCIONARIO_OFICIAL_CATEGORIAS.get(b.metadatos_anteriores.get("categoria_id"), f"Categoría {b.metadatos_anteriores.get('categoria_id')}")
-            if b.metadatos_anteriores.get("categoria_id") else "Sin categoría"
-        )
-        tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
-        aviso_meta = (
-            f"El artículo en su versión anterior tenía asociada la categoría '{cat_nom}' y las etiquetas: [{tags_str}]. "
-            "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
-        )
-        msg_val, ops_val = validar_borrador(sesion, prefijo)
-        mensaje_completo = f"{aviso_meta}\n\n{msg_val}" if not msg_val.startswith(aviso_meta) else msg_val
-        ops = ["aceptar", "rechazar"] + [o for o in ops_val if o not in ("aceptar", "rechazar")]
-        return construir_respuesta(
-            sesion,
-            mensaje_completo,
-            ops,
-            aviso_privacidad=aviso_privacidad,
-            aviso_metadatos_heredados=aviso_meta,
         )
 
     msg, ops = validar_borrador(sesion, prefijo)

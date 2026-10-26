@@ -1,7 +1,7 @@
 """Paso 3: el mini panel multimedia está operativo en las tres ramas posteriores a buscar_duplicados.
 
 Ramas: sin coincidencias, coincidencias descartadas y coincidencia aceptada (enriquecer / actualizar).
-En todas: listar, agregar, mover y eliminar funcionan, y texto_limpio nunca cambia.
+En todas: listar, agregar, mover y eliminar funcionan.
 """
 from unittest.mock import MagicMock, patch
 
@@ -123,8 +123,6 @@ def test_panel_multimedia_operativo_en_todas_las_ramas(client, mock_buscador, ra
     assert URL_IMG not in borrador["texto_limpio"]
     assert "[[recurso:rec_1]]" in borrador["texto_limpio"]
 
-    texto_limpio_inicial = SESIONES[sid].borrador.texto_limpio
-
     # 2. Listar
     r = client.get("/chat/recursos", headers=h)
     assert r.status_code == 200 and len(r.json()) == 1
@@ -150,8 +148,9 @@ def test_panel_multimedia_operativo_en_todas_las_ramas(client, mock_buscador, ra
     b = SESIONES[sid].borrador
     assert [x.id for x in b.multimedia] == [id_nuevo]
     assert b.orden_multimedia == [0] == b.posiciones
-    # Invariante central: texto_limpio nunca cambió
-    assert b.texto_limpio == texto_limpio_inicial
+    # Decisión 4: eliminar un recurso elimina también su marcador en borrador.texto_limpio y sesion.texto_limpio
+    assert f"[[recurso:{id_existente}]]" not in b.texto_limpio
+    assert f"[[recurso:{id_existente}]]" not in SESIONES[sid].texto_limpio
     # La vista compuesta refleja la lista actual
     assert "https://youtu.be/abc" in b.texto and URL_IMG not in b.texto
 

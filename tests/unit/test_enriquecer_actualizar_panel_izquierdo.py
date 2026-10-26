@@ -220,3 +220,57 @@ def test_enriquecer_autosanitiza_aportes_preservando_texto_api_y_sincroniza_text
     assert r3["texto_limpio"] == r3["borrador"]["texto_limpio"]
 
 
+def test_enriquecer_articulo_sin_plantilla_muestra_opciones_plantilla_y_permite_reemplazar_texto(client, mock_buscador):
+    """Verifica que al enriquecer un artículo sin tag de plantilla:
+    1. Va a ESPERANDO_PLANTILLA y ofrece 'instructivo' y 'soluciones'.
+    2. Si el usuario borró el texto base y puso el suyo, no se le vuelve a pegar el texto viejo.
+    """
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de título encontrada",
+        "link": "https://bc.finneg.com/t/4001",
+        "coincidencias": [(4001, "Guía de Facturación General", "https://bc.finneg.com/t/4001")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 4001,
+        "titulo": "Guía de Facturación General",
+        "url": "https://bc.finneg.com/t/4001",
+        "texto": TEXTO_EXISTENTE,
+        "categoria_id": 2,
+        "tags": ["facturacion", "general"],  # Sin 'instructivo' ni 'soluciones'
+    }
+
+    r1 = client.post("/chat", json={"mensaje": "Guía de Facturación General"}).json()
+    sid = r1["session_id"]
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+
+    r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r2["borrador"]["metadatos_anteriores"] is not None
+    assert r2["borrador"]["metadatos_heredados_revisados"] is False
+
+    # El usuario borra el texto viejo por completo y escribe su propio texto (más de MIN_TEXTO=30 caracteres)
+    mi_propio_texto = "1. Ingresar al módulo de facturación.\n2. Presionar el botón Nuevo comprobante.\n3. Guardar cambios."
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": mi_propio_texto}).json()
+
+    # Primero pide confirmación de metadatos heredados
+    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["aviso_metadatos_heredados"] is not None
+
+    # Al aceptar, como no tenía tag de plantilla, avanza a ESPERANDO_PLANTILLA
+    r_acepta = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
+    assert r_acepta["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert "instructivo" in r_acepta["opciones"]
+    assert "soluciones" in r_acepta["opciones"]
+
+    # El texto del borrador no debe contener el texto viejo restaurado forzadamente
+    assert "Paso 1: Ingresar a la sección de configuración impositiva" not in r_acepta["borrador"]["texto_limpio"]
+    assert "1. Ingresar al módulo de facturación." in r_acepta["borrador"]["texto_limpio"]
+
+    # El usuario elige instructivo
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert "1. Ingresar al módulo de facturación." in r4["borrador"]["texto_limpio"]
+    assert "Paso 1: Ingresar a la sección de configuración impositiva" not in r4["borrador"]["texto_limpio"]
+
+
+

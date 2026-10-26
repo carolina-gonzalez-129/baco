@@ -2,7 +2,13 @@ from typing import List, Literal, Optional, Tuple, Union
 from fastapi import APIRouter, Cookie, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from baco.server.config_limites import PERMITIR_SUBIDA_RECURSOS, RECURSO_MAX_BYTES
+from baco.server.config_limites import (
+    PERMITIR_SUBIDA_RECURSOS,
+    RECURSO_MAX_BYTES,
+    TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
+    TEXTO_MIN,
+)
 from baco.server.schemas.chat import ChatResponse
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -35,11 +41,13 @@ from baco.server.services.orquestador.recursos_service import (
     RecursoDuplicadoError,
     RecursoInvalidoError,
     SubidaRecursosDeshabilitadaError,
+    _max_num_recurso,
     componer_texto_publicable,
     crear_recurso_desde_url,
     derivar_desde_bloques,
     extraer_recursos_y_texto_limpio,
     guardar_recurso_temporal_sesion,
+    texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento
 
@@ -205,6 +213,11 @@ def aplicar_plantilla(
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     sid, borrador = sesion_valida
+    if not borrador.skills_habilitadas:
+        raise HTTPException(
+            status_code=422,
+            detail=borrador.skills_motivo or "Las skills están deshabilitadas para este borrador.",
+        )
     resultado = ejecutar_skill_plantillas(sid, borrador, baco)
     return ChatResponse(response=resultado)
 
@@ -219,6 +232,11 @@ def auditar_semantica(
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     _, borrador = sesion_valida
+    if not borrador.skills_habilitadas:
+        raise HTTPException(
+            status_code=422,
+            detail=borrador.skills_motivo or "Las skills están deshabilitadas para este borrador.",
+        )
     dictamen = ejecutar_skill_validador(borrador, baco)
     return ChatResponse(response=dictamen)
 
@@ -226,7 +244,7 @@ def auditar_semantica(
 @router.post(
     "/chat/bloques",
     response_model=ConfirmarBloquesResponse,
-    summary="Recibe una lista de bloques y deriva texto_limpio con marcadores [[R1]], [[R2]]... y recursos por separado",
+    summary="Recibe una lista de bloques y deriva texto_limpio con marcadores [[recurso:rec_N]] y recursos por separado",
 )
 def confirmar_bloques(
     body: ConfirmarBloquesRequest,
@@ -249,10 +267,15 @@ def confirmar_bloques(
         )
 
     recursos_previos = sesion.borrador.recursos if sesion.borrador else sesion.recursos
+    ultimo_id_prev = max(
+        sesion.ultimo_id_recurso,
+        sesion.borrador.ultimo_id_recurso if sesion.borrador else 0,
+        _max_num_recurso(recursos_previos),
+    )
 
     try:
         texto_limpio, recursos, aviso = derivar_desde_bloques(
-            body.bloques, recursos_previos=recursos_previos
+            body.bloques, recursos_previos=recursos_previos, ultimo_id=ultimo_id_prev
         )
     except RecursoInvalidoError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -261,17 +284,36 @@ def confirmar_bloques(
     if (
         sesion.borrador
         and sesion.borrador.modo == "enriquecimiento"
-        and sesion.coincidencias
-        and sesion.coincidencias[0].texto_original
+        and (
+            sesion.borrador.texto_base_limpio
+            or (sesion.coincidencias and sesion.coincidencias[0].texto_original)
+        )
     ):
-        texto_base_limpio, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
+        texto_base_limpio = (
+            sesion.borrador.texto_base_limpio
+            if sesion.borrador.texto_base_limpio
+            else extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())[0]
+        )
         texto_sanitizado, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, texto_limpio)
     else:
         sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
         texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
         aviso_priv = sanit.get("aviso_privacidad")
 
+    largo_efectivo = len(texto_efectivo_sin_marcadores(texto_sanitizado))
+    if largo_efectivo < TEXTO_MIN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El texto efectivo sin marcadores es muy breve ({largo_efectivo} < {TEXTO_MIN}).",
+        )
+    if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El texto efectivo sin marcadores excede el máximo permitido ({largo_efectivo} > {TEXTO_MAX_PERCENTIL_99}).",
+        )
+
     aviso_final = f"{aviso_priv}\n\n{aviso}" if (aviso_priv and aviso) else (aviso_priv or aviso)
+    max_id_nuevo = max(ultimo_id_prev, _max_num_recurso(recursos))
 
     if not sesion.borrador:
         sesion.borrador = BorradorSesion(
@@ -279,6 +321,7 @@ def confirmar_bloques(
             titulo=titulo_ctx,
             texto_limpio=texto_sanitizado,
             recursos=recursos,
+            ultimo_id_recurso=max_id_nuevo,
             categoria_id=sesion.categoria_id,
             tags=list(sesion.tags),
         )
@@ -286,6 +329,7 @@ def confirmar_bloques(
         sesion.borrador.texto_limpio = texto_sanitizado
         sesion.borrador.texto_en_edicion = texto_sanitizado
         sesion.borrador.recursos = recursos
+        sesion.borrador.ultimo_id_recurso = max_id_nuevo
         sesion.borrador.orden_multimedia = [r.orden for r in sorted(recursos.values(), key=lambda x: x.orden)]
         sesion.borrador.posiciones = list(sesion.borrador.orden_multimedia)
         if sesion.borrador.conforme:
@@ -297,6 +341,7 @@ def confirmar_bloques(
     sesion.texto_en_edicion = texto_sanitizado
     sesion.texto = sesion.borrador.texto
     sesion.recursos = recursos
+    sesion.ultimo_id_recurso = max_id_nuevo
     sesion.orden_multimedia = list(sesion.borrador.orden_multimedia)
 
     return ConfirmarBloquesResponse(
@@ -379,6 +424,7 @@ def agregar_recurso_multimedia(
             recursos_actuales=borrador.recursos,
             nombre=body.nombre,
             tipo_sugerido=body.tipo,
+            ultimo_id=borrador.ultimo_id_recurso,
         )
     except RecursoDuplicadoError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -412,6 +458,7 @@ async def subir_recurso(
             contenido_bytes=contenido,
             content_type_declarado=file.content_type,
             recursos_actuales=borrador.recursos,
+            ultimo_id=borrador.ultimo_id_recurso,
         )
     except (RecursoInvalidoError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

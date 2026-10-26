@@ -16,6 +16,7 @@ from baco.server.services.orquestador.sesion import SESIONES, SesionChat
 from baco.server.services.orquestador.validaciones import validar_borrador as _validar_borrador
 from baco.server.config_limites import (
     TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,
     TITULO_MIN,
@@ -280,7 +281,7 @@ def test_edicion_borrador_con_longitud_invalida_no_rompe_y_muestra_bloqueante(cl
 
 def test_articulo_schema_texto_max_plus_one_lanza_validation_error():
     with pytest.raises(ValidationError) as exc:
-        ArticuloSchema(id=1, titulo="A" * 20, texto="A" * (TEXTO_MAX + 1))
+        ArticuloSchema(id=1, titulo="A" * 20, texto="A" * (TEXTO_MAX_PERCENTIL_99 + 1))
     assert "texto" in str(exc.value)
 
 
@@ -289,15 +290,25 @@ def test_articulo_schema_texto_exactamente_texto_max_es_valido():
     assert len(art.texto) == TEXTO_MAX
 
 
+def test_articulo_schema_texto_exactamente_texto_max_percentil_99_es_valido():
+    art = ArticuloSchema(id=1, titulo="A" * 20, texto="A" * TEXTO_MAX_PERCENTIL_99)
+    assert len(art.texto) == TEXTO_MAX_PERCENTIL_99
+
+
 def test_chat_request_texto_max_plus_one_rechazado_con_mensaje_claro():
     with pytest.raises(ValidationError) as exc:
-        ChatOrquestadorRequest(texto="A" * (TEXTO_MAX + 1))
-    assert f"El texto supera los {TEXTO_MAX} caracteres. Dividilo o resumilo." in str(exc.value)
+        ChatOrquestadorRequest(texto="A" * (TEXTO_MAX_PERCENTIL_99 + 1))
+    assert f"El texto supera los {TEXTO_MAX_PERCENTIL_99} caracteres. Dividilo o resumilo." in str(exc.value)
 
 
 def test_chat_request_texto_exactamente_texto_max_aceptado():
     req = ChatOrquestadorRequest(texto="A" * TEXTO_MAX)
     assert len(req.texto) == TEXTO_MAX
+
+
+def test_chat_request_texto_exactamente_texto_max_percentil_99_aceptado():
+    req = ChatOrquestadorRequest(texto="A" * TEXTO_MAX_PERCENTIL_99)
+    assert len(req.texto) == TEXTO_MAX_PERCENTIL_99
 
 
 @pytest.mark.anyio
@@ -306,11 +317,11 @@ async def test_orquestador_texto_demasiado_largo_en_esperando_texto_no_cambia_es
     sesion = SesionChat(session_id=sid, estado=EstadoFlujo.ESPERANDO_TEXTO, titulo="A" * 20)
     SESIONES[sid] = sesion
 
-    req = ChatOrquestadorRequest.model_construct(session_id=sid, texto="A" * (TEXTO_MAX + 10))
+    req = ChatOrquestadorRequest.model_construct(session_id=sid, texto="A" * (TEXTO_MAX_PERCENTIL_99 + 10))
     resp = await manejar_turno(req, mock_buscador)
 
     assert resp.estado == EstadoFlujo.ESPERANDO_TEXTO
-    assert f"El texto supera los {TEXTO_MAX} caracteres" in resp.mensaje
+    assert f"El texto supera los {TEXTO_MAX_PERCENTIL_99} caracteres" in resp.mensaje
 
 
 @pytest.mark.anyio
@@ -326,11 +337,11 @@ async def test_orquestador_texto_demasiado_largo_en_edicion_revision_borrador_no
     sesion = SesionChat(session_id=sid, estado=EstadoFlujo.REVISION_BORRADOR, borrador=borrador)
     SESIONES[sid] = sesion
 
-    req = ChatOrquestadorRequest.model_construct(session_id=sid, accion="editar", texto="A" * (TEXTO_MAX + 10))
+    req = ChatOrquestadorRequest.model_construct(session_id=sid, accion="editar", texto="A" * (TEXTO_MAX_PERCENTIL_99 + 10))
     resp = await manejar_turno(req, mock_buscador)
 
     assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert f"El texto supera los {TEXTO_MAX} caracteres" in resp.mensaje
+    assert f"El texto supera los {TEXTO_MAX_PERCENTIL_99} caracteres" in resp.mensaje
     assert sesion.borrador.texto == TEXTO_VALIDO
 
 
@@ -361,7 +372,7 @@ def test_enriquecer_articulo_existente_texto_db_supera_texto_max_rechazado_sin_b
         "id": 999,
         "titulo": "Título Existente en BD",
         "url": "https://bc.finneg.com/t/999",
-        "texto": "X" * (TEXTO_MAX + 1),
+        "texto": "X" * (TEXTO_MAX_PERCENTIL_99 + 1),
         "categoria_id": 1,
         "tags": ["instructivo", "general"],
     }
@@ -370,12 +381,12 @@ def test_enriquecer_articulo_existente_texto_db_supera_texto_max_rechazado_sin_b
     sid = r1["session_id"]
     assert r1["estado"] == EstadoFlujo.DECISION_TITULO
 
-    # Intenta enriquecer -> texto_db supera TEXTO_MAX
+    # Intenta enriquecer -> texto_db supera TEXTO_MAX_PERCENTIL_99
     r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
     assert r2["estado"] == EstadoFlujo.DECISION_TITULO
     assert r2["borrador"] is None
     assert r2["opciones"] == ["descartar", "reiniciar"]
-    assert f"Este artículo es muy largo para editarlo desde el chat (supera los {TEXTO_MAX} caracteres). Podés modificarlo directamente en la plataforma." in r2["mensaje"]
+    assert f"Este artículo es muy largo para editarlo desde el chat (supera los {TEXTO_MAX_PERCENTIL_99} caracteres). Podés modificarlo directamente en la plataforma." in r2["mensaje"]
 
 
 def test_enriquecer_articulo_existente_texto_db_exactamente_texto_max_crea_borrador_completo(client, mock_buscador):

@@ -1,5 +1,7 @@
 from baco.server.services.reglas_semanticas import son_semanticas_divergentes
 
+MIN_CARACTERES_EMBEDDINGS = 400
+
 
 def extraer_url(coincidencia):
     if not coincidencia:
@@ -80,16 +82,53 @@ class BuscadorDuplicados:
             return self._hallazgo("Encontramos un artículo muy similar, ¿te gustaría mejorarlo?", similares)
         return None
 
-    def evaluar_texto(self, texto: str, headers: bool, titulo: str, limite: int = 5):
+    def filtrar_articulos_series(self, filas: list) -> list:
+        if not filas:
+            return []
+        ids = [self._campo(f, "id", 0) for f in filas if self._campo(f, "id", 0) is not None]
+        if not ids:
+            return filas
+        try:
+            query = """
+                SELECT id FROM public.articulos
+                WHERE id = ANY(%s)
+                  AND base_titulo IS NOT NULL
+                  AND base_titulo <> ''
+                  AND base_titulo <> public.normalizar_texto(titulo);
+            """
+            self.cur.execute(query, (ids,))
+            res = self.cur.fetchall()
+            series_ids = {self._campo(r, "id", 0) for r in res}
+            return [f for f in filas if self._campo(f, "id", 0) not in series_ids]
+        except Exception:
+            return filas
+
+    def evaluar_texto(
+        self,
+        texto: str,
+        headers: bool,
+        titulo: str,
+        limite: int = 5,
+        excluir_series: bool = False,
+        min_longitud_embeddings: int = MIN_CARACTERES_EMBEDDINGS,
+    ):
         exactos = self.buscar_por_texto(texto, limite=limite)
+        if excluir_series and exactos:
+            exactos = self.filtrar_articulos_series(exactos)
         if exactos := self._filtrar_divergentes(exactos, titulo, texto=texto):
             return self._hallazgo(
                 "Ya existe un artículo con exactamente la misma descripción, ¿te gustaría mejorarlo?", exactos
             )
-        if similares := self.buscar_en_embeddings(texto, titulo, umbral=0.85, limite=limite):
-            return self._hallazgo(
-                "Ya existe un artículo que explica prácticamente lo mismo, ¿te gustaría mejorarlo?", similares
-            )
+
+        texto_limpio = (texto or "").strip()
+        if len(texto_limpio) >= min_longitud_embeddings:
+            if similares := self.buscar_en_embeddings(texto, titulo, umbral=0.85, limite=limite):
+                if excluir_series and similares:
+                    similares = self.filtrar_articulos_series(similares)
+                if similares:
+                    return self._hallazgo(
+                        "Ya existe un artículo que explica prácticamente lo mismo, ¿te gustaría mejorarlo?", similares
+                    )
         return None
 
     def buscar_por_titulo(self, titulo: str, limite: int = 1):
