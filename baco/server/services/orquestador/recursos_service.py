@@ -138,69 +138,223 @@ def sanitizar_nombre_archivo(filename: str) -> str:
     return limpio or "archivo_adjunto"
 
 
-def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]]:
+def _extraer_attr_html(tag_html: str, attr: str) -> str:
+    m = re.search(rf'\b{attr}\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'>]+))', tag_html, flags=re.IGNORECASE)
+    if not m:
+        return ""
+    return (m.group(1) or m.group(2) or m.group(3) or "").strip()
+
+
+def _max_num_recurso(recursos: Optional[Dict[str, Recurso]], ultimo_id: int = 0) -> int:
+    max_num = max(0, int(ultimo_id or 0))
+    for rid in (recursos or {}):
+        m = re.fullmatch(r"rec_(\d+)", str(rid))
+        if m:
+            max_num = max(max_num, int(m.group(1)))
+    return max_num
+
+
+def extraer_recursos_y_texto_limpio(
+    texto: str,
+    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    ultimo_id: int = 0,
+) -> Tuple[str, Dict[str, Recurso]]:
     """Separa el contenido recibido en:
 
-    1. texto_limpio: solo texto. Cada referencia multimedia se QUITA por completo
-       (sin marcadores de posición ni rastro alguno del recurso).
+    1. texto_limpio: texto donde cada referencia multimedia válida se reemplaza por
+       su marcador canónico [[recurso:rec_N]], y las referencias no válidas (rutas relativas,
+       data: URIs o tags locales no registrables) se sanitizan por completo para que nunca
+       lleguen crudas al agente.
     2. recursos: diccionario de {id: Recurso}, con `orden` 0-based según su aparición.
 
-    Detecta imágenes (![]()), adjuntos ([|attachment]()), diapositivas, docs y videos.
+    Detecta imágenes Markdown (absolutas, relativas, data URIs), etiquetas HTML (<img>,
+    <video>, <audio>, <iframe>), adjuntos ([|attachment]()) y URLs sueltas.
     """
     if not texto:
         return "", {}
 
     recursos: Dict[str, Recurso] = {}
-    contador = 1
-    urls_registradas: Dict[str, str] = {}  # url -> rec_id para reuso coherente si se repite
+    contador = _max_num_recurso(recursos_previos, ultimo_id) + 1
+    urls_registradas: Dict[str, str] = {}
+
+    prev_por_url: Dict[str, Recurso] = {}
+    if recursos_previos:
+        for r in recursos_previos.values():
+            if r.referencia:
+                prev_por_url[r.referencia] = r
+                try:
+                    prev_por_url[sanitizar_url_recurso(r.referencia)] = r
+                except ValueError:
+                    pass
 
     resultado = str(texto)
 
-    re_media = re.compile(r"(!)?\[([^\]]*)\]\((https?://[^\s\)]+)\)")
+    # 1. Enmascarar bloques de código cercados e inline para preservar ejemplos de código
+    bloques_codigo_cercados: List[str] = []
+    bloques_codigo_inline: List[str] = []
+
+    def _mask_fenced(m: re.Match) -> str:
+        idx = len(bloques_codigo_cercados)
+        bloques_codigo_cercados.append(m.group(0))
+        return f"\x00BACO_CODE_FENCED_{idx}\x00"
+
+    def _mask_inline(m: re.Match) -> str:
+        idx = len(bloques_codigo_inline)
+        bloques_codigo_inline.append(m.group(0))
+        return f"\x00BACO_CODE_INLINE_{idx}\x00"
+
+    resultado = re.sub(r"(?:```[\s\S]*?```|~~~[\s\S]*?~~~)", _mask_fenced, resultado)
+    resultado = re.sub(r"(`+)([^`\n]+?)\1", _mask_inline, resultado)
+
+    def _registrar(url_raw: str, tipo: TipoRecurso, nombre_raw: str = "", fallback_prefix: str = "Recurso") -> Optional[str]:
+        nonlocal contador
+        try:
+            url_limpia = sanitizar_url_recurso(url_raw)
+        except ValueError:
+            return None
+
+        partes_u = urlsplit(url_limpia)
+        fallback_nom = Path(partes_u.path).name or f"{fallback_prefix} {len(recursos) + 1}"
+        nombre = (nombre_raw or "").strip() or fallback_nom
+        from baco.server.services.validar_articulo import sanitizar_borrador
+        nombre = sanitizar_borrador(texto=nombre)["texto_sanitizado"].strip()
+
+        if url_limpia in urls_registradas:
+            return f"[[recurso:{urls_registradas[url_limpia]}]]"
+
+        if url_limpia in prev_por_url:
+            rec_prev = prev_por_url[url_limpia]
+            rec_id = rec_prev.id
+            urls_registradas[url_limpia] = rec_id
+            recursos[rec_id] = Recurso(
+                id=rec_id,
+                tipo=rec_prev.tipo or tipo,
+                nombre=nombre or rec_prev.nombre,
+                origen=rec_prev.origen,
+                tamano_bytes=rec_prev.tamano_bytes,
+                mime_type=rec_prev.mime_type,
+                referencia=url_limpia,
+                orden=len(recursos),
+            )
+            return f"[[recurso:{rec_id}]]"
+
+        while f"rec_{contador}" in recursos or (recursos_previos and f"rec_{contador}" in recursos_previos):
+            contador += 1
+        rec_id = f"rec_{contador}"
+        contador += 1
+        urls_registradas[url_limpia] = rec_id
+        recursos[rec_id] = Recurso(
+            id=rec_id,
+            tipo=tipo,
+            nombre=nombre,
+            origen="existente",
+            referencia=url_limpia,
+            orden=len(recursos),
+        )
+        return f"[[recurso:{rec_id}]]"
+
+    # 2. Convertir o sanitizar etiquetas HTML multimedia
+    def _sub_html_img(m: re.Match) -> str:
+        tag = m.group(0)
+        src = _extraer_attr_html(tag, "src")
+        if not src:
+            return ""
+        alt = _extraer_attr_html(tag, "alt") or _extraer_attr_html(tag, "title")
+        marcador = _registrar(src, "imagen", alt, "Imagen")
+        return marcador if marcador is not None else ""
+
+    def _sub_html_video(m: re.Match) -> str:
+        bloque = m.group(0)
+        src = _extraer_attr_html(bloque, "src")
+        if not src:
+            m_source = re.search(r"<source\b[^>]*>", bloque, flags=re.IGNORECASE)
+            if m_source:
+                src = _extraer_attr_html(m_source.group(0), "src")
+        if not src:
+            return ""
+        titulo = _extraer_attr_html(bloque, "title") or "Video"
+        marcador = _registrar(src, "video", titulo, "Video")
+        return marcador if marcador is not None else ""
+
+    def _sub_html_audio(m: re.Match) -> str:
+        bloque = m.group(0)
+        src = _extraer_attr_html(bloque, "src")
+        if not src:
+            m_source = re.search(r"<source\b[^>]*>", bloque, flags=re.IGNORECASE)
+            if m_source:
+                src = _extraer_attr_html(m_source.group(0), "src")
+        if not src:
+            return ""
+        titulo = _extraer_attr_html(bloque, "title") or "Audio"
+        marcador = _registrar(src, "audio", titulo, "Audio")
+        return marcador if marcador is not None else ""
+
+    def _sub_html_iframe(m: re.Match) -> str:
+        bloque = m.group(0)
+        src = _extraer_attr_html(bloque, "src")
+        if not src:
+            return ""
+        u_low = src.lower()
+        dominios_iframe_permitidos = ("youtube.com", "youtu.be", "vimeo.com", "loom.com", "docs.google.com")
+        if not any(d in u_low for d in dominios_iframe_permitidos):
+            return bloque
+        if "docs.google.com" in u_low or "presentation" in u_low or "slides" in u_low or "document" in u_low:
+            tipo: TipoRecurso = "documento"
+            def_nom = "Documento"
+        else:
+            t_det = clasificar_tipo_recurso(src)
+            tipo = t_det if t_det != "otro" else "video"
+            def_nom = "Video embebido"
+        titulo = _extraer_attr_html(bloque, "title") or def_nom
+        marcador = _registrar(src, tipo, titulo, def_nom)
+        return marcador if marcador is not None else ""
+
+    resultado = re.sub(r"<video\b[^>]*>[\s\S]*?</video>|<video\b[^>]*/>", _sub_html_video, resultado, flags=re.IGNORECASE)
+    resultado = re.sub(r"<audio\b[^>]*>[\s\S]*?</audio>|<audio\b[^>]*/>", _sub_html_audio, resultado, flags=re.IGNORECASE)
+    resultado = re.sub(r"<iframe\b[^>]*>[\s\S]*?</iframe>|<iframe\b[^>]*/>", _sub_html_iframe, resultado, flags=re.IGNORECASE)
+    resultado = re.sub(r"<img\b[^>]*>", _sub_html_img, resultado, flags=re.IGNORECASE)
+
+    # 3. Enlaces Markdown y URLs sueltas
+    # Soporta imágenes absolutas, relativas o data URIs
+    re_media = re.compile(r"(!)?\[([^\]]*)\]\(([^\s\)]+)\)")
     re_url_suelta = re.compile(r"^(https?://[^\s]+)$")
 
     def _sub_media(match: re.Match) -> str:
-        nonlocal contador
         es_bang = match.group(1) == "!"
         texto_link = match.group(2).strip()
         url = match.group(3).strip()
 
         if es_bang:
             tipo = "imagen"
-            nombre = texto_link or Path(url).name or f"Imagen {len(recursos) + 1}"
+            nombre = texto_link
+            marcador = _registrar(url, tipo, nombre, "Imagen")
+            # Si no se puede registrar como recurso formal (relativa, data: URI, etc.), sanitizar
+            return marcador if marcador is not None else ""
         elif "|attachment" in texto_link:
             nombre = texto_link.split("|attachment")[0].strip() or f"Adjunto {len(recursos) + 1}"
             tipo = clasificar_tipo_recurso(url, nombre)
+            if tipo == "otro":
+                tipo = "documento"
+            marcador = _registrar(url, tipo, nombre, "Adjunto")
+            return marcador if marcador is not None else ""
         else:
             nombre = texto_link
-            tipo = clasificar_tipo_recurso(url, nombre)
+            u_low = url.lower()
+            u_sin_q = url.split("?")[0].split("#")[0].lower()
+            tipo = clasificar_tipo_recurso(u_sin_q, nombre)
             es_multimedia = tipo in ("imagen", "video", "audio", "documento") and (
-                "docs.google" in url
-                or "youtube" in url
-                or "youtu.be" in url
-                or "vimeo" in url
-                or "/uploads/" in url
-                or any(url.lower().endswith(ext) for ext in EXTS_IMAGEN | EXTS_VIDEO | EXTS_DOCUMENTO | EXTS_AUDIO)
+                "docs.google" in u_low
+                or "youtube" in u_low
+                or "youtu.be" in u_low
+                or "vimeo" in u_low
+                or "loom.com" in u_low
+                or "/uploads/" in u_low
+                or any(u_sin_q.endswith(ext) for ext in EXTS_IMAGEN | EXTS_VIDEO | EXTS_DOCUMENTO | EXTS_AUDIO)
             )
             if not es_multimedia:
                 return match.group(0)
-
-        if url in urls_registradas:
-            rec_id = urls_registradas[url]
-            return f"[[recurso:{rec_id}]]"
-
-        rec_id = f"rec_{contador}"
-        contador += 1
-        urls_registradas[url] = rec_id
-        recursos[rec_id] = Recurso(
-            id=rec_id,
-            tipo=tipo,
-            nombre=nombre or Path(url).name or f"Recurso {len(recursos) + 1}",
-            origen="existente",
-            referencia=url,
-            orden=len(recursos),
-        )
-        return f"[[recurso:{rec_id}]]"
+            marcador = _registrar(url, tipo, nombre, "Recurso")
+            return marcador if marcador is not None else ""
 
     # Procesar línea a línea de arriba hacia abajo para preservar el orden secuencial de IDs y aparición
     lineas = resultado.splitlines()
@@ -210,27 +364,19 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
         m = re_url_suelta.match(l_strip)
         if m:
             url = m.group(1)
-            tipo = clasificar_tipo_recurso(url)
+            u_sin_q = url.split("?")[0].split("#")[0].lower()
+            tipo = clasificar_tipo_recurso(u_sin_q)
             if tipo in ("imagen", "video", "audio", "documento") and (
-                "youtube" in url or "youtu.be" in url or "vimeo" in url or "docs.google" in url
+                "youtube" in url
+                or "youtu.be" in url
+                or "vimeo" in url
+                or "docs.google" in url
+                or any(u_sin_q.endswith(ext) for ext in EXTS_IMAGEN | EXTS_VIDEO | EXTS_DOCUMENTO | EXTS_AUDIO)
             ):
-                if url in urls_registradas:
-                    rec_id = urls_registradas[url]
-                else:
-                    rec_id = f"rec_{contador}"
-                    contador += 1
-                    urls_registradas[url] = rec_id
-                    nombre = "Video tutorial" if tipo == "video" else "Documento de soporte"
-                    recursos[rec_id] = Recurso(
-                        id=rec_id,
-                        tipo=tipo,
-                        nombre=nombre,
-                        origen="existente",
-                        referencia=url,
-                        orden=len(recursos),
-                    )
-                nuevas_lineas.append(f"[[recurso:{rec_id}]]")
-                continue
+                marcador = _registrar(url, tipo, "Video tutorial" if tipo == "video" else "Documento de soporte", "Recurso")
+                if marcador is not None:
+                    nuevas_lineas.append(marcador)
+                    continue
         nuevas_lineas.append(re_media.sub(_sub_media, linea))
 
     resultado = "\n".join(nuevas_lineas)
@@ -244,6 +390,12 @@ def extraer_recursos_y_texto_limpio(texto: str) -> Tuple[str, Dict[str, Recurso]
     while bloques and bloques[-1] == SECCION_RECURSOS_TITULO:
         bloques.pop()
     texto_limpio = "\n\n".join(bloques).strip()
+
+    # 4. Restaurar bloques de código inline y cercados
+    for idx, codigo_inline in enumerate(bloques_codigo_inline):
+        texto_limpio = texto_limpio.replace(f"\x00BACO_CODE_INLINE_{idx}\x00", codigo_inline)
+    for idx, codigo_cercado in enumerate(bloques_codigo_cercados):
+        texto_limpio = texto_limpio.replace(f"\x00BACO_CODE_FENCED_{idx}\x00", codigo_cercado)
 
     sincronizar_orden_recursos_desde_texto(texto_limpio, recursos)
 
@@ -272,15 +424,15 @@ def sincronizar_orden_recursos_desde_texto(texto: str, recursos: Dict[str, Recur
 def derivar_desde_bloques(
     bloques: List[BloqueItem],
     recursos_previos: Optional[Dict[str, Recurso]] = None,
+    ultimo_id: int = 0,
 ) -> Tuple[str, Dict[str, Recurso], Optional[str]]:
-    r"""Función pura que deriva texto_limpio (con marcadores [[R1]], [[R2]]...) y
-
+    r"""Función pura que deriva texto_limpio (con marcadores [[recurso:rec_N]]) y
     el diccionario de recursos ordenados correlativamente.
 
     Garantiza:
     - Pureza: no muta los objetos de entrada ni estado global.
-    - Rechazo estricto si el usuario intentó inyectar [[R\d+]] manualmente en texto.
-    - Sanitización de URL (sin query strings, fragmentos ni credenciales).
+    - Rechazo estricto si el usuario intentó inyectar [[recurso:...]] o [[R\d+]] manualmente en texto.
+    - Sanitización de URL (sin query strings sensibles, fragmentos ni credenciales).
     - Bloqueo de SVG y validación de tipos / tamaños.
     - Idempotencia: re-ejecutar con los mismos bloques genera exactamente el mismo resultado e IDs estables.
     - Aviso con únicamente tipo y cantidad de recursos detectados.
@@ -291,7 +443,7 @@ def derivar_desde_bloques(
     partes_texto: List[str] = []
     recursos: Dict[str, Recurso] = {}
     conteo_tipos: Dict[str, int] = {}
-    rec_counter = 1
+    rec_counter = max(_max_num_recurso(recursos_previos, ultimo_id), int(ultimo_id or 0)) + 1
 
     prev_por_url: Dict[str, str] = {}
     if recursos_previos:
@@ -302,9 +454,9 @@ def derivar_desde_bloques(
     for b in bloques:
         if b.tipo == "texto":
             contenido = str(b.contenido or "").strip()
-            if re.search(r"\[\[R\d+\]\]", contenido):
+            if re.search(r"\[\[recurso:[^\]]+\]\]", contenido) or re.search(r"\[\[R\d+\]\]", contenido):
                 raise RecursoInvalidoError(
-                    "El texto no puede incluir marcadores reservados del sistema como [[R1]]."
+                    "El texto no puede incluir marcadores reservados del sistema como [[recurso:...]] o [[R1]]."
                 )
             if contenido:
                 partes_texto.append(contenido)
@@ -330,32 +482,33 @@ def derivar_desde_bloques(
 
             tipo = rec_in.tipo or clasificar_tipo_recurso(url_limpia, rec_in.nombre or "", rec_in.mime_type)
 
-            # ID estable: si ya existía con la misma URL en recursos_previos, reutilizar su id
+            # ID estable: si ya existía con la misma URL en recursos_previos o en la misma pasada, reutilizar su id
             if url_limpia in prev_por_url:
                 rec_id = prev_por_url[url_limpia]
             else:
                 rec_id = f"rec_{rec_counter}"
-                while rec_id in recursos:
+                while rec_id in recursos or (recursos_previos and rec_id in recursos_previos):
                     rec_counter += 1
                     rec_id = f"rec_{rec_counter}"
+                prev_por_url[url_limpia] = rec_id
+                rec_counter += 1
 
-            orden = len(recursos)
-            marcador = f"[[R{orden + 1}]]"
+            marcador = f"[[recurso:{rec_id}]]"
             partes_texto.append(marcador)
 
-            nombre = (rec_in.nombre or "").strip() or Path(partes_url.path).name or f"Recurso {orden + 1}"
-            recursos[rec_id] = Recurso(
-                id=rec_id,
-                tipo=tipo,
-                nombre=nombre,
-                origen="existente",
-                tamano_bytes=rec_in.tamano_bytes,
-                mime_type=rec_in.mime_type,
-                referencia=url_limpia,
-                orden=orden,
-            )
-            conteo_tipos[tipo] = conteo_tipos.get(tipo, 0) + 1
-            rec_counter += 1
+            if rec_id not in recursos:
+                nombre = (rec_in.nombre or "").strip() or Path(partes_url.path).name or f"Recurso {len(recursos) + 1}"
+                recursos[rec_id] = Recurso(
+                    id=rec_id,
+                    tipo=tipo,
+                    nombre=nombre,
+                    origen="existente",
+                    tamano_bytes=rec_in.tamano_bytes,
+                    mime_type=rec_in.mime_type,
+                    referencia=url_limpia,
+                    orden=len(recursos),
+                )
+                conteo_tipos[tipo] = conteo_tipos.get(tipo, 0) + 1
 
     texto_limpio = "\n\n".join(partes_texto).strip()
 
@@ -499,10 +652,12 @@ def verificar_y_restaurar_marcadores(
     return texto_res, advertencias
 
 
-def generar_id_recurso_libre(recursos: Optional[Dict[str, Recurso]]) -> str:
-    """Devuelve el primer `rec_N` que no esté en uso (nunca pisa un recurso existente)."""
+def generar_id_recurso_libre(
+    recursos: Optional[Dict[str, Recurso]], ultimo_id: int = 0
+) -> str:
+    """Devuelve el primer `rec_N` que no esté en uso (nunca pisa un recurso existente ni IDs ya usados)."""
     usados = set(recursos or {})
-    n = 1
+    n = max(int(ultimo_id or 0), _max_num_recurso(recursos, ultimo_id)) + 1
     while f"rec_{n}" in usados:
         n += 1
     return f"rec_{n}"
@@ -518,6 +673,7 @@ def crear_recurso_desde_url(
     recursos_actuales: Dict[str, Recurso],
     nombre: Optional[str] = None,
     tipo_sugerido: Optional[TipoRecurso] = None,
+    ultimo_id: int = 0,
 ) -> Recurso:
     """Crea un recurso multimedia a partir de una URL pegada en el mini panel.
 
@@ -550,7 +706,7 @@ def crear_recurso_desde_url(
 
     nombre_final = (nombre or "").strip() or Path(partes.path).name or partes.netloc
     return Recurso(
-        id=generar_id_recurso_libre(recursos_actuales),
+        id=generar_id_recurso_libre(recursos_actuales, ultimo_id=ultimo_id),
         tipo=tipo,
         nombre=nombre_final[:200],
         origen="existente",
@@ -621,6 +777,7 @@ def guardar_recurso_temporal_sesion(
     contenido_bytes: bytes,
     content_type_declarado: Optional[str],
     recursos_actuales: Dict[str, Recurso],
+    ultimo_id: int = 0,
 ) -> Recurso:
     """Valida y guarda un recurso subido por el usuario en el almacenamiento temporal de sesión.
 
@@ -673,7 +830,7 @@ def guardar_recurso_temporal_sesion(
     dir_sesion = DIR_TEMP_SESIONES / session_id
     dir_sesion.mkdir(parents=True, exist_ok=True)
 
-    rec_id = generar_id_recurso_libre(recursos_actuales)
+    rec_id = generar_id_recurso_libre(recursos_actuales, ultimo_id=ultimo_id)
     archivo_destino = dir_sesion / f"{rec_id}_{nombre_seguro}"
     archivo_destino.write_bytes(contenido_bytes)
 
@@ -700,3 +857,183 @@ def limpiar_archivos_temporales_sesion(session_id: str) -> None:
             shutil.rmtree(dir_sesion)
         except Exception as exc:
             logger.warning("Error al limpiar archivos temporales de sesión %s: %s", session_id, exc)
+
+
+RE_MARCADORES_CANONICOS = re.compile(r"\[\[(?:recurso:[a-zA-Z0-9_\-]+|R\d+)\]\]", re.IGNORECASE)
+
+
+def texto_efectivo_sin_marcadores(texto: str) -> str:
+    """Elimina marcadores canónicos de recursos ([[recurso:...]] y [[R1]]) para medir
+    o comparar el contenido textual efectivo real (los marcadores PII se conservan).
+    """
+    if not texto:
+        return ""
+    limpio = RE_MARCADORES_CANONICOS.sub("", str(texto))
+    lineas = [re.sub(r"[ \t]+", " ", l).strip() for l in limpio.splitlines()]
+    bloques = [b for b in "\n".join(lineas).split("\n\n") if b.strip()]
+    return "\n\n".join(bloques).strip()
+
+
+def fusionar_texto_y_recursos_sin_colision(
+    texto: str,
+    recursos_base: Optional[Dict[str, Recurso]],
+    recursos_nuevos: Optional[Dict[str, Recurso]],
+    ultimo_id: int = 0,
+) -> Tuple[str, Dict[str, Recurso]]:
+    """Fusiona recursos_nuevos dentro de recursos_base evitando colisiones de ID
+    y reusando recursos si la URL/referencia ya existe.
+    Si un ID de recurso nuevo es remapeado a otro ID, actualiza [[recurso:<id>]] en el texto.
+    """
+    recs_resultado: Dict[str, Recurso] = dict(recursos_base or {})
+    if not recursos_nuevos:
+        return texto, recs_resultado
+
+    referencias_existentes: Dict[str, str] = {}
+    for r in recs_resultado.values():
+        if r.referencia:
+            referencias_existentes[r.referencia] = r.id
+            try:
+                referencias_existentes[sanitizar_url_recurso(r.referencia)] = r.id
+            except ValueError:
+                pass
+
+    contador = max(_max_num_recurso(recs_resultado, ultimo_id), _max_num_recurso(recursos_nuevos, ultimo_id)) + 1
+    texto_actualizado = texto
+
+    for rec in _recursos_ordenados(recursos_nuevos):
+        rec_id = rec.id
+        ref = rec.referencia
+        ref_sanitizada = None
+        if ref:
+            try:
+                ref_sanitizada = sanitizar_url_recurso(ref)
+            except ValueError:
+                pass
+
+        target_id = None
+        if ref and ref in referencias_existentes:
+            target_id = referencias_existentes[ref]
+        elif ref_sanitizada and ref_sanitizada in referencias_existentes:
+            target_id = referencias_existentes[ref_sanitizada]
+
+        if target_id is not None:
+            if rec_id != target_id:
+                texto_actualizado = texto_actualizado.replace(f"[[recurso:{rec_id}]]", f"[[recurso:{target_id}]]")
+            continue
+
+        nuevo_id = rec_id
+        if nuevo_id in recs_resultado:
+            while f"rec_{contador}" in recs_resultado or (recursos_nuevos and f"rec_{contador}" in recursos_nuevos):
+                contador += 1
+            nuevo_id = f"rec_{contador}"
+            contador += 1
+            texto_actualizado = texto_actualizado.replace(f"[[recurso:{rec_id}]]", f"[[recurso:{nuevo_id}]]")
+
+        recurso_agregado = rec.model_copy(update={"id": nuevo_id, "orden": len(recs_resultado)})
+        recs_resultado[nuevo_id] = recurso_agregado
+        if ref:
+            referencias_existentes[ref] = nuevo_id
+        if ref_sanitizada:
+            referencias_existentes[ref_sanitizada] = nuevo_id
+
+    sincronizar_orden_recursos_desde_texto(texto_actualizado, recs_resultado)
+    return texto_actualizado, recs_resultado
+
+
+def procesar_recursos_y_marcadores(
+    texto: str,
+    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    ultimo_id: int = 0,
+    validar_marcadores_existentes: bool = True,
+    mensaje_error_custom: Optional[str] = None,
+) -> Tuple[str, Dict[str, Recurso], Optional[str]]:
+    """Procesa el texto de entrada:
+    1. Valida si contiene marcadores manuales no permitidos (p. ej. [[R1]] o [[recurso:X]] no existente en recursos_previos).
+       Si contiene marcadores manuales no válidos y validar_marcadores_existentes es True, retorna un mensaje de error.
+    2. Extrae recursos nuevos (Markdown, HTML, URLs) y sanitiza referencias relativas o data URIs.
+    3. Fusiona sin colisiones con los recursos previos.
+    Retorna (texto_limpio, recursos, error).
+    """
+    if not texto:
+        return "", dict(recursos_previos or {}), None
+
+    recs_prev = dict(recursos_previos or {})
+
+    if validar_marcadores_existentes:
+        marcadores_encontrados = re.findall(r"\[\[(?:recurso:([a-zA-Z0-9_\-]+)|(R\d+))\]\]", texto)
+        invalidos = []
+        for m_rec, m_r in marcadores_encontrados:
+            if m_r:
+                invalidos.append(f"[[{m_r}]]")
+            elif m_rec and m_rec not in recs_prev:
+                invalidos.append(f"[[recurso:{m_rec}]]")
+
+        if invalidos:
+            msg_tpl = mensaje_error_custom or (
+                "El texto contiene marcadores no válidos ({marcadores}). "
+                "Los recursos multimedia deben adjuntarse mediante enlaces o subida de archivos, no escribiendo marcadores manualmente."
+            )
+            return texto, recs_prev, msg_tpl.format(marcadores=", ".join(invalidos))
+
+    tl, recs_nuevos = extraer_recursos_y_texto_limpio(
+        texto, recursos_previos=recs_prev, ultimo_id=ultimo_id
+    )
+
+    tl_fused, recs_fused = fusionar_texto_y_recursos_sin_colision(
+        tl, recs_prev, recs_nuevos, ultimo_id=ultimo_id
+    )
+    return tl_fused, recs_fused, None
+
+
+def sincronizar_recursos_con_marcadores(
+    texto: str, recursos: Optional[Dict[str, Recurso]]
+) -> Dict[str, Recurso]:
+    """Filtra y ordena los recursos presentes en el texto según la posición de sus marcadores.
+    Si el usuario eliminó un marcador del texto, el recurso se elimina de la colección.
+    """
+    if not recursos:
+        return {}
+    marcadores = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", texto or "")
+    resultado: Dict[str, Recurso] = {}
+    vistos = set()
+    orden_idx = 0
+    for rid in marcadores:
+        if rid in recursos and rid not in vistos:
+            rec = recursos[rid].model_copy(update={"orden": orden_idx})
+            resultado[rid] = rec
+            vistos.add(rid)
+            orden_idx += 1
+    return resultado
+
+
+def eliminar_marcador_recurso_de_texto(texto: str, recurso_id: str) -> str:
+    """Elimina el marcador [[recurso:<id>]] del texto limpio y normaliza espacios y párrafos."""
+    if not texto or not recurso_id:
+        return texto or ""
+    patron = rf"\[\[recurso:{re.escape(str(recurso_id))}\]\]"
+    resultado = re.sub(patron, "", texto)
+    lineas = [re.sub(r"[ \t]+", " ", l).strip() for l in resultado.splitlines()]
+    bloques = [b for b in "\n".join(lineas).split("\n\n") if b.strip()]
+    return "\n\n".join(bloques).strip()
+
+
+def permutar_marcadores_en_texto(
+    texto: str, ids_antes: List[str], ids_despues: List[str]
+) -> str:
+    """Permuta la posición de los marcadores [[recurso:<id>]] en el texto siguiendo
+    la reordenación de ids_antes a ids_despues.
+    """
+    if not texto or not ids_antes or not ids_despues or ids_antes == ids_despues:
+        return texto or ""
+    temp_map = {}
+    for i, rid in enumerate(ids_antes):
+        temp_map[f"[[recurso:{rid}]]"] = f"\x00REC_PERM_{i}\x00"
+
+    res = texto
+    for orig, temp in temp_map.items():
+        res = res.replace(orig, temp)
+
+    for i, rid in enumerate(ids_despues):
+        res = res.replace(f"\x00REC_PERM_{i}\x00", f"[[recurso:{rid}]]")
+
+    return res
