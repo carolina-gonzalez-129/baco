@@ -1,20 +1,22 @@
-TITULO_MIN = 15  # Alineado con Discourse
-TITULO_MAX = 255  # El percentil 99 igual tiene 176, pero es para alinearse con Discourse
-TEXTO_MIN = 20    # Alineado con Discourse
-TEXTO_MAX = 6687  # Percentil 95 del largo de texto en la tabla de artículos (Octubre 2026)
-TAGS_MIN = 2      # min de etiquetas requeridas por artículo
-TAGS_MAX = 5      # limite habitual permitido en discourse
+TITULO_MIN = 15
+TITULO_MAX = 255
+TEXTO_MIN = 20
+##VALE PARA LAS SKILLS
+TEXTO_MAX = 6687
+TAGS_MIN = 2
+TAGS_MAX = 5
 TAGS_PLANTILLAS_PERMITIDAS = ("instructivo", "soluciones")
 
-#AGREGAR UN MENU DESPLEGABLE PARA QUE SI NO SE PUDO INFERIR SE PUEDA SELECCIONAR VIENDOLAS X NOMBRE!
 CATEGORIA_ID_DEFAULT = 1
 
-# Configuración de Recursos Multimedia en Sesión
-PERMITIR_SUBIDA_RECURSOS: bool = True  # Habilitado: el mini panel permite subir archivos al borrador
-RECURSO_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB máximo por recurso
-MAX_RECURSOS_TOTAL_BYTES: int = 50 * 1024 * 1024  # 50 MB máximo total de recursos acumulados
-MAX_RECURSOS_POR_SESION: int = 20  # Límite de recursos por borrador de sesión
+
+PERMITIR_SUBIDA_RECURSOS: bool = True
+RECURSO_MAX_BYTES: int = 10 * 1024 * 1024
+MAX_RECURSOS_TOTAL_BYTES: int = 50 * 1024 * 1024
+MAX_RECURSOS_POR_SESION: int = 20
 
 #COTA MAXIMA PERCENTIL 99
-##X SI A ELLOS LES PARECE Q DEBEN INCLUIRSE MAS, 
-TEXTO_MAX_PERCENTIL99 = 16776.449999999997
+TEXTO_MAX_PERCENTIL_99 = 16777
+
+# Buffer de seguridad para caracteres adicionales de escape o formato en prompts XML del agente
+BUFFER_CARACTERES_PROMPT_XML: int = 500
