@@ -76,7 +76,7 @@ Todo lo que devolvés se refleja en la pantalla:
 
 **Hay un botón de Reintentar** en cada error, que repite el pedido sin perder el paso. Pensado para cuando el túnel se corta o la instancia dev se apaga a las 20.
 
-**Los límites están tomados de `config_limites.py`** (15/255, 20/6687, 2/5) y el panel los valida antes de mandar, así te ahorra viajes.
+**Los límites están tomados de `config_limites.py`** (15/255, 20/16777 de admisión con skills hasta 6687, 2/5) y el panel los valida antes de mandar, así te ahorra viajes.
 
 ---
 

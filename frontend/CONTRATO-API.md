@@ -223,7 +223,7 @@ Endpoint unificado del orquestador determinista en servidor (`baco/server/servic
 }
 ```
 
-- Tope máximo de `texto` / `mensaje`: **6687 caracteres** (`TEXTO_MAX`).
+- Tope máximo de `texto` / `mensaje`: **16777 caracteres** de admisión (`TEXTO_MAX_PERCENTIL_99`), con un límite de **6687 caracteres** (`TEXTO_MAX`) para uso de skills / agente.
 - Tope máximo de `titulo`: **255 caracteres** (`TITULO_MAX`).
 
 **Response (`ChatOrquestadorResponse`):**

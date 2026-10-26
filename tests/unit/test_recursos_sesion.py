@@ -12,7 +12,7 @@ from baco.server.app.middleware import API_KEY
 from baco.server.config_limites import (
     MAX_RECURSOS_POR_SESION,
     RECURSO_MAX_BYTES,
-    TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
 )
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -154,26 +154,26 @@ def test_extraccion_texto_limpio_y_recursos_multimedia():
 
 
 # =========================================================================
-# 2. Cota máxima de caracteres (6687) sobre texto_limpio (recursos no cuentan)
+# 2. Cota máxima de admisión de caracteres sobre texto_limpio (recursos no cuentan)
 # =========================================================================
 
 def test_cota_maxima_caracteres_se_evalua_estrictamente_sobre_texto_limpio():
     # Texto base con una longitud moderada en prosa
     prosa = "Pasos esenciales para la conciliación bancaria.\n" * 40  # ~1920 caracteres
 
-    # Crear una URL muy larga de un recurso que excedería 6687 si contara en crudo
-    url_gigante = "https://bc.finneg.com/uploads/media/" + ("a" * 5000) + ".png"
+    # Crear una URL muy larga de un recurso que excedería TEXTO_MAX_PERCENTIL_99 si contara en crudo
+    url_gigante = "https://bc.finneg.com/uploads/media/" + ("a" * 16000) + ".png"
     texto_con_recurso_gigante = f"{prosa}\n\n![diagrama gigante]({url_gigante})\n\nFin del instructivo."
 
-    # Longitud cruda supera ampliamente la cota de 6687
-    assert len(texto_con_recurso_gigante) > TEXTO_MAX
+    # Longitud cruda supera ampliamente la cota de admisión TEXTO_MAX_PERCENTIL_99
+    assert len(texto_con_recurso_gigante) > TEXTO_MAX_PERCENTIL_99
 
     # Extraer texto_limpio y recursos
     texto_limpio, recursos = extraer_recursos_y_texto_limpio(texto_con_recurso_gigante)
 
-    # texto_limpio reemplaza la URL gigante de 5000 chars por "[[recurso:rec_1]]" (17 chars)
-    assert len(texto_limpio) < TEXTO_MAX
-    assert validar_longitud_maxima(texto_limpio, TEXTO_MAX, "texto") is None
+    # texto_limpio reemplaza la URL gigante por marcador "[[recurso:rec_1]]"
+    assert len(texto_limpio) < TEXTO_MAX_PERCENTIL_99
+    assert validar_longitud_maxima(texto_limpio, TEXTO_MAX_PERCENTIL_99, "texto") is None
 
     # Validar que sesion y validación del borrador operan sobre texto_limpio
     sesion = SesionChat(
@@ -193,11 +193,11 @@ def test_cota_maxima_caracteres_se_evalua_estrictamente_sobre_texto_limpio():
     # No debe arrojar error bloqueante de longitud de texto
     assert "supera el máximo" not in msg
 
-    # Caso contrario: si texto_limpio en sí supera 6687, debe fallar
-    texto_excedido = "A" * (TEXTO_MAX + 1)
-    err = validar_longitud_maxima(texto_excedido, TEXTO_MAX, "texto")
+    # Caso contrario: si texto_limpio en sí supera TEXTO_MAX_PERCENTIL_99, debe fallar
+    texto_excedido = "A" * (TEXTO_MAX_PERCENTIL_99 + 1)
+    err = validar_longitud_maxima(texto_excedido, TEXTO_MAX_PERCENTIL_99, "texto")
     assert err is not None
-    assert "6687" in err
+    assert str(TEXTO_MAX_PERCENTIL_99) in err
 
 
 # =========================================================================

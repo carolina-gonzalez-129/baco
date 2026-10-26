@@ -87,7 +87,7 @@ uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
 | | Mínimo | Máximo |
 |---|---|---|
 | Título | 15 | 255 |
-| Texto | 20 | 6687 |
+| Texto | 20 | 16777 (admisión) / 6687 (skills) |
 | Etiquetas | 2 | 5 |
 
 ---

@@ -41,7 +41,7 @@ Desde la versión del 22/10 **se puede volver atrás en cada paso**: el backend 
 | Paso | Qué pide | Mínimo que exige el backend |
 |---|---|---|
 | 1 | Título | 15 a 255 caracteres |
-| 2 | Contenido | 20 a 6687 caracteres |
+| 2 | Contenido | 20 a 16777 caracteres (skills disponibles hasta 6687) |
 | 3 | Plantilla (`instructivo` o `soluciones`) y etiquetas | 2 a 5 etiquetas |
 | 4 | Revisión: editar, sanitizar, confirmar conformidad o rechazar | sin hallazgos bloqueantes |
 | 5 | Conformidad | — |
