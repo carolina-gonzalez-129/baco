@@ -23,6 +23,7 @@ from baco.server.schemas.validacion import (
     ValidarFormatoToolOutput,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
+from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 from baco.server.services.validar_articulo import (
     sanitizar_borrador,
     validar_texto_y_estructura_post_duplicados,
@@ -85,7 +86,8 @@ def buscar_duplicados(
             articulos_similares=[],
         )
 
-    if texto_limpio and (len(texto_limpio) < TEXTO_MIN or len(texto_limpio) > TEXTO_MAX):
+    largo_texto_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio)) if texto_limpio else 0
+    if texto_limpio and (largo_texto_efectivo < TEXTO_MIN or largo_texto_efectivo > TEXTO_MAX):
         return BuscarDuplicadosToolOutput(
             decision_sugerida="crear_nuevo",
             hay_duplicados=False,
@@ -199,7 +201,7 @@ def validar_formato(
                 desc = f"El título debe tener entre {TITULO_MIN} y {TITULO_MAX} caracteres (recibidos: {len(titulo_str)})."
                 acc = f"Ajustar la extensión del título para que tenga entre {TITULO_MIN} y {TITULO_MAX} caracteres."
             elif campo_err == "texto":
-                desc = f"El texto debe tener entre {TEXTO_MIN} y {TEXTO_MAX} caracteres (recibidos: {len(texto_str)})."
+                desc = f"El texto debe tener entre {TEXTO_MIN} y {TEXTO_MAX} caracteres (recibidos: {len(texto_efectivo_sin_marcadores(texto_str))})."
                 acc = f"Ajustar la extensión del cuerpo para que tenga entre {TEXTO_MIN} y {TEXTO_MAX} caracteres."
             else:
                 desc = err.get("msg", "Valor inválido en el esquema del artículo.")
@@ -218,7 +220,7 @@ def validar_formato(
             titulo_sanitizado=sanit.get("titulo_sanitizado"),
             texto_sanitizado=sanit.get("texto_sanitizado"),
             hallazgos=hallazgos_err,
-            longitud_texto=len(texto_str.strip()),
+            longitud_texto=len(texto_efectivo_sin_marcadores(texto_str)),
             tags_count=len(tags_objetos),
         )
 

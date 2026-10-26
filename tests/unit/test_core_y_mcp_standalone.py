@@ -469,3 +469,26 @@ def test_seed_sql_tiene_entre_30_y_50_articulos_con_embeddings_y_sin_pii():
         f"Se detectaron datos sensibles en seed.sql: {sanitizado['aviso_privacidad']}"
     )
     assert sanitizado["texto_sanitizado"] == contenido_sin_vectores.strip()
+
+
+def test_facade_mide_cotas_y_reporta_con_texto_efectivo_sin_marcadores():
+    """Ítem 3: facade.py mide cotas de texto (buscar_duplicados y validar_formato),
+    genera el mensaje de error y reporta longitud_texto siempre con texto_efectivo_sin_marcadores()."""
+    # 1. buscar_duplicados rechaza texto con longitud efectiva menor a TEXTO_MIN aunque con marcadores supere 20
+    # "Hola mundo" (10 chars) + marcador "[[recurso:rec_1]]" (17 chars) = 27 chars brutos, pero 10 efectivos
+    texto_corto_con_marcador = "Hola mundo [[recurso:rec_1]]"
+    res_dup = core_buscar_duplicados(texto=texto_corto_con_marcador)
+    assert res_dup.hay_duplicados is False
+    assert f"El texto debe tener entre {TEXTO_MIN} y {TEXTO_MAX} caracteres." in res_dup.mensaje
+
+    # 2. validar_formato reporta longitud_texto efectiva y mensaje de error con longitud efectiva
+    res_val = core_validar_formato(
+        titulo="Título de prueba para validación",
+        texto=texto_corto_con_marcador,
+        tags=["manual", "soporte"],
+        categoria_id=1,
+    )
+    assert res_val.valido is False
+    assert res_val.longitud_texto == 10
+    hallazgo_texto = next(h for h in res_val.hallazgos if h.campo == "texto")
+    assert "recibidos: 10" in hallazgo_texto.descripcion
