@@ -1,7 +1,7 @@
 TITULO_MIN = 15
 TITULO_MAX = 255
 TEXTO_MIN = 20
-# Cota para skills / agente (deshabilita skills si el texto efectivo supera este límite)
+#COTA MAX PARA USAR SKILLS
 TEXTO_MAX = 6687
 TAGS_MIN = 2
 TAGS_MAX = 5
@@ -15,8 +15,7 @@ RECURSO_MAX_BYTES: int = 10 * 1024 * 1024
 MAX_RECURSOS_TOTAL_BYTES: int = 50 * 1024 * 1024
 MAX_RECURSOS_POR_SESION: int = 20
 
-#COTA MAXIMA PERCENTIL 99
+#quizas reemplazar x max de discourse T_T
 TEXTO_MAX_PERCENTIL_99 = 16777
 
-# Buffer de seguridad para caracteres adicionales de escape o formato en prompts XML del agente
 BUFFER_CARACTERES_PROMPT_XML: int = 500
