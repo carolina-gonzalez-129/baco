@@ -27,4 +27,5 @@ app.mount("/", mcp_http_app)
 #para probarlo con el front
 # cd C:\Users\ahreq\IdeaProjects\GeminiAgente\frontend
 # python -m http.server 5173
+#
 
