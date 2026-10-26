@@ -258,7 +258,7 @@ def test_endpoints_skills_devuelven_200_cuando_flag_es_true(client):
 # ==============================================================================
 
 @pytest.mark.anyio
-async def test_orquestador_ofrece_dos_opciones_al_pegar_texto_con_recursos(mock_buscador):
+async def test_orquestador_flujo_normal_al_pegar_texto_con_recursos(mock_buscador):
     sid = "test-orq-recursos-opciones"
     sesion = SesionChat(session_id=sid, estado=EstadoFlujo.ESPERANDO_TEXTO, titulo="Configuración del módulo")
     SESIONES[sid] = sesion
@@ -267,9 +267,13 @@ async def test_orquestador_ofrece_dos_opciones_al_pegar_texto_con_recursos(mock_
     req = ChatOrquestadorRequest(session_id=sid, texto=texto_con_foto)
     resp = await manejar_turno(req, mock_buscador)
 
-    assert "quitar_recursos" in resp.opciones
-    assert "seguir_con_recursos" in resp.opciones
-    assert "recursos multimedia" in resp.mensaje
+    assert "confirmar_texto" in resp.opciones
+
+    req_conf = ChatOrquestadorRequest(session_id=sid, accion="confirmar_texto")
+    resp_conf = await manejar_turno(req_conf, mock_buscador)
+    assert resp_conf.borrador is not None
+    assert resp_conf.borrador.skills_habilitadas is False
+    assert "recursos" in resp_conf.borrador.skills_motivo.lower()
 
 
 @pytest.mark.anyio

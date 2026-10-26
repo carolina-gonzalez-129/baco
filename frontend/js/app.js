@@ -948,23 +948,13 @@
     }
 
     if (railAviso) {
-      if (deshabilitadas) {
-        railAviso.hidden = false;
-        railAviso.innerHTML = '⚡ <b>Skills no disponibles:</b> ' + esc(motivo);
-      } else {
-        railAviso.hidden = true;
-        railAviso.innerHTML = '';
-      }
+      railAviso.hidden = true;
+      railAviso.innerHTML = '';
     }
 
     if (bannerSkills) {
-      if (deshabilitadas) {
-        bannerSkills.hidden = false;
-        bannerSkills.innerHTML = '<span>⚡ <b>Skills de IA deshabilitadas:</b> ' + esc(motivo) + '</span>';
-      } else {
-        bannerSkills.hidden = true;
-        bannerSkills.innerHTML = '';
-      }
+      bannerSkills.hidden = true;
+      bannerSkills.innerHTML = '';
     }
   }
 

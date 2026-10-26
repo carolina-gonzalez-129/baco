@@ -459,25 +459,10 @@ async def handle_esperando_texto(
             tags=req.tags,
         )
 
-        if bool(recs_combinados):
-            return construir_respuesta(
-                sesion,
-                MSG_OPCIONES_RECURSOS_SKILLS,
-                OPCIONES_RECURSOS_SKILLS,
-                aviso_privacidad=aviso_priv_frag,
-            )
-
-        if largo_efectivo > TEXTO_MAX:
-            msg_edicion = (
-                f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX_PERCENTIL_99} caracteres). "
-                f"Tené en cuenta que al superar los {TEXTO_MAX} caracteres, las skills del agente quedan deshabilitadas. "
-                "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
-            )
-        else:
-            msg_edicion = (
-                f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX_PERCENTIL_99} caracteres). "
-                "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
-            )
+        msg_edicion = (
+            f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX_PERCENTIL_99} caracteres). "
+            "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
+        )
         return construir_respuesta(sesion, msg_edicion, ops_texto, aviso_privacidad=aviso_priv_frag)
 
     if req.texto is not None:
@@ -544,19 +529,6 @@ async def handle_esperando_texto(
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
             return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
 
-        if bool(recursos) and opcion not in ("quitar_recursos", "seguir_con_recursos", "confirmar_texto"):
-            sesion.actualizar_contenido_borrador(
-                texto_limpio=texto_limpio,
-                texto_base_limpio=texto_limpio,
-                texto_en_edicion=texto_limpio,
-                recursos=recursos,
-            )
-            return construir_respuesta(
-                sesion,
-                MSG_OPCIONES_RECURSOS_SKILLS,
-                OPCIONES_RECURSOS_SKILLS,
-            )
-
         recursos_finales = sincronizar_recursos_con_marcadores(texto_limpio, recursos)
         max_id_enriq = max(
             ultimo_id_enriq,
@@ -585,20 +557,6 @@ async def handle_esperando_texto(
     if err_marcadores:
         sesion.registrar_fallo("MARCADORES_MANUALES")
         return construir_respuesta(sesion, err_marcadores, ["volver"])
-
-    if bool(recursos) and opcion not in ("quitar_recursos", "seguir_con_recursos", "confirmar_texto"):
-        max_id_nuevo = max(sesion.ultimo_id_recurso, _max_num_recurso(recursos))
-        sesion.actualizar_contenido_borrador(
-            texto_limpio=texto_limpio,
-            texto_en_edicion=texto_limpio,
-            recursos=recursos,
-            ultimo_id_recurso=max_id_nuevo,
-        )
-        return construir_respuesta(
-            sesion,
-            MSG_OPCIONES_RECURSOS_SKILLS,
-            OPCIONES_RECURSOS_SKILLS,
-        )
 
     largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
     if largo_efectivo < TEXTO_MIN:
