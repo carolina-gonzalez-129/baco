@@ -755,9 +755,7 @@
       /* El backend avisa cuando anonimizó datos sensibles solo */
       if (r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
 
-      const esEsperaMetadatos = (typeof r.mensaje === 'string' && r.mensaje.includes('Esperando confirmación o rechazo de los metadatos heredados'));
-      const tieneMetaPendiente = esEsperaMetadatos || (r.estado === 'REVISION_BORRADOR' && !!(r.aviso_metadatos_heredados || (r.borrador && r.borrador.metadatos_anteriores && !r.borrador.metadatos_heredados_revisados)));
-      decir(nl2br(r.mensaje), tieneMetaPendiente ? [] : r.opciones);
+      decir(nl2br(r.mensaje), r.opciones);
 
       if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO') mostrarConforme();
     } catch (e) {
@@ -1610,10 +1608,7 @@
     if (ancho) b.querySelector('.bubble').classList.add('ancha');
     /* En el panel derecho (BACO Companion) nunca se muestra el botón "Confirmar texto" */
     const opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto');
-    const esEsperaMetadatos = (typeof html === 'string' && html.includes('Esperando confirmación o rechazo de los metadatos heredados'));
-    const sActual = store.get();
-    const tieneMetaPendiente = esEsperaMetadatos || (sActual.flujo === 'REVISION_BORRADOR' && !!(sActual.aviso_metadatos_heredados || (sActual.borrador && sActual.borrador.metadatos_anteriores && !sActual.borrador.metadatos_heredados_revisados)));
-    const opcionesCompanionFinal = tieneMetaPendiente ? [] : opcionesCompanion;
+    const opcionesCompanionFinal = opcionesCompanion;
     if (opcionesCompanionFinal.length) {
       const cont = el('div', 'acciones');
       opcionesCompanionFinal.forEach((op) => {
