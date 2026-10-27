@@ -115,15 +115,9 @@ BACO.panelMultimedia = (function () {
     const tienePosicionExplicita = listaActual.some((r) => typeof r.posicion === 'number');
 
     if (bloquesEnEstado || tienePosicionExplicita) {
-      const cuerpoActual = String(textoLimpio || '').trim();
-      const derivadoEstado = bloquesEnEstado
-        ? bloquesEnEstado.map((b) => String(b || '').trim()).filter(Boolean).join('\n\n')
-        : '';
-      const bloquesParaUsar = (bloquesEnEstado && (!cuerpoActual || cuerpoActual === derivadoEstado))
+      const bloquesParaUsar = (bloquesEnEstado && bloquesEnEstado.length)
         ? bloquesEnEstado
-        : (bloquesEnEstado && bloquesEnEstado.length > 1 && tienePosicionExplicita
-            ? bloquesEnEstado
-            : [String(textoLimpio || '')]);
+        : [String(textoLimpio || '')];
       return componerIntercaladoPorBloques(bloquesParaUsar, listaActual);
     }
 
@@ -292,6 +286,7 @@ BACO.panelMultimedia = (function () {
     componerVistaPrevia,
     renderPreview: componerVistaPrevia,
     componerIntercaladoPorBloques,
-    alternarCarga
+    alternarCarga,
+    aMarkdown
   };
 })();

@@ -252,7 +252,8 @@ def test_caso_7_reordenar_eliminar_y_enriquecer_decision_texto(client, mock_busc
 
     borrador = SESIONES[sid].borrador
     assert "Texto base oficial que debe preservarse siempre íntegro." in borrador.texto_limpio
-    assert "Detalle técnico nuevo agregado por el operador" in borrador.texto_limpio
+    assert "Detalle técnico nuevo agregado por el operador" in borrador.texto_editor
+    assert "Detalle técnico nuevo agregado por el operador" not in borrador.texto_limpio
     assert "[[recurso:" not in borrador.texto_limpio
     assert borrador.recursos["rec_1"].referencia == "https://bc.finneg.com/uploads/base.png"
     assert borrador.recursos["rec_2"].referencia == "https://bc.finneg.com/uploads/aporte.png"

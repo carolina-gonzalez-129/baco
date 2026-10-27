@@ -68,6 +68,7 @@ BACO.SEVERIDAD = {
 
 /* Texto de cada botón de `opciones` que devuelve el backend */
 BACO.OPCIONES = {
+  ver_articulo_final: { label: 'Ver artículo', estilo: 'btn-primary' },
   confirmar_texto:   { label: 'Confirmar texto',         estilo: 'btn-primary' },
   quitar_recursos:   { label: 'Quitar recursos (usar skills)',    estilo: 'btn-dark' },
   seguir_con_recursos: { label: 'Seguir con recursos (sin skills)', estilo: 'btn-ghost' },
@@ -118,7 +119,7 @@ BACO.store = (function () {
     multimedia_habilitada: false,
 
     /* lo que el usuario está escribiendo, antes de enviarlo */
-    form: { titulo: '', texto: '', tags: [], categoria_id: null },
+    form: { titulo: '', texto: '', texto_editor: '', tags: [], categoria_id: null },
 
     enviando: false,
     error: null
@@ -234,6 +235,13 @@ BACO.store = (function () {
         sincronizarEstructuraBorrador(r.borrador);
         estado.form.titulo = r.borrador.titulo || '';
         estado.form.texto = r.borrador.texto_limpio || '';
+        if (r.borrador.modo === 'enriquecimiento') {
+          estado.form.texto_editor = (typeof r.borrador.texto_editor === 'string')
+            ? r.borrador.texto_editor
+            : (estado.form.texto_editor || '');
+        } else {
+          estado.form.texto_editor = estado.form.texto;
+        }
         estado.form.tags = (r.borrador.tags || []).slice();
         estado.form.categoria_id = (r.borrador.categoria_id && Number(r.borrador.categoria_id) > 1) ? Number(r.borrador.categoria_id) : null;
       } else {

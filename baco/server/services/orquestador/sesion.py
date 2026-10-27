@@ -39,12 +39,14 @@ class SesionChat:
     texto_limpio: str = ""
     bloques_texto: List[str] = field(default_factory=list)
     texto_en_edicion: str = ""
+    texto_editor: Optional[str] = None
     recursos: Dict[str, Recurso] = field(default_factory=dict)
     ultimo_id_recurso: int = 0
     orden_multimedia: List[int] = field(default_factory=list)
     posiciones: List[int] = field(default_factory=list)
     contenido_adicional: List[ItemContenidoAdicional] = field(default_factory=list)
     categoria_id: Optional[int] = None
+    categoria_nombre: Optional[str] = None
     tags: List[str] = field(default_factory=list)
     metadatos_anteriores: Optional[Dict[str, Any]] = None
     metadatos_heredados_revisados: bool = False
@@ -79,8 +81,10 @@ class SesionChat:
         texto: Optional[str] = None,
         texto_base_limpio: Optional[str] = None,
         texto_en_edicion: Optional[str] = None,
+        texto_editor: Optional[str] = None,
         titulo: Optional[str] = None,
         categoria_id: Optional[int] = None,
+        categoria_nombre: Optional[str] = None,
         tags: Optional[List[str]] = None,
         tipo_plantilla: Optional[str] = None,
     ) -> None:
@@ -137,6 +141,11 @@ class SesionChat:
             if self.borrador is not None:
                 self.borrador.texto_en_edicion = texto_en_edicion
 
+        if texto_editor is not None:
+            self.texto_editor = texto_editor
+            if self.borrador is not None:
+                self.borrador.texto_editor = texto_editor
+
         if texto is not None:
             self.texto = texto
         elif self.borrador is not None:
@@ -151,6 +160,11 @@ class SesionChat:
             self.categoria_id = categoria_id
             if self.borrador is not None:
                 self.borrador.categoria_id = categoria_id
+
+        if categoria_nombre is not None:
+            self.categoria_nombre = categoria_nombre
+            if self.borrador is not None:
+                self.borrador.categoria_nombre = categoria_nombre
 
         if tags is not None:
             self.tags = list(tags)
@@ -191,11 +205,7 @@ def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: Optional[Sesi
     )
     if borrador.bloques_texto:
         bloques_actuales = list(borrador.bloques_texto)
-        if borrador.modo == "enriquecimiento" and borrador.texto_base_limpio:
-            base_limpio = borrador.texto_base_limpio.strip()
-            unido = "\n\n".join(bloques_actuales)
-            if base_limpio and base_limpio not in unido:
-                bloques_actuales = [base_limpio] + bloques_actuales
+        # Ediciones y borrados en enriquecimiento son respetados; no re-inyectar base
         limpio_tit = sanitizar_borrador(texto="", titulo=borrador.titulo)
         borrador.titulo = limpio_tit["titulo_sanitizado"] or borrador.titulo
         borrador.bloques_texto = bloques_actuales
