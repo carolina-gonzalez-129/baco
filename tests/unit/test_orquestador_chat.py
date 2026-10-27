@@ -106,7 +106,7 @@ def test_camino_coincidencia_titulo_enriquecer_con_datos_db_valida_y_aprueba(cli
     assert r3b["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3b["borrador"]["modo"] == "enriquecimiento"
     assert r3b["borrador"]["articulo_original_id"] == 101
-    assert r3b["borrador"]["texto"] == TEXTO_VALIDO
+    assert r3b["borrador"]["texto_alineado_discourse"] == TEXTO_VALIDO
     assert r3b["borrador"]["tipo_plantilla"] == "instructivo"
     assert r3b["borrador"]["tags"] == ["instructivo", "ventas"]
     assert r3b["validacion"]["valido"] is True
@@ -125,7 +125,7 @@ def test_camino_coincidencia_titulo_enriquecer_con_datos_db_valida_y_aprueba(cli
     assert resp_borrador.status_code == 200
     datos_b = resp_borrador.json()
     assert datos_b["titulo"] == "Configurar Punto de Venta AFIP"  # sin el 'Cómo ' redundante
-    assert datos_b["texto"] == TEXTO_VALIDO
+    assert datos_b["texto_alineado_discourse"] == TEXTO_VALIDO
     assert datos_b["tipo_plantilla"] == "instructivo"
 
 
@@ -204,7 +204,7 @@ def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(cli
     assert r_val["borrador"]["categoria_id"] == 4
     # Ahora es autosanitizante: ya reemplazó el CUIT automáticamente y es válido con aviso
     assert r_val["validacion"]["valido"] is True
-    assert "[CUIT_OCULTO]" in r_val["borrador"]["texto"]
+    assert "[CUIT_OCULTO]" in r_val["borrador"]["texto_alineado_discourse"]
 
     r_ok = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
     assert r_ok["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
@@ -342,7 +342,7 @@ async def test_orquestador_texto_demasiado_largo_en_edicion_revision_borrador_no
 
     assert resp.estado == EstadoFlujo.REVISION_BORRADOR
     assert f"El texto supera los {TEXTO_MAX_PERCENTIL_99} caracteres" in resp.mensaje
-    assert sesion.borrador.texto == TEXTO_VALIDO
+    assert sesion.borrador.texto_alineado_discourse == TEXTO_VALIDO
 
 
 def test_validar_borrador_error_en_otro_campo_menciona_ese_campo():
@@ -414,8 +414,8 @@ def test_enriquecer_articulo_existente_texto_db_exactamente_texto_max_crea_borra
     r2b = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_exacto}).json()
     assert r2b["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r2b["borrador"] is not None
-    assert len(r2b["borrador"]["texto"]) == TEXTO_MAX
-    assert r2b["borrador"]["texto"] == texto_exacto
+    assert len(r2b["borrador"]["texto_alineado_discourse"]) == TEXTO_MAX
+    assert r2b["borrador"]["texto_alineado_discourse"] == texto_exacto
 
 
 def test_aplicar_plantilla_con_session_id_inexistente_retorna_404(client):
@@ -479,7 +479,7 @@ def test_aplicar_plantilla_conforme_inyecta_prompt_y_sobreescribe_borrador(clien
     assert SESIONES[sid].borrador.conforme is False
     assert SESIONES[sid].borrador.conforme_en is None
     assert SESIONES[sid].estado == EstadoFlujo.REVISION_BORRADOR
-    assert SESIONES[sid].borrador.texto == plantilla_markdown
+    assert SESIONES[sid].borrador.texto_alineado_discourse == plantilla_markdown
     assert SESIONES[sid].borrador.texto_original_conforme == TEXTO_VALIDO
 
     # Mientras no vuelva a confirmar, el borrador en conformidad no es accesible (409)
@@ -496,7 +496,7 @@ def test_aplicar_plantilla_conforme_inyecta_prompt_y_sobreescribe_borrador(clien
     # Ahora sí se puede consultar el borrador vía GET
     resp_get = client.get("/chat/borrador", headers={"X-Session-ID": sid})
     assert resp_get.status_code == 200
-    assert resp_get.json()["texto"] == plantilla_markdown
+    assert resp_get.json()["texto_alineado_discourse"] == plantilla_markdown
     assert resp_get.json()["conforme"] is True
 
 
@@ -527,7 +527,7 @@ def test_aplicar_plantilla_salida_insuficiente_retorna_502_y_preserva_borrador(c
 
     assert resp.status_code == 502
     assert "insuficiente" in resp.json()["detail"]
-    assert SESIONES[sid].borrador.texto == TEXTO_VALIDO
+    assert SESIONES[sid].borrador.texto_alineado_discourse == TEXTO_VALIDO
 
 
 def test_agente_service_escapa_delimitadores_xml():
@@ -598,7 +598,7 @@ def test_auditar_semantica_conforme_inyecta_prompt_y_no_sobreescribe_borrador(cl
     assert TEXTO_VALIDO in prompt_inyectado
 
     # Verificar que para auditar-semantica NO se sobreescribe el texto del borrador
-    assert SESIONES[sid].borrador.texto == TEXTO_VALIDO
+    assert SESIONES[sid].borrador.texto_alineado_discourse == TEXTO_VALIDO
 
 
 def test_exhaustividad_y_completitud_state_handlers():
@@ -746,8 +746,8 @@ def test_enriquecer_consolida_texto_evitando_rechazo_por_texto_breve(client, moc
     aporte_breve = "Válido para versión 2026."
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": aporte_breve}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert TEXTO_VALIDO in r3["borrador"]["texto"]
-    assert aporte_breve in r3["borrador"]["texto"]
+    assert TEXTO_VALIDO in r3["borrador"]["texto_alineado_discourse"]
+    assert aporte_breve in r3["borrador"]["texto_alineado_discourse"]
 
 
 def test_sanitizacion_aviso_privacidad_un_solo_turno(client, mock_buscador):
@@ -792,9 +792,9 @@ def test_enriquecer_con_cuit_emite_aviso_y_consolida(client, mock_buscador):
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": aporte_sensible}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3["aviso_privacidad"] is not None
-    assert "[CUIT_OCULTO]" in r3["borrador"]["texto"]
-    assert "20-30405060-9" not in r3["borrador"]["texto"]
-    assert TEXTO_VALIDO in r3["borrador"]["texto"]
+    assert "[CUIT_OCULTO]" in r3["borrador"]["texto_alineado_discourse"]
+    assert "20-30405060-9" not in r3["borrador"]["texto_alineado_discourse"]
+    assert TEXTO_VALIDO in r3["borrador"]["texto_alineado_discourse"]
 
 
 def test_metadatos_tags_en_texto_y_categoria_default(client, mock_buscador):

@@ -3,11 +3,68 @@ import re
 from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, ValidationInfo, computed_field, field_validator, model_validator
 
-from baco.server.config_limites import TEXTO_MAX, TEXTO_MAX_PERCENTIL_99, TITULO_MAX
+from baco.server.config_limites import MAX_BLOQUES_TEXTO, TEXTO_MAX, TEXTO_MAX_PERCENTIL_99, TITULO_MAX
 from baco.server.schemas.validacion import ValidarFormatoResponse
 from baco.server.schemas.recurso import Recurso
 
 _RE_MARCADOR_LEGACY = re.compile(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]")
+_RE_CUALQUIER_MARCADOR = re.compile(r"\[\[(?:recurso:([a-zA-Z0-9_\-]+)|(R\d+))\]\]")
+
+
+def _sanitizar_y_validar_bloques(
+    bloques_raw: List[str],
+    recursos_dict: Optional[Dict[str, Any]] = None,
+    texto_base_limpio: Optional[str] = None,
+) -> List[str]:
+    """Valida que los bloques no contengan marcadores y aplica autosanitización PII/secretos."""
+    from baco.server.services.validar_articulo import _limpiar_texto_sensible
+
+    bloques_limpios: List[str] = []
+    recs = recursos_dict if isinstance(recursos_dict, dict) else {}
+    base = (texto_base_limpio or "").strip()
+    parrafos_base = {p.strip() for p in re.split(r"\n\s*\n", base) if p.strip()} if base else set()
+
+    for b in bloques_raw or []:
+        if not isinstance(b, str):
+            b = str(b)
+        marcadores_r = re.findall(r"\[\[R\d+\]\]", b)
+        if marcadores_r:
+            raise ValueError(
+                f"El texto contiene marcadores no canónicos ({', '.join(marcadores_r)}). "
+                f"No se permiten marcadores en bloques_texto."
+            )
+        marcadores_rec = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", b)
+        if marcadores_rec:
+            invalidos = [m for m in marcadores_rec if m not in recs]
+            if invalidos:
+                raise ValueError(
+                    f"El texto contiene marcadores que no referencian ningún recurso existente: "
+                    f"{', '.join(f'[[recurso:{m}]]' for m in invalidos)}. "
+                    f"No se permite ingresar marcadores manualmente."
+                )
+            raise ValueError(
+                "bloques_texto no puede contener marcadores [[recurso:...]]; "
+                "los recursos se ubican mediante su atributo posicion."
+            )
+        b_strip = b.strip()
+        if b_strip:
+            if base and (b_strip == base or b_strip in parrafos_base):
+                b_san = b_strip
+            elif base and base in b_strip:
+                pre, post = b_strip.split(base, 1)
+                pre_san = _limpiar_texto_sensible(pre.strip())[0] if pre.strip() else ""
+                post_san = _limpiar_texto_sensible(post.strip())[0] if post.strip() else ""
+                b_san = "\n\n".join(p.strip() for p in (pre_san, base, post_san) if p and p.strip())
+            else:
+                b_san, _ = _limpiar_texto_sensible(b_strip)
+            if b_san.strip():
+                bloques_limpios.append(b_san.strip())
+
+    if len(bloques_limpios) > MAX_BLOQUES_TEXTO:
+        raise ValueError(
+            f"La cantidad de bloques de texto ({len(bloques_limpios)}) supera el máximo permitido de {MAX_BLOQUES_TEXTO}."
+        )
+    return bloques_limpios
 
 
 class EstadoFlujo(str, Enum):
@@ -70,12 +127,15 @@ class BorradorSesion(BaseModel):
     articulo_original_id: Optional[int] = None
     articulo_original_url: Optional[str] = None
     titulo: str
+    bloques_texto: List[str] = Field(
+        default_factory=list,
+        description="Fuente de verdad única del texto: lista ordenada de bloques de texto limpio (sin marcadores).",
+    )
     recursos: Dict[str, Recurso] = Field(default_factory=dict)
     ultimo_id_recurso: int = Field(
         default=0,
         description="Contador monotónico por borrador que nunca reutiliza el ID de un recurso eliminado.",
     )
-    texto_limpio: str = ""
     texto_base_limpio: str = ""
     texto_en_edicion: str = ""
     orden_multimedia: List[int] = Field(
@@ -84,7 +144,7 @@ class BorradorSesion(BaseModel):
     )
     posiciones: List[int] = Field(
         default_factory=list,
-        description="Vector numérico con las posiciones correlativas de los contenidos multimedia."
+        description="Vector numérico con las posiciones de bloque de los contenidos multimedia."
     )
     contenido_adicional: List[ItemContenidoAdicional] = Field(
         default_factory=list,
@@ -111,19 +171,91 @@ class BorradorSesion(BaseModel):
     @classmethod
     def preparar_datos_borrador(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            # Seguridad: el cliente no puede forzar flags calculados por el servidor
+            data = dict(data)
+            # Seguridad: el cliente no puede forzar flags ni campos derivados calculados por el servidor
             data.pop("skills_habilitadas", None)
             data.pop("skills_motivo", None)
-            txt = data.get("texto")
-            txt_limpio = data.get("texto_limpio")
-            if (not txt_limpio) and txt:
-                from baco.server.services.orquestador.recursos_service import extraer_recursos_y_texto_limpio
-                tl, recs = extraer_recursos_y_texto_limpio(txt)
-                data["texto_limpio"] = tl
-                if recs and not data.get("recursos"):
-                    data["recursos"] = recs
-            data.pop("texto", None)
+            data.pop("texto_alineado_discourse", None)
+
+            tiene_bloques = "bloques_texto" in data and data["bloques_texto"] is not None
+            txt = data.pop("texto", None)
+            txt_limpio = data.pop("texto_limpio", None)
+
+            if not tiene_bloques:
+                if txt_limpio is not None:
+                    v = str(txt_limpio)
+                    marcadores_legacy_r = re.findall(r"\[\[R\d+\]\]", v)
+                    if marcadores_legacy_r:
+                        raise ValueError(
+                            f"El texto contiene marcadores no canónicos ({', '.join(marcadores_legacy_r)}). "
+                            f"El marcador canónico único es [[recurso:rec_N]]."
+                        )
+                    marcadores_recurso = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", v)
+                    recursos_raw = data.get("recursos")
+                    recursos_dict = dict(recursos_raw) if isinstance(recursos_raw, dict) else {}
+                    if marcadores_recurso:
+                        invalidos = [m for m in marcadores_recurso if m not in recursos_dict]
+                        if invalidos:
+                            raise ValueError(
+                                f"El texto contiene marcadores que no referencian ningún recurso existente: "
+                                f"{', '.join(f'[[recurso:{m}]]' for m in invalidos)}. "
+                                f"No se permite ingresar marcadores manualmente."
+                            )
+                        # Convertir texto con marcadores válidos en bloques_texto limpios + posicion en recursos
+                        partes = re.split(r"(\[\[recurso:[a-zA-Z0-9_\-]+\]\])", v)
+                        bloques_derivados: List[str] = []
+                        orden_vista = 0
+                        for parte in partes:
+                            m_rec = re.fullmatch(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", parte.strip())
+                            if m_rec:
+                                rid = m_rec.group(1)
+                                rec_item = recursos_dict.get(rid)
+                                pos_calc = len(bloques_derivados) - 1
+                                if isinstance(rec_item, dict):
+                                    rec_item = dict(rec_item)
+                                    rec_item["posicion"] = pos_calc
+                                    rec_item["orden"] = orden_vista
+                                    recursos_dict[rid] = rec_item
+                                elif hasattr(rec_item, "model_copy"):
+                                    recursos_dict[rid] = rec_item.model_copy(
+                                        update={"posicion": pos_calc, "orden": orden_vista}
+                                    )
+                                orden_vista += 1
+                            else:
+                                sub_bloques = [b.strip() for b in re.split(r"\n\s*\n", parte) if b.strip()]
+                                bloques_derivados.extend(sub_bloques)
+                        data["bloques_texto"] = bloques_derivados
+                        data["recursos"] = recursos_dict
+                    else:
+                        s = v.strip()
+                        if not s:
+                            data["bloques_texto"] = []
+                        elif recursos_dict:
+                            data["bloques_texto"] = [b.strip() for b in re.split(r"\n\s*\n", s) if b.strip()]
+                        else:
+                            data["bloques_texto"] = [s]
+                elif txt:
+                    from baco.server.services.orquestador.recursos_service import extraer_recursos_y_bloques_texto
+                    bloques_ext, recs = extraer_recursos_y_bloques_texto(str(txt))
+                    data["bloques_texto"] = bloques_ext
+                    if recs and not data.get("recursos"):
+                        data["recursos"] = recs
+                else:
+                    data["bloques_texto"] = []
         return data
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def texto_limpio(self) -> str:
+        """Texto limpio derivado de bloques_texto (nunca contiene marcadores ni recursos)."""
+        return "\n\n".join(b for b in self.bloques_texto if b).strip()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def texto_alineado_discourse(self) -> str:
+        """Vista compuesta derivada para Discourse: intercala bloques_texto y recursos según (posicion, orden)."""
+        from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+        return componer_texto_publicable(self.bloques_texto, self.recursos)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -131,7 +263,7 @@ class BorradorSesion(BaseModel):
         """Indica si las skills del agente están habilitadas para el borrador.
 
         Calculado estrictamente en el servidor:
-        False si el largo efectivo (sin marcadores) supera TEXTO_MAX (6687) o si el borrador tiene recursos.
+        False si el largo efectivo supera TEXTO_MAX (6687) o si el borrador tiene recursos.
         """
         from baco.server.config_limites import TEXTO_MAX
         from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
@@ -167,110 +299,166 @@ class BorradorSesion(BaseModel):
             return "El borrador contiene recursos multimedia. Las skills de IA solo admiten texto plano sin recursos."
         return None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def texto(self) -> str:
-        """Vista compuesta derivada: siempre componer_texto_publicable(texto_limpio, recursos)."""
-        from baco.server.services.orquestador.recursos_service import componer_texto_publicable
-        return componer_texto_publicable(self.texto_limpio, self.recursos)
-
-    @field_validator("texto_limpio", mode="after")
-    @classmethod
-    def validar_marcadores_referencian_recursos_existentes(cls, v: str, info: ValidationInfo) -> str:
-        """Cambio 3: valida que cada marcador en texto_limpio referencia un recurso existente.
-
-        Rechaza marcadores inventados o escritos a mano por la persona sin borrado silencioso.
-        """
-        if not v or not isinstance(v, str):
-            return v
-        marcadores_legacy_r = re.findall(r"\[\[R\d+\]\]", v)
-        if marcadores_legacy_r:
-            raise ValueError(
-                f"El texto contiene marcadores no canónicos ({', '.join(marcadores_legacy_r)}). "
-                f"El marcador canónico único es [[recurso:rec_N]]."
-            )
-        marcadores_recurso = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", v)
-        if not marcadores_recurso:
-            return v
-
-        recursos = info.data.get("recursos") if info.data else None
-        recursos_dict = recursos if isinstance(recursos, dict) else {}
-
-        invalidos = [m for m in marcadores_recurso if m not in recursos_dict]
-        if invalidos:
-            raise ValueError(
-                f"El texto contiene marcadores que no referencian ningún recurso existente: "
-                f"{', '.join(f'[[recurso:{m}]]' for m in invalidos)}. "
-                f"No se permite ingresar marcadores manualmente."
-            )
-        return v
-
     @model_validator(mode="after")
-    def sincronizar_vector_multimedia(self) -> "BorradorSesion":
-        """Al crear el borrador (en cualquier flujo) deja la lista multimedia lista para el panel:
-
-        orden correlativo 0..N-1, diccionario en ese orden y vectores sincronizados.
-        También normaliza borradores previos con órdenes 1-based o con huecos.
+    def sincronizar_bloques_y_vector_multimedia(self) -> "BorradorSesion":
+        """Sanitiza bloques_texto (PII/secretos) y garantiza los invariantes de recursos:
+        - posicion en [-1, len(bloques_texto) - 1]
+        - orden único y contiguo 0..N-1
+        - recursos ordenados por (posicion, orden)
         """
-        items = sorted(self.recursos.values(), key=lambda r: r.orden)
-        for i, r in enumerate(items):
-            r.orden = i
-        self.recursos = {r.id: r for r in items}
-        max_num = self.ultimo_id_recurso
-        for rid in self.recursos:
-            m = re.fullmatch(r"rec_(\d+)", str(rid))
-            if m:
-                max_num = max(max_num, int(m.group(1)))
-        self.ultimo_id_recurso = max_num
-        vec = list(range(len(items)))
-        self.orden_multimedia = list(vec)
-        self.posiciones = list(vec)
+        base_api = self.texto_base_limpio if self.modo == "enriquecimiento" else None
+        bloques_sanitizados = _sanitizar_y_validar_bloques(self.bloques_texto, self.recursos, texto_base_limpio=base_api)
+        super().__setattr__("bloques_texto", bloques_sanitizados)
+
+        from baco.server.services.validar_articulo import sanitizar_borrador
+        if self.titulo:
+            res_tit = sanitizar_borrador(texto="", titulo=self.titulo, sanitizar_redundancia_titulo=False)
+            super().__setattr__("titulo", res_tit["titulo_sanitizado"] or self.titulo)
+
+        items = list(self.recursos.values())
+        self._sincronizar_orden_recursos(items, invalidar_conformidad=False)
         return self
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in ("texto", "texto_alineado_discourse"):
+            raise AttributeError(f"'{name}' no es un atributo asignable en BorradorSesion.")
+        if name == "texto_limpio":
+            v = str(value or "")
+            marcadores_r = re.findall(r"\[\[R\d+\]\]", v)
+            if marcadores_r:
+                raise ValueError(f"Marcadores no permitidos: {marcadores_r}")
+            v_sin_marc = _RE_MARCADOR_LEGACY.sub("", v).strip()
+            if v_sin_marc == self.texto_limpio and self.bloques_texto:
+                return
+            if not v_sin_marc:
+                nuevos_bloques: List[str] = []
+            elif self.recursos and len(self.bloques_texto) > 1:
+                nuevos_bloques = [b.strip() for b in re.split(r"\n\s*\n", v_sin_marc) if b.strip()]
+            else:
+                nuevos_bloques = [v_sin_marc]
+            self.__setattr__("bloques_texto", nuevos_bloques)
+            return
+        if name == "bloques_texto":
+            base_api = getattr(self, "texto_base_limpio", None) if getattr(self, "modo", None) == "enriquecimiento" else None
+            bloques_san = _sanitizar_y_validar_bloques(value or [], getattr(self, "recursos", None), texto_base_limpio=base_api)
+            super().__setattr__("bloques_texto", bloques_san)
+            if hasattr(self, "recursos"):
+                self._sincronizar_orden_recursos(list(self.recursos.values()), invalidar_conformidad=False)
+            return
+        super().__setattr__(name, value)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def multimedia(self) -> List[Recurso]:
-        """Lista de recursos multimedia en su orden explícito actual (se serializa para el front)."""
-        return sorted(self.recursos.values(), key=lambda r: r.orden)
+        """Lista de recursos multimedia ordenados por (posicion, orden)."""
+        return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
-    def reorder(self, from_index: int, to_index: int) -> List[Recurso]:
+    def reordenar_recurso(
+        self,
+        elemento: Union[str, int],
+        nueva_posicion: Optional[int] = None,
+        nuevo_orden: Optional[int] = None,
+    ) -> List[Recurso]:
+        """Mueve un recurso (identificado por ID o por su índice de orden actual)
+        a un nuevo (posicion, orden), preservando invariantes:
+        - posicion en [-1, len(bloques_texto) - 1]
+        - orden único y contiguo 0..N-1
+        - recursos ordenados por (posicion, orden)
+        """
+        items = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
+        if not items:
+            raise ValueError("No hay recursos para reordenar.")
+
+        target_idx: Optional[int] = None
+        if isinstance(elemento, int) or (
+            isinstance(elemento, str) and elemento.isdigit() and elemento not in self.recursos
+        ):
+            idx = int(elemento)
+            if 0 <= idx < len(items):
+                target_idx = idx
+        else:
+            rid = str(elemento)
+            for i, r in enumerate(items):
+                if r.id == rid:
+                    target_idx = i
+                    break
+
+        if target_idx is None:
+            raise ValueError(f"Recurso o índice fuera de rango: {elemento}")
+
+        max_pos = len(self.bloques_texto) - 1
+        # Si no se especifica nueva_posicion pero sí nuevo_orden, adopta la posicion del slot destino
+        if nueva_posicion is not None:
+            pos_destino = max(-1, min(int(nueva_posicion), max_pos))
+        elif nuevo_orden is not None:
+            idx_slot = max(0, min(int(nuevo_orden), len(items) - 1))
+            pos_destino = max(-1, min(items[idx_slot].posicion, max_pos))
+        else:
+            pos_destino = max(-1, min(items[target_idx].posicion, max_pos))
+
+        item = items.pop(target_idx)
+        item.posicion = pos_destino
+
+        # Determinar rango de índices válidos para pos_destino manteniendo orden por posicion
+        first_idx = 0
+        while first_idx < len(items) and items[first_idx].posicion < pos_destino:
+            first_idx += 1
+        last_idx = first_idx
+        while last_idx < len(items) and items[last_idx].posicion == pos_destino:
+            last_idx += 1
+
+        if nuevo_orden is not None:
+            ins_idx = max(first_idx, min(int(nuevo_orden), last_idx))
+        else:
+            ins_idx = last_idx
+
+        items.insert(ins_idx, item)
+        self._sincronizar_orden_recursos(items)
+        return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
+
+    def reorder(
+        self,
+        from_index: int,
+        to_index: int,
+        nueva_posicion: Optional[int] = None,
+    ) -> List[Recurso]:
         """Reordena los recursos multimedia moviendo el elemento en from_index a to_index."""
-        from baco.server.services.orquestador.recursos_service import permutar_marcadores_en_texto
-        items = sorted(self.recursos.values(), key=lambda r: r.orden)
+        items = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
         if not (0 <= from_index < len(items) and 0 <= to_index < len(items)):
-            raise ValueError(f"Índices de reordenamiento fuera de rango: from_index={from_index}, to_index={to_index} (total: {len(items)})")
-        ids_antes = [r.id for r in items]
+            raise ValueError(
+                f"Índices de reordenamiento fuera de rango: from_index={from_index}, to_index={to_index} (total: {len(items)})"
+            )
+        if nueva_posicion is not None:
+            return self.reordenar_recurso(from_index, nueva_posicion=nueva_posicion, nuevo_orden=to_index)
+
+        posiciones_slots = [r.posicion for r in items]
         item = items.pop(from_index)
         items.insert(to_index, item)
-        ids_despues = [r.id for r in items]
-        if self.texto_limpio:
-            self.texto_limpio = permutar_marcadores_en_texto(self.texto_limpio, ids_antes, ids_despues)
+        for i, r in enumerate(items):
+            r.posicion = posiciones_slots[i]
         self._sincronizar_orden_recursos(items)
-        return items
+        return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
     def reordenar_por_ids(self, orden_ids: List[str]) -> List[Recurso]:
         """Reordena los recursos multimedia según una lista ordenada de IDs."""
-        from baco.server.services.orquestador.recursos_service import permutar_marcadores_en_texto
-        items_antes = sorted(self.recursos.values(), key=lambda r: r.orden)
-        ids_antes = [r.id for r in items_antes]
+        items_antes = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
+        posiciones_slots = [r.posicion for r in items_antes]
         items_map = {r.id: r for r in items_antes}
         nuevos: List[Recurso] = []
         for rid in orden_ids:
             if rid in items_map:
                 nuevos.append(items_map.pop(rid))
-        for sobrante in sorted(items_map.values(), key=lambda r: r.orden):
+        for sobrante in sorted(items_map.values(), key=lambda r: (r.posicion, r.orden)):
             nuevos.append(sobrante)
-        ids_despues = [r.id for r in nuevos]
-        if self.texto_limpio:
-            self.texto_limpio = permutar_marcadores_en_texto(self.texto_limpio, ids_antes, ids_despues)
+        for i, r in enumerate(nuevos):
+            r.posicion = posiciones_slots[i]
         self._sincronizar_orden_recursos(nuevos)
-        return nuevos
+        return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
     def reordenar_por_indices(self, orden_indices: List[int]) -> List[Recurso]:
         """Reordena los recursos multimedia según una lista ordenada de índices."""
-        from baco.server.services.orquestador.recursos_service import permutar_marcadores_en_texto
-        items = sorted(self.recursos.values(), key=lambda r: r.orden)
-        ids_antes = [r.id for r in items]
+        items = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
+        posiciones_slots = [r.posicion for r in items]
         nuevos: List[Recurso] = []
         vistos = set()
         for idx in orden_indices:
@@ -280,16 +468,20 @@ class BorradorSesion(BaseModel):
         for i, item in enumerate(items):
             if i not in vistos:
                 nuevos.append(item)
-        ids_despues = [r.id for r in nuevos]
-        if self.texto_limpio:
-            self.texto_limpio = permutar_marcadores_en_texto(self.texto_limpio, ids_antes, ids_despues)
+        for i, r in enumerate(nuevos):
+            r.posicion = posiciones_slots[i]
         self._sincronizar_orden_recursos(nuevos)
-        return nuevos
+        return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
     def eliminar_multimedia(self, elemento: Union[str, int]) -> Optional[Recurso]:
-        """Elimina un recurso multimedia por ID (str) o por índice (int) y actualiza el vector."""
-        from baco.server.services.orquestador.recursos_service import eliminar_marcador_recurso_de_texto
-        items = sorted(self.recursos.values(), key=lambda r: r.orden)
+        """Elimina un recurso multimedia por ID (str) o por índice (int).
+        Regla de fusión de bloques:
+        Fusiona bloques_texto[pos] y bloques_texto[pos + 1] SOLO si:
+        - pos >= 0 y pos < len(bloques_texto) - 1
+        - ningún otro recurso restante queda con esa misma posicion == pos.
+        Si posicion == -1 o queda otro recurso con la misma posicion, no fusiona.
+        """
+        items = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
         if isinstance(elemento, int) or (
             isinstance(elemento, str) and elemento.isdigit() and elemento not in self.recursos
         ):
@@ -304,40 +496,111 @@ class BorradorSesion(BaseModel):
 
         m = re.fullmatch(r"rec_(\d+)", str(rec_id))
         if m:
-            self.ultimo_id_recurso = max(self.ultimo_id_recurso, int(m.group(1)))
+            super().__setattr__("ultimo_id_recurso", max(self.ultimo_id_recurso, int(m.group(1))))
 
         eliminado = self.recursos.pop(rec_id, None)
-        if self.texto_limpio:
-            self.texto_limpio = eliminar_marcador_recurso_de_texto(self.texto_limpio, rec_id)
+        if eliminado is None:
+            return None
+
+        pos = eliminado.posicion
         restantes = [r for r in items if r.id != rec_id]
+
+        # Fusión condicional de bloques_texto[pos] y bloques_texto[pos + 1]
+        hay_otro_en_misma_pos = any(r.posicion == pos for r in restantes)
+        if 0 <= pos < len(self.bloques_texto) - 1 and not hay_otro_en_misma_pos:
+            b_izq = self.bloques_texto[pos].strip()
+            b_der = self.bloques_texto[pos + 1].strip()
+            fusionado = f"{b_izq}\n\n{b_der}".strip() if (b_izq and b_der) else (b_izq or b_der)
+            nuevos_bloques = (
+                list(self.bloques_texto[:pos])
+                + ([fusionado] if fusionado else [])
+                + list(self.bloques_texto[pos + 2 :])
+            )
+            super().__setattr__("bloques_texto", nuevos_bloques)
+            for r in restantes:
+                if r.posicion > pos:
+                    r.posicion -= 1
+
         self._sincronizar_orden_recursos(restantes)
         return eliminado
 
-    def agregar_multimedia(self, recurso: Recurso, posicion: Optional[int] = None) -> Recurso:
-        """Inserta o añade un nuevo recurso multimedia en la posición indicada o al final."""
-        items = sorted([r for r in self.recursos.values() if r.id != recurso.id], key=lambda r: r.orden)
-        if posicion is None or posicion < 0 or posicion >= len(items):
-            items.append(recurso)
+    def agregar_multimedia(
+        self,
+        recurso: Recurso,
+        posicion: Optional[int] = None,
+        orden: Optional[int] = None,
+    ) -> Recurso:
+        """Inserta o añade un recurso multimedia respetando (posicion, orden) y los invariantes."""
+        items = sorted(
+            [r for r in self.recursos.values() if r.id != recurso.id],
+            key=lambda r: (r.posicion, r.orden),
+        )
+        max_pos = len(self.bloques_texto) - 1
+        if posicion is not None:
+            pos_final = max(-1, min(int(posicion), max_pos))
+        elif "posicion" in recurso.model_fields_set:
+            pos_final = max(-1, min(int(recurso.posicion), max_pos))
         else:
-            items.insert(posicion, recurso)
-        self._sincronizar_orden_recursos(items)
-        return recurso
+            pos_final = max_pos
 
-    def _sincronizar_orden_recursos(self, items_ordenados: List[Recurso]) -> None:
-        """Sincroniza el diccionario de recursos, sus atributos orden y los vectores numéricos."""
-        for i, r in enumerate(items_ordenados):
+        recurso.posicion = pos_final
+
+        first_idx = 0
+        while first_idx < len(items) and items[first_idx].posicion < pos_final:
+            first_idx += 1
+        last_idx = first_idx
+        while last_idx < len(items) and items[last_idx].posicion == pos_final:
+            last_idx += 1
+
+        if orden is not None:
+            ins_idx = max(first_idx, min(int(orden), last_idx))
+        elif posicion is not None:
+            ins_idx = max(first_idx, min(int(posicion), last_idx))
+        else:
+            ins_idx = last_idx
+
+        items.insert(ins_idx, recurso)
+        self._sincronizar_orden_recursos(items)
+        return self.recursos[recurso.id]
+
+    def _sincronizar_orden_recursos(
+        self,
+        items_ordenados: List[Recurso],
+        invalidar_conformidad: bool = True,
+    ) -> None:
+        """Garantiza invariantes:
+        - posicion en [-1, len(bloques_texto) - 1]
+        - recursos ordenados por (posicion, orden_relativo)
+        - orden único y contiguo 0..N-1
+        """
+        max_pos = len(self.bloques_texto) - 1
+        for r in items_ordenados:
+            if r.posicion < -1:
+                r.posicion = -1
+            elif r.posicion > max_pos:
+                r.posicion = max_pos
+
+        # Ordenar de forma estable por posicion conservando el orden relativo dentro de cada posicion
+        ordenados = [
+            r for _, r in sorted(enumerate(items_ordenados), key=lambda pair: (pair[1].posicion, pair[0]))
+        ]
+
+        max_num = self.ultimo_id_recurso
+        for i, r in enumerate(ordenados):
             r.orden = i
             m = re.fullmatch(r"rec_(\d+)", str(r.id))
             if m:
-                self.ultimo_id_recurso = max(self.ultimo_id_recurso, int(m.group(1)))
-        self.recursos = {r.id: r for r in items_ordenados}
-        vec = list(range(len(items_ordenados)))
-        self.orden_multimedia = list(vec)
-        self.posiciones = list(vec)
-        if self.conforme:
-            self.conforme = False
-            self.conforme_en = None
-            self.conformidad_invalidada = True
+                max_num = max(max_num, int(m.group(1)))
+
+        super().__setattr__("ultimo_id_recurso", max_num)
+        super().__setattr__("recursos", {r.id: r for r in ordenados})
+        vec = list(range(len(ordenados)))
+        super().__setattr__("orden_multimedia", list(vec))
+        super().__setattr__("posiciones", [r.posicion for r in ordenados])
+        if invalidar_conformidad and self.conforme:
+            super().__setattr__("conforme", False)
+            super().__setattr__("conforme_en", None)
+            super().__setattr__("conformidad_invalidada", True)
 
     @property
     def texto_original_aprobado(self) -> Optional[str]:

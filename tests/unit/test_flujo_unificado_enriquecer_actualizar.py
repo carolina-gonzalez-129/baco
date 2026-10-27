@@ -73,13 +73,13 @@ def test_decision_titulo_enriquecer_trae_imagenes_y_valida_bloqueante(client, mo
 
     # Pasa a ESPERANDO_TEXTO con el contenido cargado en el editor
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r2["borrador"]["texto"]
+    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r2["borrador"]["texto_alineado_discourse"]
     assert r2["borrador"]["articulo_original_id"] == 2414
 
     # 3. Envía el texto para validar
-    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r2["borrador"]["texto"]}).json()
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r2["borrador"]["texto_alineado_discourse"]}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto"]
+    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
     # Al tener tags >= 2 y plantilla 'instructivo', llega a REVISION_BORRADOR y se puede dar conformidad
     assert "conforme" in r3["opciones"]
 
@@ -102,7 +102,7 @@ def test_decision_titulo_actualizar_adopta_nuevo_titulo(client, mock_buscador):
         r2 = client.post("/chat", json={"session_id": sid, "accion": "actualizar"}).json()
 
     assert r2["borrador"]["titulo"] == nuevo_titulo
-    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r2["borrador"]["texto"]
+    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r2["borrador"]["texto_alineado_discourse"]
 
 
 def test_decision_texto_enriquecer_trae_imagenes_y_termina_duplicados(client, mock_buscador):
@@ -130,7 +130,7 @@ def test_decision_texto_enriquecer_trae_imagenes_y_termina_duplicados(client, mo
 
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3["borrador"]["articulo_original_id"] == 555
-    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto"]
+    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
     assert "conforme" in r3["opciones"]
 
 
@@ -189,7 +189,7 @@ def test_decision_texto_actualizar_adopta_nuevo_titulo(client, mock_buscador):
         r3 = client.post("/chat", json={"session_id": sid, "accion": "actualizar"}).json()
 
     assert r3["borrador"]["titulo"] == nuevo_titulo
-    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto"]
+    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
 
 
 def test_articulo_enriquecido_con_menos_de_2_tags_se_detiene_en_metadatos(client, mock_buscador):

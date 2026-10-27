@@ -7,7 +7,9 @@
 
    · Derecha (chat) = el hilo de la conversación y los botones
      que el backend habilita en cada paso.
-   · Izquierda (formulario) = espejo editable del borrador.
+   · Izquierda (formulario) = espejo editable del borrador con
+     barra de herramientas estilo Discourse y secuencia intercalada
+     de bloques Texto / Recurso / Texto.
 
    Esta capa no sabe si detrás hay mock o backend real.
    ============================================================= */
@@ -25,11 +27,18 @@
   const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const hora = () => new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+  /* Longitud en code points Unicode (alineada con len() de Python) */
+  function lenCodePoints(s) {
+    return Array.from(String(s == null ? '' : s)).length;
+  }
+  BACO.lenCodePoints = lenCodePoints;
+
   function clasificarRecurso(url, altOrText, isExplicitImg, isAttachment) {
     const u = String(url || '').toLowerCase();
     const t = String(altOrText || '').toLowerCase();
 
-    if (isExplicitImg || /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(u)) {
+    if (isExplicitImg || /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(u) || u.startsWith('/api/recursos-temp/')) {
       return {
         tipo: 'imagen',
         etiqueta: 'Imagen',
@@ -120,8 +129,8 @@
 
   const nl2br = (s) => {
     let txt = esc(s);
-    txt = txt.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g, '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>');
-    txt = txt.replace(/\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g, '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📎 $1</a>');
+    txt = txt.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|\/api\/recursos-temp\/)[^\s\)]+)\)/g, '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>');
+    txt = txt.replace(/\[([^\]]+)\|attachment\]\(((?:https?:\/\/|\/api\/recursos-temp\/)[^\s\)]+)\)/g, '<a class="preview-adjunto" href="$2" target="_blank" rel="noopener">📎 $1</a>');
     txt = txt.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, (match, title, url) => {
       const rec = clasificarRecurso(url, title, false, false);
       return '<a class="chat-link" href="' + url + '" target="_blank" rel="noopener">' + rec.icono + ' ' + title + ' ↗</a>';
@@ -132,16 +141,22 @@
   let ultimoFallo = null;   // para poder reintentar la llamada que falló
 
   /* =========================================================
-     Editor de Bloques (Vanilla JS, Estado Único)
+     Editor de Bloques Intercalados + Barra estilo Discourse
      ========================================================= */
   const MAX_ARCHIVO_BYTES = 10 * 1024 * 1024; // 10 MB
   const MAX_TOTAL_RECURSOS_BYTES = 50 * 1024 * 1024; // 50 MB
+  const MAX_RECURSOS_CANTIDAD = 20;
+  const MAX_BLOQUES_TEXTO = 21;
+  const EMOJIS_DISCOURSE = ['😀', '👍', '✅', '⚠️', '📌', '💡', '🔧', '📄', '🚀', '🔍', '❓', '✨'];
+
   let bloqueSeq = 1;
   const genId = () => 'b_' + Date.now() + '_' + (bloqueSeq++);
 
   const estadoEditor = {
+    bloques_texto: [''],
+    recursos: [],
     bloques: [
-      { id: genId(), tipo: 'texto', contenido: '' }
+      { id: genId(), tipo: 'texto', bloqueIdx: 0, contenido: '' }
     ],
     modo: 'edicion',
     enviando: false,
@@ -149,9 +164,18 @@
   };
 
   let sesionCargadaId = null;
-  let selectorTargetPos = null;
-  let selectorTargetTipo = null;
+  let ultimoTextareaActivo = null;
+  let ultimoCursorCapturado = null;
   const textareasMap = new Map();
+
+  /* Función única que lee multimedia_habilitada de la respuesta del servidor */
+  function actualizarDisponibilidadRecursos(resp) {
+    if (store && typeof store.actualizarDisponibilidadRecursos === 'function') {
+      return store.actualizarDisponibilidadRecursos(resp);
+    }
+    return Boolean(resp && resp.multimedia_habilitada === true);
+  }
+  BACO.actualizarDisponibilidadRecursos = actualizarDisponibilidadRecursos;
 
   function formatearBytes(bytes) {
     if (bytes == null || isNaN(bytes)) return '';
@@ -162,96 +186,265 @@
     return mb.toFixed(1) + ' MB';
   }
 
-  function calcularTamanioTotalRecursos() {
-    return estadoEditor.bloques.reduce((acc, b) => {
-      if (b.tipo === 'recurso' && b.recurso && typeof b.recurso.tamanio === 'number') {
-        return acc + b.recurso.tamanio;
-      }
-      return acc;
+  function ordenarRecursosPorPosicionYOrden(recs) {
+    return (recs || []).slice().sort((a, b) => {
+      const pa = typeof a.posicion === 'number' ? a.posicion : 0;
+      const pb = typeof b.posicion === 'number' ? b.posicion : 0;
+      if (pa !== pb) return pa - pb;
+      return (a.orden || 0) - (b.orden || 0);
+    });
+  }
+
+  function calcularTamanioTotalRecursos(recursosLista) {
+    const lista = Array.isArray(recursosLista) ? recursosLista : estadoEditor.recursos;
+    return (lista || []).reduce((acc, r) => {
+      const bytes = typeof r.tamano_bytes === 'number'
+        ? r.tamano_bytes
+        : (typeof r.tamanio === 'number' ? r.tamanio : 0);
+      return acc + bytes;
     }, 0);
   }
 
-  function componerTextoDesdeBloques() {
-    const partes = [];
-    estadoEditor.bloques.forEach((b) => {
-      if (b.tipo === 'texto') {
-        const cont = (b.contenido || '').trim();
-        if (cont) partes.push(cont);
-      } else if (b.tipo === 'recurso' && b.recurso) {
-        const r = b.recurso;
-        const ref = r.url || r.referencia || '';
-        const nom = r.nombre || 'Recurso';
-        if (!ref && r.id && /^rec_\d+$/.test(r.id)) {
-          partes.push('[[recurso:' + r.id + ']]');
-        } else if (r.tipo === 'imagen') {
-          partes.push('![' + nom + '](' + ref + ')');
-        } else if (r.tipo === 'documento' || r.tipo === 'archivo') {
-          partes.push('[' + nom + '|attachment](' + ref + ')');
-        } else {
-          partes.push('[' + nom + '](' + ref + ')');
-        }
+  /* Validación cliente reutilizable: 10 MB/archivo, 50 MB/sesión, máx. 20 recursos, máx. 21 bloques, sin .svg */
+  function validarArchivoCliente(file, recursosActuales, cantidadBloquesResultante) {
+    if (!file) return { valido: false, error: 'No se seleccionó ningún archivo.' };
+    const nombre = String(file.name || '').toLowerCase();
+    const mime = String(file.type || '').toLowerCase();
+
+    if (nombre.endsWith('.svg') || mime === 'image/svg+xml') {
+      return { valido: false, error: 'No se permiten archivos SVG por motivos de seguridad.' };
+    }
+    if (file.size > MAX_ARCHIVO_BYTES) {
+      return { valido: false, error: 'El archivo supera el tamaño máximo permitido de 10 MB.' };
+    }
+    const listaRecs = Array.isArray(recursosActuales) ? recursosActuales : estadoEditor.recursos;
+    if (listaRecs.length >= MAX_RECURSOS_CANTIDAD) {
+      return { valido: false, error: 'Se alcanzó el límite máximo de 20 recursos multimedia por artículo.' };
+    }
+    if (typeof cantidadBloquesResultante === 'number' && cantidadBloquesResultante > MAX_BLOQUES_TEXTO) {
+      return { valido: false, error: 'Se alcanzó el límite máximo de 21 bloques de texto.' };
+    }
+    const totalActual = calcularTamanioTotalRecursos(listaRecs);
+    if (totalActual + (file.size || 0) > MAX_TOTAL_RECURSOS_BYTES) {
+      return { valido: false, error: 'El tamaño acumulado de los recursos superaría el límite de 50 MB.' };
+    }
+    return { valido: true, error: null };
+  }
+  BACO.validarArchivoCliente = validarArchivoCliente;
+
+  /* Parte el bloque de texto en la posición del cursor para intercalar un recurso en el medio.
+     Si no hay foco en un bloque válido, no parte y devuelve posicion = bloques.length - 1 (al final). */
+  function partirBloqueEnCursor(bloquesTexto, bloqueIdxConFoco, selectionStart, selectionEnd) {
+    const base = Array.isArray(bloquesTexto) && bloquesTexto.length
+      ? bloquesTexto.map((t) => String(t == null ? '' : t))
+      : [''];
+
+    if (
+      typeof bloqueIdxConFoco !== 'number' ||
+      bloqueIdxConFoco < 0 ||
+      bloqueIdxConFoco >= base.length ||
+      typeof selectionStart !== 'number'
+    ) {
+      return {
+        bloques_texto: base.slice(),
+        posicion: base.length - 1,
+        partido: false
+      };
+    }
+
+    const textoBloque = base[bloqueIdxConFoco];
+    const start = Math.max(0, Math.min(textoBloque.length, selectionStart));
+    const end = typeof selectionEnd === 'number'
+      ? Math.max(start, Math.min(textoBloque.length, selectionEnd))
+      : start;
+
+    const anterior = textoBloque.slice(0, start);
+    const posterior = textoBloque.slice(end);
+    const nuevosBloques = base.slice(0, bloqueIdxConFoco)
+      .concat([anterior, posterior])
+      .concat(base.slice(bloqueIdxConFoco + 1));
+
+    return {
+      bloques_texto: nuevosBloques,
+      posicion: bloqueIdxConFoco,
+      partido: true
+    };
+  }
+  BACO.partirBloqueEnCursor = partirBloqueEnCursor;
+
+  /* Inserta o envuelve la selección con sintaxis Markdown en el textarea dado */
+  function insertarFormatoMarkdown(textarea, tipo) {
+    if (!textarea || textarea.disabled) return '';
+    const val = String(textarea.value || '');
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : val.length;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : start;
+    const sel = val.slice(start, end);
+    const antes = val.slice(0, start);
+    const despues = val.slice(end);
+
+    let reemplazo = '';
+    let nuevoCursorIni = start;
+    let nuevoCursorFin = end;
+
+    if (tipo === 'bold') {
+      const inner = sel || 'texto en negrita';
+      reemplazo = '**' + inner + '**';
+      nuevoCursorIni = start + 2;
+      nuevoCursorFin = nuevoCursorIni + inner.length;
+    } else if (tipo === 'italic') {
+      const inner = sel || 'texto en cursiva';
+      reemplazo = '*' + inner + '*';
+      nuevoCursorIni = start + 1;
+      nuevoCursorFin = nuevoCursorIni + inner.length;
+    } else if (tipo === 'heading') {
+      const prefijoLinea = (antes.length > 0 && !antes.endsWith('\n')) ? '\n' : '';
+      const inner = sel || 'Título de sección';
+      reemplazo = prefijoLinea + '### ' + inner;
+      nuevoCursorIni = start + prefijoLinea.length + 4;
+      nuevoCursorFin = nuevoCursorIni + inner.length;
+    } else if (tipo === 'link') {
+      const inner = sel || 'texto del enlace';
+      const sufijoUrl = '(https://)';
+      reemplazo = '[' + inner + ']' + sufijoUrl;
+      nuevoCursorIni = start + 1;
+      nuevoCursorFin = nuevoCursorIni + inner.length;
+    } else if (tipo === 'quote') {
+      const prefijoLinea = (antes.length > 0 && !antes.endsWith('\n')) ? '\n' : '';
+      const inner = sel || 'Cita';
+      const citado = inner.split('\n').map((l) => '> ' + l).join('\n');
+      reemplazo = prefijoLinea + citado;
+      nuevoCursorIni = start + prefijoLinea.length + 2;
+      nuevoCursorFin = start + reemplazo.length;
+    } else if (tipo === 'code') {
+      const inner = sel || 'código';
+      if (inner.includes('\n')) {
+        const prefijoLinea = (antes.length > 0 && !antes.endsWith('\n')) ? '\n' : '';
+        reemplazo = prefijoLinea + '```\n' + inner + '\n```';
+        nuevoCursorIni = start + prefijoLinea.length + 4;
+        nuevoCursorFin = nuevoCursorIni + inner.length;
+      } else {
+        reemplazo = '`' + inner + '`';
+        nuevoCursorIni = start + 1;
+        nuevoCursorFin = nuevoCursorIni + inner.length;
       }
+    } else if (tipo === 'list') {
+      const prefijoLinea = (antes.length > 0 && !antes.endsWith('\n')) ? '\n' : '';
+      const inner = sel || 'Elemento de lista';
+      const listado = inner.split('\n').map((l) => '- ' + l).join('\n');
+      reemplazo = prefijoLinea + listado;
+      nuevoCursorIni = start + prefijoLinea.length + 2;
+      nuevoCursorFin = start + reemplazo.length;
+    } else {
+      return val;
+    }
+
+    textarea.value = antes + reemplazo + despues;
+    if (typeof textarea.focus === 'function') textarea.focus();
+    if (typeof textarea.setSelectionRange === 'function') {
+      try { textarea.setSelectionRange(nuevoCursorIni, nuevoCursorFin); } catch (_) {}
+    }
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    return textarea.value;
+  }
+  BACO.insertarFormatoMarkdown = insertarFormatoMarkdown;
+
+  function obtenerTextareaObjetivo() {
+    if (
+      document.activeElement &&
+      document.activeElement.classList &&
+      document.activeElement.classList.contains('bloque-textarea') &&
+      !document.activeElement.disabled
+    ) {
+      return document.activeElement;
+    }
+    if (ultimoTextareaActivo && document.body.contains(ultimoTextareaActivo) && !ultimoTextareaActivo.disabled) {
+      return ultimoTextareaActivo;
+    }
+    const primero = $('.bloque-textarea:not(:disabled)');
+    return primero || null;
+  }
+
+  /* Arma la lista visual intercalada en estadoEditor.bloques a partir de
+     estadoEditor.bloques_texto y estadoEditor.recursos (ordenados por (posicion, orden)) */
+  function sincronizarSecuenciaVisual() {
+    const bloquesTxt = Array.isArray(estadoEditor.bloques_texto) && estadoEditor.bloques_texto.length
+      ? estadoEditor.bloques_texto
+      : [''];
+    const recsOrd = ordenarRecursosPorPosicionYOrden(estadoEditor.recursos || []);
+    const secuencia = [];
+
+    // Recursos con posicion === -1 van antes del primer bloque de texto
+    recsOrd.filter((r) => r.posicion === -1).forEach((r) => {
+      secuencia.push({
+        id: 'rec_item_' + r.id,
+        tipo: 'recurso',
+        cargando: Boolean(r.cargando),
+        recurso: r
+      });
     });
-    return partes.join('\n\n');
+
+    for (let i = 0; i < bloquesTxt.length; i++) {
+      secuencia.push({
+        id: 'txt_block_' + i,
+        tipo: 'texto',
+        bloqueIdx: i,
+        contenido: String(bloquesTxt[i] == null ? '' : bloquesTxt[i])
+      });
+
+      recsOrd
+        .filter((r) => (typeof r.posicion === 'number' ? r.posicion : 0) === i)
+        .forEach((r) => {
+          secuencia.push({
+            id: 'rec_item_' + r.id,
+            tipo: 'recurso',
+            cargando: Boolean(r.cargando),
+            recurso: r
+          });
+        });
+    }
+
+    // Fallback defensivo si algún recurso tuviera posicion >= bloquesTxt.length
+    recsOrd
+      .filter((r) => typeof r.posicion === 'number' && r.posicion >= bloquesTxt.length)
+      .forEach((r) => {
+        secuencia.push({
+          id: 'rec_item_' + r.id,
+          tipo: 'recurso',
+          cargando: Boolean(r.cargando),
+          recurso: r
+        });
+      });
+
+    estadoEditor.bloques = secuencia;
+  }
+
+  /* Une solo los bloques de texto (nunca incluye sintaxis Markdown de imágenes ni [[recurso:...]]) */
+  function componerTextoDesdeBloques() {
+    return (estadoEditor.bloques_texto || [''])
+      .map((t) => String(t == null ? '' : t).trim())
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   function sincronizarTextoConStore() {
-    const compuesto = componerTextoDesdeBloques();
-    store.setForm({ texto: compuesto });
+    const limpio = componerTextoDesdeBloques();
+    const s = store.get();
+    if (s && s.borrador) {
+      s.borrador.bloques_texto = estadoEditor.bloques_texto.slice();
+      s.borrador.texto_limpio = limpio;
+    }
+    store.setForm({ texto: limpio });
     const fc = $('#fCuerpo');
-    if (fc) fc.value = compuesto;
+    if (fc) fc.value = limpio;
   }
 
   function crearDivisor(pos, deshabilitado) {
     const div = document.createElement('div');
     div.className = 'bloque-divider';
-
+    div.hidden = true;
     const line = document.createElement('div');
     line.className = 'bloque-divider-line';
     div.appendChild(line);
-
-    const btnPlus = document.createElement('button');
-    btnPlus.type = 'button';
-    btnPlus.className = 'btn-agregar-bloque';
-    btnPlus.textContent = '+';
-    btnPlus.setAttribute('data-accion', 'toggle-menu');
-    btnPlus.setAttribute('data-pos', String(pos));
-    btnPlus.title = 'Agregar multimedia';
-    if (deshabilitado) btnPlus.disabled = true;
-    div.appendChild(btnPlus);
-
-    if (estadoEditor.menuAbiertoPos === pos && !deshabilitado) {
-      const menu = document.createElement('div');
-      menu.className = 'menu-agregar-bloque';
-
-      const opciones = [
-        { tipo: 'imagen', icono: '🖼️', etiqueta: 'Imagen' },
-        { tipo: 'video', icono: '🎬', etiqueta: 'Video' },
-        { tipo: 'archivo', icono: '📎', etiqueta: 'Archivo' }
-      ];
-
-      opciones.forEach((opt) => {
-        const btnOpt = document.createElement('button');
-        btnOpt.type = 'button';
-        btnOpt.className = 'menu-opcion-btn';
-        btnOpt.setAttribute('data-accion', 'abrir-selector');
-        btnOpt.setAttribute('data-tipo', opt.tipo);
-        btnOpt.setAttribute('data-pos', String(pos));
-
-        const spanIco = document.createElement('span');
-        spanIco.textContent = opt.icono;
-        btnOpt.appendChild(spanIco);
-
-        const spanTxt = document.createElement('span');
-        spanTxt.textContent = opt.etiqueta;
-        btnOpt.appendChild(spanTxt);
-
-        menu.appendChild(btnOpt);
-      });
-
-      div.appendChild(menu);
-    }
-
     return div;
   }
 
@@ -259,15 +452,20 @@
     const item = document.createElement('div');
     item.className = 'bloque-texto-item';
     item.setAttribute('data-id', b.id);
+    item.setAttribute('data-bloque-idx', String(b.bloqueIdx));
 
     let textarea = textareasMap.get(b.id);
     if (!textarea) {
       textarea = document.createElement('textarea');
       textarea.className = 'bloque-textarea';
       textarea.setAttribute('data-id', b.id);
-      textarea.placeholder = 'Escribí el texto acá en formato Markdown...';
+      textarea.setAttribute('data-bloque-idx', String(b.bloqueIdx));
+      textarea.placeholder = b.bloqueIdx === 0
+        ? 'Escribí el texto acá en formato Markdown...'
+        : 'Continuá escribiendo el bloque de texto...';
       textareasMap.set(b.id, textarea);
     }
+    textarea.setAttribute('data-bloque-idx', String(b.bloqueIdx));
     textarea.disabled = deshabilitado;
     if (document.activeElement !== textarea && textarea.value !== (b.contenido || '')) {
       textarea.value = b.contenido || '';
@@ -277,26 +475,59 @@
     return item;
   }
 
+  function puedeSubirRecurso(r) {
+    const recs = ordenarRecursosPorPosicionYOrden(estadoEditor.recursos);
+    const idx = recs.findIndex((x) => x.id === r.id);
+    if (idx === -1) return false;
+    const pos = typeof r.posicion === 'number' ? r.posicion : 0;
+    if (idx > 0 && recs[idx - 1].posicion === pos) return true;
+    return pos > -1;
+  }
+
+  function puedeBajarRecurso(r) {
+    const recs = ordenarRecursosPorPosicionYOrden(estadoEditor.recursos);
+    const idx = recs.findIndex((x) => x.id === r.id);
+    if (idx === -1) return false;
+    const pos = typeof r.posicion === 'number' ? r.posicion : 0;
+    if (idx < recs.length - 1 && recs[idx + 1].posicion === pos) return true;
+    const maxPos = Math.max(0, (estadoEditor.bloques_texto || ['']).length - 1);
+    return pos < maxPos;
+  }
+
   function crearItemRecurso(b, idx, total, deshabilitado) {
+    const r = b.recurso || {};
+    const recId = r.id || b.id;
     const item = document.createElement('div');
     item.className = 'bloque-recurso-item' + (b.cargando ? ' cargando' : '');
-    item.setAttribute('data-id', b.id);
+    item.setAttribute('data-id', recId);
+    item.setAttribute('data-recurso-id', recId);
+    item.setAttribute('data-posicion', String(typeof r.posicion === 'number' ? r.posicion : 0));
+    item.setAttribute('data-orden', String(typeof r.orden === 'number' ? r.orden : 0));
+    item.setAttribute('draggable', (b.cargando || deshabilitado) ? 'false' : 'true');
 
-    // 1. Botón 'x' a la izquierda para eliminar
+    // 1. Botón 'x' pequeña a la izquierda para eliminar
     const btnX = document.createElement('button');
     btnX.type = 'button';
     btnX.className = 'bloque-eliminar-btn';
     btnX.textContent = '×';
     btnX.setAttribute('data-accion', 'eliminar-bloque');
-    btnX.setAttribute('data-id', b.id);
+    btnX.setAttribute('data-id', recId);
     btnX.title = 'Eliminar recurso';
+    btnX.setAttribute('aria-label', 'Eliminar recurso ' + (r.nombre || recId));
     if (b.cargando || deshabilitado) btnX.disabled = true;
     item.appendChild(btnX);
 
+    // Asa de arrastre
+    const asa = document.createElement('span');
+    asa.className = 'bloque-recurso-asa';
+    asa.textContent = '⠿';
+    asa.title = 'Arrastrar para reordenar';
+    asa.setAttribute('aria-hidden', 'true');
+    item.appendChild(asa);
+
     // 2. Icono o miniatura
-    const r = b.recurso || {};
-    const tipo = r.tipo || 'otro';
-    const url = b.previewUrl || r.url || r.referencia || '';
+    const tipo = r.tipo || 'imagen';
+    const url = b.previewUrl || r.referencia || r.url || '';
 
     if (tipo === 'imagen' && url) {
       const img = document.createElement('img');
@@ -308,7 +539,7 @@
     } else {
       const ico = document.createElement('span');
       ico.className = 'bloque-recurso-icono';
-      ico.textContent = tipo === 'video' ? '🎬' : (tipo === 'documento' || tipo === 'archivo' ? '📄' : '📎');
+      ico.textContent = tipo === 'video' ? '🎬' : (tipo === 'documento' || tipo === 'archivo' ? '📄' : '🖼️');
       item.appendChild(ico);
     }
 
@@ -327,7 +558,8 @@
       meta.textContent = 'Subiendo recurso…';
     } else {
       const tipoLabel = tipo === 'imagen' ? 'Imagen' : (tipo === 'video' ? 'Video' : 'Archivo');
-      const tamLabel = r.tamanio ? ' · ' + formatearBytes(r.tamanio) : '';
+      const bytes = typeof r.tamano_bytes === 'number' ? r.tamano_bytes : r.tamanio;
+      const tamLabel = bytes ? ' · ' + formatearBytes(bytes) : '';
       meta.textContent = tipoLabel + tamLabel;
     }
     info.appendChild(meta);
@@ -342,9 +574,10 @@
     btnSubir.className = 'bloque-btn-mover';
     btnSubir.textContent = '↑';
     btnSubir.setAttribute('data-accion', 'subir-bloque');
-    btnSubir.setAttribute('data-id', b.id);
-    btnSubir.title = 'Subir';
-    if (idx === 0 || b.cargando || deshabilitado) btnSubir.disabled = true;
+    btnSubir.setAttribute('data-id', recId);
+    btnSubir.title = 'Subir recurso';
+    btnSubir.setAttribute('aria-label', 'Subir recurso');
+    if (!puedeSubirRecurso(r) || b.cargando || deshabilitado) btnSubir.disabled = true;
     mover.appendChild(btnSubir);
 
     const btnBajar = document.createElement('button');
@@ -352,9 +585,10 @@
     btnBajar.className = 'bloque-btn-mover';
     btnBajar.textContent = '↓';
     btnBajar.setAttribute('data-accion', 'bajar-bloque');
-    btnBajar.setAttribute('data-id', b.id);
-    btnBajar.title = 'Bajar';
-    if (idx === total - 1 || b.cargando || deshabilitado) btnBajar.disabled = true;
+    btnBajar.setAttribute('data-id', recId);
+    btnBajar.title = 'Bajar recurso';
+    btnBajar.setAttribute('aria-label', 'Bajar recurso');
+    if (!puedeBajarRecurso(r) || b.cargando || deshabilitado) btnBajar.disabled = true;
     mover.appendChild(btnBajar);
 
     item.appendChild(mover);
@@ -370,16 +604,22 @@
     const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
     const deshabilitado = !act.texto || s.enviando || estadoEditor.enviando;
 
+    const wrapper = $('#editorBloquesWrapper');
+    if (wrapper) {
+      wrapper.classList.toggle('cargando', Boolean(estadoEditor.enviando));
+    }
+
+    sincronizarSecuenciaVisual();
+
     const frag = document.createDocumentFragment();
     const total = estadoEditor.bloques.length;
 
-    // Limpiar map de textareas para bloques eliminados
     const idsValidos = new Set(estadoEditor.bloques.map((b) => b.id));
     for (const id of textareasMap.keys()) {
       if (!idsValidos.has(id)) textareasMap.delete(id);
     }
 
-    // Único divisor con botón '+' en la parte superior
+    // Único divisor superior (oculto visualmente, preservado por contrato de layout)
     frag.appendChild(crearDivisor(0, deshabilitado));
 
     estadoEditor.bloques.forEach((b, idx) => {
@@ -392,7 +632,6 @@
 
     cont.replaceChildren(frag);
 
-    // Botón Confirmar siempre visible, deshabilitado mientras espera
     const btnConfirmar = $('#btnConfirmarBloques');
     if (btnConfirmar) {
       btnConfirmar.disabled = deshabilitado;
@@ -400,157 +639,202 @@
     }
   }
 
-  function insertarBloqueRecurso(nuevoBloque, pos) {
-    if (pos == null || pos < 0 || pos > estadoEditor.bloques.length) {
-      pos = estadoEditor.bloques.length;
+  /* Aplica el estado unificado devuelto por el servidor (bloques_texto + recursos con posicion y orden)
+     sin calcular fusiones ni invariantes por cuenta del front. */
+  function aplicarEstadoRecursosServidor(res) {
+    if (!res) return;
+    textareasMap.clear();
+    if (Array.isArray(res.bloques_texto) && res.bloques_texto.length) {
+      estadoEditor.bloques_texto = res.bloques_texto.map((t) => String(t == null ? '' : t));
     }
-    estadoEditor.bloques.splice(pos, 0, nuevoBloque);
+    if (Array.isArray(res.recursos)) {
+      estadoEditor.recursos = ordenarRecursosPorPosicionYOrden(res.recursos);
+    }
+    store.actualizarRecursos(res);
+    const fc = $('#fCuerpo');
+    if (fc && typeof res.texto_limpio === 'string') {
+      fc.value = res.texto_limpio;
+    }
+    renderBloques();
+  }
 
-    if (!estadoEditor.bloques.some((b) => b.tipo === 'texto')) {
-      estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: '' });
+  /* Reconstruye estadoEditor desde el borrador / respuesta del servidor */
+  function reconstruirBloques(textoOBloques, recs, borradorOpcional) {
+    textareasMap.clear();
+    const recsArray = Array.isArray(recs) ? recs : Object.values(recs || {});
+    estadoEditor.recursos = ordenarRecursosPorPosicionYOrden(recsArray);
+
+    if (Array.isArray(textoOBloques) && textoOBloques.length) {
+      estadoEditor.bloques_texto = textoOBloques.map((t) => String(t == null ? '' : t));
+    } else if (borradorOpcional && Array.isArray(borradorOpcional.bloques_texto) && borradorOpcional.bloques_texto.length) {
+      estadoEditor.bloques_texto = borradorOpcional.bloques_texto.map((t) => String(t == null ? '' : t));
+    } else if (typeof textoOBloques === 'string') {
+      estadoEditor.bloques_texto = [textoOBloques];
+    } else {
+      estadoEditor.bloques_texto = [''];
+    }
+
+    sincronizarSecuenciaVisual();
+  }
+
+  /* Elimina un recurso llamando a DELETE /chat/recursos/{id} y renderiza la respuesta del servidor */
+  async function eliminarBloque(recId) {
+    if (!recId || estadoEditor.enviando) return;
+    estadoEditor.enviando = true;
+    renderBloques();
+    try {
+      const res = await api.eliminarRecurso(recId);
+      estadoEditor.enviando = false;
+      if (res && (Array.isArray(res.bloques_texto) || Array.isArray(res.recursos))) {
+        aplicarEstadoRecursosServidor(res);
+      } else {
+        const estadoRecs = await api.obtenerRecursos();
+        aplicarEstadoRecursosServidor(estadoRecs);
+      }
+      toast('Recurso eliminado');
+    } catch (err) {
+      estadoEditor.enviando = false;
+      renderBloques();
+      toast('Error al eliminar recurso: ' + (err.message || 'Error'));
     }
   }
 
-  function eliminarBloque(id) {
-    const idx = estadoEditor.bloques.findIndex((b) => b.id === id);
+  /* Reordena un recurso llamando a PUT /chat/recursos/reordenar y renderiza la respuesta del servidor */
+  async function moverBloque(recId, direccion) {
+    if (!recId || estadoEditor.enviando) return;
+    const recs = ordenarRecursosPorPosicionYOrden(estadoEditor.recursos);
+    const idx = recs.findIndex((r) => r.id === recId);
     if (idx === -1) return;
-    const b = estadoEditor.bloques[idx];
-    if (b.previewUrl) {
-      URL.revokeObjectURL(b.previewUrl);
-    }
-    const recId = (b.tipo === 'recurso' && b.recurso) ? b.recurso.id : null;
-    estadoEditor.bloques.splice(idx, 1);
 
-    if (!estadoEditor.bloques.length) {
-      estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: '' });
-    }
-    if (recId) {
-      const s = store.get();
-      if (s.borrador) {
-        if (s.borrador.recursos && s.borrador.recursos[recId]) {
-          delete s.borrador.recursos[recId];
-        }
-        if (Array.isArray(s.borrador.multimedia)) {
-          s.borrador.multimedia = s.borrador.multimedia.filter((r) => (r.id || r) !== recId);
-        }
+    const actual = recs[idx];
+    const posActual = typeof actual.posicion === 'number' ? actual.posicion : 0;
+    const maxPos = Math.max(0, (estadoEditor.bloques_texto || ['']).length - 1);
+
+    let payload = null;
+    if (direccion === 'subir') {
+      if (idx > 0 && recs[idx - 1].posicion === posActual) {
+        payload = { id: recId, posicion: posActual, orden: Math.max(0, idx - 1) };
+      } else if (posActual > -1) {
+        payload = { id: recId, posicion: posActual - 1, orden: idx };
+      }
+    } else if (direccion === 'bajar') {
+      if (idx < recs.length - 1 && recs[idx + 1].posicion === posActual) {
+        payload = { id: recId, posicion: posActual, orden: idx + 1 };
+      } else if (posActual < maxPos) {
+        payload = { id: recId, posicion: posActual + 1, orden: idx };
       }
     }
+    if (!payload) return;
+
+    estadoEditor.enviando = true;
     renderBloques();
-    sincronizarTextoConStore();
+    try {
+      const res = await api.reordenarMultimedia(payload);
+      estadoEditor.enviando = false;
+      if (res && (Array.isArray(res.bloques_texto) || Array.isArray(res.recursos))) {
+        aplicarEstadoRecursosServidor(res);
+      } else {
+        const estadoRecs = await api.obtenerRecursos();
+        aplicarEstadoRecursosServidor(estadoRecs);
+      }
+    } catch (err) {
+      estadoEditor.enviando = false;
+      renderBloques();
+      toast('Error al reordenar recurso: ' + (err.message || 'Error'));
+    }
   }
 
-  function moverBloque(id, direccion) {
-    const idx = estadoEditor.bloques.findIndex((b) => b.id === id);
-    if (idx === -1) return;
-    const targetIdx = direccion === 'subir' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= estadoEditor.bloques.length) return;
-
-    const temp = estadoEditor.bloques[idx];
-    estadoEditor.bloques[idx] = estadoEditor.bloques[targetIdx];
-    estadoEditor.bloques[targetIdx] = temp;
-
+  async function reordenarRecursoHaciaDestino(recId, nuevaPosicion, nuevoOrden) {
+    if (!recId || estadoEditor.enviando) return;
+    estadoEditor.enviando = true;
     renderBloques();
-    sincronizarTextoConStore();
+    try {
+      const res = await api.reordenarMultimedia({
+        id: recId,
+        posicion: nuevaPosicion,
+        orden: typeof nuevoOrden === 'number' ? nuevoOrden : estadoEditor.recursos.length
+      });
+      estadoEditor.enviando = false;
+      if (res && (Array.isArray(res.bloques_texto) || Array.isArray(res.recursos))) {
+        aplicarEstadoRecursosServidor(res);
+      } else {
+        const estadoRecs = await api.obtenerRecursos();
+        aplicarEstadoRecursosServidor(estadoRecs);
+      }
+    } catch (err) {
+      estadoEditor.enviando = false;
+      renderBloques();
+      toast('Error al reordenar recurso: ' + (err.message || 'Error'));
+    }
   }
 
-  function abrirSelectorParaTipo(tipo, pos) {
+  function capturarCursorActualParaImagen() {
+    const activo = document.activeElement;
+    if (activo && activo.classList && activo.classList.contains('bloque-textarea') && !activo.disabled) {
+      const idx = parseInt(activo.getAttribute('data-bloque-idx'), 10);
+      return {
+        tieneFoco: !isNaN(idx),
+        bloqueIdx: isNaN(idx) ? null : idx,
+        selectionStart: typeof activo.selectionStart === 'number' ? activo.selectionStart : activo.value.length,
+        selectionEnd: typeof activo.selectionEnd === 'number' ? activo.selectionEnd : activo.value.length
+      };
+    }
+    return { tieneFoco: false, bloqueIdx: null, selectionStart: null, selectionEnd: null };
+  }
+
+  function abrirSelectorImagenToolbar() {
+    const s = store.get();
+    if (!s || s.multimedia_habilitada !== true) {
+      toast('Disponible al finalizar las validaciones');
+      return;
+    }
     const input = $('#inputSelectorBloque');
     if (!input) return;
-    selectorTargetTipo = tipo;
-    selectorTargetPos = pos;
-
-    if (tipo === 'imagen') {
-      input.accept = 'image/png,image/jpeg,image/webp,image/gif';
-    } else if (tipo === 'video') {
-      input.accept = 'video/mp4,video/webm,video/ogg';
-    } else if (tipo === 'archivo') {
-      input.accept = '.pdf,.doc,.docx,.odt,.txt,.xlsx,.pptx,.zip';
-    } else {
-      input.accept = '*/*';
-    }
-
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
     input.value = '';
     input.click();
   }
 
-  function validarYSubirArchivo(file, tipoMenu, pos) {
+  async function validarYSubirArchivoIntercalado(file, cursorInfo) {
     if (!file) return;
-
-    const nombre = (file.name || '').toLowerCase();
-    const mime = (file.type || '').toLowerCase();
-    if (nombre.endsWith('.svg') || mime === 'image/svg+xml') {
-      toast('No se permiten archivos SVG por motivos de seguridad.');
+    const s = store.get();
+    if (!s || s.multimedia_habilitada !== true) {
+      toast('Disponible al finalizar las validaciones');
       return;
     }
 
-    if (file.size > MAX_ARCHIVO_BYTES) {
-      toast('El archivo supera el tamaño máximo permitido de 10 MB.');
+    const particion = (cursorInfo && cursorInfo.tieneFoco)
+      ? partirBloqueEnCursor(
+          estadoEditor.bloques_texto,
+          cursorInfo.bloqueIdx,
+          cursorInfo.selectionStart,
+          cursorInfo.selectionEnd
+        )
+      : partirBloqueEnCursor(estadoEditor.bloques_texto, null, null, null);
+
+    const check = validarArchivoCliente(file, estadoEditor.recursos, particion.bloques_texto.length);
+    if (!check.valido) {
+      toast(check.error);
       return;
     }
 
-    const totalActual = calcularTamanioTotalRecursos();
-    if (totalActual + file.size > MAX_TOTAL_RECURSOS_BYTES) {
-      toast('El tamaño acumulado de los recursos superaría el límite de 50 MB.');
-      return;
-    }
-
-    let tipoRecurso = 'otro';
-    if (tipoMenu === 'imagen' || mime.startsWith('image/')) {
-      tipoRecurso = 'imagen';
-    } else if (tipoMenu === 'video' || mime.startsWith('video/')) {
-      tipoRecurso = 'video';
-    } else if (tipoMenu === 'archivo' || mime.startsWith('application/') || mime.startsWith('text/')) {
-      tipoRecurso = 'documento';
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    const bloqueId = genId();
-    const nuevoBloque = {
-      id: bloqueId,
-      tipo: 'recurso',
-      cargando: true,
-      previewUrl: previewUrl,
-      recurso: {
-        id: bloqueId,
-        tipo: tipoRecurso,
-        nombre: file.name,
-        url: previewUrl,
-        tamanio: file.size,
-        mime: file.type
-      }
-    };
-
-    insertarBloqueRecurso(nuevoBloque, pos);
+    estadoEditor.enviando = true;
     renderBloques();
 
-    subirArchivoRecurso(file, bloqueId, previewUrl);
-  }
-
-  async function subirArchivoRecurso(file, bloqueId, previewUrl) {
     try {
-      let res = null;
-      if (typeof api.subirRecursoMultimedia === 'function') {
-        res = await api.subirRecursoMultimedia(file);
+      const res = await api.subirRecursoMultimedia(file, particion.posicion, particion.bloques_texto);
+      estadoEditor.enviando = false;
+      if (res && (Array.isArray(res.bloques_texto) || Array.isArray(res.recursos))) {
+        aplicarEstadoRecursosServidor(res);
+      } else {
+        const estadoRecs = await api.obtenerRecursos();
+        aplicarEstadoRecursosServidor(estadoRecs);
       }
-      const b = estadoEditor.bloques.find((x) => x.id === bloqueId);
-      if (!b) {
-        URL.revokeObjectURL(previewUrl);
-        return;
-      }
-      b.cargando = false;
-      if (res && (res.referencia || res.url)) {
-        b.recurso.url = res.referencia || res.url;
-        if (res.id) b.recurso.id = res.id;
-      }
-      toast('Recurso subido correctamente');
-      renderBloques();
-      sincronizarTextoConStore();
+      toast('Imagen agregada correctamente');
     } catch (err) {
-      URL.revokeObjectURL(previewUrl);
-      const idx = estadoEditor.bloques.findIndex((x) => x.id === bloqueId);
-      if (idx !== -1) estadoEditor.bloques.splice(idx, 1);
-      toast('Error al subir: ' + (err.message || 'Error'));
+      estadoEditor.enviando = false;
       renderBloques();
+      toast('Error al subir imagen: ' + (err.message || 'Error'));
     }
   }
 
@@ -559,13 +843,8 @@
     const s = store.get();
     if (s.enviando) return;
 
-    const subiendo = estadoEditor.bloques.some((b) => b.cargando);
-    if (subiendo) {
-      toast('Esperá a que terminen de subirse los archivos');
-      return;
-    }
-
     const payloadBloques = [];
+    sincronizarSecuenciaVisual();
     estadoEditor.bloques.forEach((b) => {
       if (b.tipo === 'texto') {
         payloadBloques.push({
@@ -573,13 +852,19 @@
           contenido: b.contenido || ''
         });
       } else if (b.tipo === 'recurso' && b.recurso) {
+        const recObj = {
+          nombre: b.recurso.nombre || '',
+          tipo: b.recurso.tipo || 'imagen'
+        };
+        if (b.recurso.id) {
+          recObj.id = b.recurso.id;
+        }
+        if (b.recurso.referencia || b.recurso.url) {
+          recObj.url = b.recurso.referencia || b.recurso.url;
+        }
         payloadBloques.push({
           tipo: 'recurso',
-          recurso: {
-            url: b.recurso.url || b.recurso.referencia || '',
-            nombre: b.recurso.nombre || '',
-            tipo: b.recurso.tipo || 'otro'
-          }
+          recurso: recObj
         });
       }
     });
@@ -592,17 +877,16 @@
       estadoEditor.enviando = false;
 
       if (res) {
-        if (res.texto_limpio != null) {
-          const recs = res.recursos || (res.borrador && (Array.isArray(res.borrador.multimedia) ? res.borrador.multimedia : Object.values(res.borrador.recursos || {}))) || [];
-          reconstruirBloques(res.texto_limpio, recs);
-          const fc = $('#fCuerpo');
-          if (fc) fc.value = res.texto_limpio;
-          store.setForm({ texto: res.texto_limpio });
-        }
+        const recs = res.recursos || (res.borrador && (Array.isArray(res.borrador.multimedia) ? res.borrador.multimedia : Object.values(res.borrador.recursos || {}))) || [];
+        const bloquesSrv = res.bloques_texto || (res.borrador && res.borrador.bloques_texto) || [res.texto_limpio || ''];
+        reconstruirBloques(bloquesSrv, recs, res.borrador);
+        const fc = $('#fCuerpo');
+        if (fc && res.texto_limpio != null) fc.value = res.texto_limpio;
+        if (res.texto_limpio != null) store.setForm({ texto: res.texto_limpio });
         if (res.borrador) {
           store.set({ borrador: res.borrador });
-        } else if (res.recursos) {
-          store.actualizarRecursos(res.recursos);
+        } else {
+          store.actualizarRecursos(res);
         }
         toast(res.aviso || 'Bloques confirmados correctamente');
       }
@@ -614,97 +898,27 @@
     }
   }
 
-  function reconstruirBloques(textoLimpio, recs) {
-    textareasMap.clear();
-    const recsArray = Array.isArray(recs) ? recs : Object.values(recs || {});
-    const recsPorId = new Map();
-    recsArray.forEach((r, i) => {
-      const id = r.id || ('rec_' + (i + 1));
-      recsPorId.set(id, r);
-    });
-
-    const regexSplit = /(\[\[recurso:[a-zA-Z0-9_\-]+\]\]|\[\[R\d+\]\])/g;
-    if (textoLimpio && (regexSplit.test(textoLimpio) || /\[\[recurso:[a-zA-Z0-9_\-]+\]\]/.test(textoLimpio))) {
-      const partes = textoLimpio.split(/(\[\[recurso:[a-zA-Z0-9_\-]+\]\]|\[\[R\d+\]\])/g);
-      const nuevosBloques = [];
-      partes.forEach((p) => {
-        const mRec = p.match(/^\[\[recurso:([a-zA-Z0-9_\-]+)\]\]$/);
-        const mR = p.match(/^\[\[R(\d+)\]\]$/);
-        if (mRec) {
-          const id = mRec[1];
-          const r = recsPorId.get(id) || { id: id, nombre: id, tipo: 'otro', url: '' };
-          nuevosBloques.push({
-            id: genId(),
-            tipo: 'recurso',
-            cargando: false,
-            recurso: {
-              id: r.id || id,
-              tipo: r.tipo || 'otro',
-              nombre: r.nombre || id,
-              url: r.referencia || r.url || ''
-            }
-          });
-        } else if (mR) {
-          const num = parseInt(mR[1], 10);
-          const r = recsArray[num - 1] || recsPorId.get('rec_' + num) || { id: 'rec_' + num, nombre: 'Recurso ' + num, tipo: 'otro', url: '' };
-          nuevosBloques.push({
-            id: genId(),
-            tipo: 'recurso',
-            cargando: false,
-            recurso: {
-              id: r.id || ('rec_' + num),
-              tipo: r.tipo || 'otro',
-              nombre: r.nombre || ('Recurso ' + num),
-              url: r.referencia || r.url || ''
-            }
-          });
-        } else {
-          nuevosBloques.push({
-            id: genId(),
-            tipo: 'texto',
-            contenido: p
-          });
-        }
-      });
-      estadoEditor.bloques = nuevosBloques.length ? nuevosBloques : [{ id: genId(), tipo: 'texto', contenido: '' }];
-    } else if (textoLimpio != null) {
-      const nuevosBloques = [{ id: genId(), tipo: 'texto', contenido: textoLimpio }];
-      recsArray.forEach((r, i) => {
-        nuevosBloques.push({
-          id: genId(),
-          tipo: 'recurso',
-          cargando: false,
-          recurso: {
-            id: r.id || ('rec_' + (i + 1)),
-            tipo: r.tipo || 'otro',
-            nombre: r.nombre || ('Recurso ' + (i + 1)),
-            url: r.referencia || r.url || ''
-          }
-        });
-      });
-      estadoEditor.bloques = nuevosBloques;
-    } else {
-      estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: '' }];
-    }
-  }
-
   function sincronizarBloquesDesdeStore(s) {
     if (!s) return;
     const sesionCambio = s.session_id !== sesionCargadaId;
-    const textoStore = (s.form && s.form.texto) || (s.borrador && (s.borrador.texto_limpio != null ? s.borrador.texto_limpio : s.borrador.texto)) || '';
-    const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
+    const b = s.borrador;
+    const bloquesStore = (b && Array.isArray(b.bloques_texto) && b.bloques_texto.length)
+      ? b.bloques_texto
+      : [(s.form && s.form.texto) || (b && b.texto_limpio) || ''];
+    const recs = (b && (Array.isArray(b.multimedia) ? b.multimedia : Object.values(b.recursos || {}))) || [];
     const editandoEnBloque = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('bloque-textarea');
-    const textoActualBloques = componerTextoDesdeBloques();
 
     if (sesionCambio) {
       sesionCargadaId = s.session_id;
-      estadoEditor.bloques.forEach((b) => {
-        if (b.previewUrl) URL.revokeObjectURL(b.previewUrl);
-      });
-      reconstruirBloques(textoStore, recs);
+      reconstruirBloques(bloquesStore, recs, b);
       renderBloques();
-    } else if (textoStore !== textoActualBloques && !editandoEnBloque) {
-      reconstruirBloques(textoStore, recs);
+    } else if (!editandoEnBloque) {
+      const cambioBloques = JSON.stringify(bloquesStore) !== JSON.stringify(estadoEditor.bloques_texto);
+      const cambioRecs = JSON.stringify(recs.map((r) => [r.id, r.posicion, r.orden])) !==
+        JSON.stringify((estadoEditor.recursos || []).map((r) => [r.id, r.posicion, r.orden]));
+      if (cambioBloques || cambioRecs) {
+        reconstruirBloques(bloquesStore, recs, b);
+      }
       renderBloques();
     }
   }
@@ -718,7 +932,9 @@
       : '<span class="dot verde"></span> backend';
     $('#pie').textContent = api.esMock ? 'modo mock' : cfg.BASE_URL;
 
+    inicializarEmojiPicker();
     conectarEventos();
+    conectarEventosMultimedia();
     store.suscribir(pintar);
     await enviarTurno({});     // primer turno: trae la bienvenida
   }
@@ -727,7 +943,7 @@
      Un turno contra el backend
      ========================================================= */
   async function enviarTurno(payload, etiquetaUsuario) {
-    const cuerpo = Object.assign({}, payload);   // la sesión la maneja la capa de API
+    const cuerpo = Object.assign({}, payload);
 
     if (etiquetaUsuario) burbuja('me', esc(etiquetaUsuario));
     const htmlEspera = (cuerpo && cuerpo.accion === 'confirmar_texto')
@@ -741,18 +957,18 @@
       esperando.remove();
       ultimoFallo = null;
       if (r && (r.borrador || typeof r.texto_limpio === 'string')) {
-        const txtAutorizado = r.borrador
-          ? (r.borrador.texto_limpio != null ? r.borrador.texto_limpio : (r.borrador.texto || ''))
-          : r.texto_limpio;
-        const recsAutorizados = r.borrador
-          ? (Array.isArray(r.borrador.multimedia) ? r.borrador.multimedia : Object.values(r.borrador.recursos || {}))
+        const b = r.borrador;
+        const bloquesAutorizados = (b && Array.isArray(b.bloques_texto) && b.bloques_texto.length)
+          ? b.bloques_texto
+          : [b ? (b.texto_limpio != null ? b.texto_limpio : (b.texto || '')) : r.texto_limpio];
+        const recsAutorizados = b
+          ? (Array.isArray(b.multimedia) ? b.multimedia : Object.values(b.recursos || {}))
           : [];
-        reconstruirBloques(txtAutorizado, recsAutorizados);
+        reconstruirBloques(bloquesAutorizados, recsAutorizados, b);
       }
       store.aplicarTurno(r);
       store.set({ enviando: false });
 
-      /* El backend avisa cuando anonimizó datos sensibles solo */
       if (r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
 
       decir(nl2br(r.mensaje), r.opciones);
@@ -761,7 +977,6 @@
     } catch (e) {
       esperando.remove();
       store.set({ enviando: false });
-      /* Se guarda el pedido para poder repetirlo sin rehacer el paso */
       ultimoFallo = { tipo: 'turno', payload: payload };
       mostrarError(e);
       decir('No pude completar el paso: ' + esc(e.message));
@@ -801,11 +1016,9 @@
 
     if ($('#sesion')) $('#sesion').textContent = s.session_id ? 'sesión ' + s.session_id.slice(0, 8) : '';
 
-    /* Stepper dinámico dictado por s.etapa */
     pintarStepper(s, etapaActual);
     pintarTagsAcumuladosRail(s);
 
-    /* campos activos según el estado */
     const act = BACO.CAMPOS_ACTIVOS[s.flujo] || {};
     const fTit = $('#fTitulo');
     const fCue = $('#fCuerpo');
@@ -818,12 +1031,16 @@
     if ($('#campoTitulo')) $('#campoTitulo').classList.toggle('activo', !!act.titulo);
     if ($('#campoTexto')) $('#campoTexto').classList.toggle('activo', !!act.texto);
 
-    /* Visibilidad y activación de campoTags:
-       - No se muestra en los pasos de título ni contenido (ESPERANDO_TITULO, DECISION_TITULO, ESPERANDO_TEXTO, DECISION_TEXTO).
-       - En modo enriquecer / actualizar: se oculta si ya cuenta con categoría válida (>1) y tags (>=2).
-         Solo se muestra si requiere completar categoría o tags en la etapa post-texto.
-       - En alta nueva: se muestra en la etapa post-texto.
-    */
+    // Habilitar/deshabilitar herramientas de edición Markdown y emoji según si el texto es editable
+    const toolsDeshab = !act.texto || s.enviando || estadoEditor.modo === 'preview';
+    ['#btnMdBold', '#btnMdItalic', '#btnMdHeading', '#btnMdLink', '#btnMdQuote', '#btnMdCode', '#btnMdList', '#btnEmojiToolbar', '#btnSubir'].forEach((sel) => {
+      const btnTool = $(sel);
+      if (btnTool) btnTool.disabled = toolsDeshab;
+    });
+
+    // Disponibilidad del botón de imagen decidida exclusivamente por actualizarDisponibilidadRecursos
+    actualizarDisponibilidadRecursos(s);
+
     const b = s.borrador;
     const esEnriquecerOActualizar = b && (b.modo === 'enriquecimiento' || b.modo === 'actualizar' || b.articulo_original_id != null);
     const tagsValidos = (s.form.tags || []).length >= cfg.MIN_TAGS;
@@ -853,12 +1070,13 @@
       fCue.value = s.form.texto;
     }
 
-    /* Contadores */
-    if ($('#contTitulo')) contador($('#contTitulo'), s.form.titulo.length, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
-    if ($('#contTexto')) contadorTexto($('#contTexto'), $('#avisoMaxTexto'), s.form.texto.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
-    if ($('#contTags')) contador($('#contTags'),   s.form.tags.length,   cfg.MIN_TAGS,   'etiquetas', cfg.MAX_TAGS);
+    /* Contadores con code points (Array.from(s).length) */
+    const lenTit = Array.from(s.form.titulo || '').length;
+    const lenTxt = Array.from(s.form.texto || '').length;
+    if ($('#contTitulo')) contador($('#contTitulo'), lenTit, cfg.MIN_TITULO, 'caracteres', cfg.MAX_TITULO);
+    if ($('#contTexto')) contadorTexto($('#contTexto'), $('#avisoMaxTexto'), lenTxt, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
+    if ($('#contTags')) contador($('#contTags'), s.form.tags.length, cfg.MIN_TAGS, 'etiquetas', cfg.MAX_TAGS);
 
-    const enEsperandoTexto = s.flujo === 'ESPERANDO_TEXTO';
     const compMeta = $('#chatComposerMeta');
     const chatIn = $('#chatInput');
     if (compMeta) {
@@ -868,7 +1086,7 @@
       chatIn.placeholder = 'Respondé acá o preguntale algo a BACO…';
     }
 
-    /* botón principal */
+    /* Botón principal */
     const acc = BACO.ACCION_PRINCIPAL[s.flujo];
     const btn = $('#btnPrincipal');
     if (btn) {
@@ -878,8 +1096,8 @@
         btn.textContent = (acc.campo === 'todo' && !hayCambios(s))
           ? 'Sin cambios para guardar'
           : acc.label;
-        const textoCorto = s.form.texto.trim().length < cfg.MIN_TEXTO;
-        const textoLargo = s.form.texto.length > cfg.MAX_TEXTO_PERCENTIL_99;
+        const textoCorto = Array.from((s.form.texto || '').trim()).length < cfg.MIN_TEXTO;
+        const textoLargo = Array.from(s.form.texto || '').length > cfg.MAX_TEXTO_PERCENTIL_99;
         const tagsFaltan = (s.form.tags || []).length < cfg.MIN_TAGS;
         const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
         btn.title = btn.disabled && acc.campo === 'todo'
@@ -896,6 +1114,8 @@
       }
     }
 
+    sincronizarBloquesDesdeStore(s);
+
     pintarTags(s);
     pintarCategorias(s, !!act.categoria && !s.enviando);
     pintarResumenFinal(s);
@@ -907,21 +1127,21 @@
     pintarImagenesDetectadas(s);
     pintarEstadoSkills(s);
 
+    const wrapper = $('#editorBloquesWrapper');
+    const fc = $('#fCuerpo');
+    const prev = $('#preview');
     if (estadoEditor.modo === 'preview') {
-      const fc = $('#fCuerpo'); if (fc) fc.hidden = true;
-      const prev = $('#preview');
+      if (wrapper) wrapper.hidden = true;
+      if (fc) fc.hidden = true;
       if (prev) {
         prev.hidden = false;
         prev.innerHTML = renderMd(textoVistaPrevia(s));
       }
     } else {
-      const fc = $('#fCuerpo'); if (fc) fc.hidden = false;
-      const prev = $('#preview');
+      if (wrapper) wrapper.hidden = false;
+      if (fc) fc.hidden = true;
       if (prev) prev.hidden = true;
     }
-    if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
-    const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.style.display = 'none'; }
-    const bar = $('#editorImgBar'); if (bar) { bar.hidden = true; bar.style.display = 'none'; }
   }
 
   function pintarEstadoSkills(s) {
@@ -931,8 +1151,21 @@
     const railAviso = $('#avisoSkillsRail');
     const bannerSkills = $('#bannerSkills');
 
-    const deshabilitadas = !!(b && b.skills_habilitadas === false);
-    const motivo = (b && b.skills_motivo) || 'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+    const tieneRecursos = Boolean(
+      b && (
+        (Array.isArray(b.multimedia) && b.multimedia.length > 0) ||
+        (b.recursos && Object.keys(b.recursos).length > 0)
+      )
+    ) || (Array.isArray(estadoEditor.recursos) && estadoEditor.recursos.length > 0);
+
+    const deshabilitadas = Boolean((b && b.skills_habilitadas === false) || tieneRecursos);
+    const motivoBase = (b && b.skills_motivo) ||
+      (tieneRecursos
+        ? 'El artículo contiene recursos multimedia cargados. Quitá los recursos si querés aplicar la plantilla o el validador automático.'
+        : 'Las skills de asistencia del agente están deshabilitadas para este borrador.');
+    const motivo = (tieneRecursos && !/quit[aá]/i.test(motivoBase))
+      ? (motivoBase + ' Quitá los recursos cargados para poder aplicar las skills.')
+      : motivoBase;
 
     if (btnPl) {
       btnPl.disabled = deshabilitadas;
@@ -956,15 +1189,22 @@
     }
   }
 
-  /* Vista previa reactiva a partir de los bloques o texto del editor */
+  /* Vista previa reactiva que respeta el orden exacto (posicion, orden) intercalado con bloques_texto */
   function textoVistaPrevia(s) {
     const cuerpo = (s && s.form && typeof s.form.texto === 'string') ? s.form.texto : '';
     if (window.BACO && window.BACO.panelMultimedia && typeof window.BACO.panelMultimedia.componerVistaPrevia === 'function') {
-      const listaRecs = window.BACO.panelMultimedia.lista ? window.BACO.panelMultimedia.lista(s) : [];
-      return window.BACO.panelMultimedia.componerVistaPrevia(cuerpo, listaRecs, s);
+      const listaRecs = (estadoEditor.recursos && estadoEditor.recursos.length)
+        ? estadoEditor.recursos
+        : (window.BACO.panelMultimedia.lista ? window.BACO.panelMultimedia.lista(s) : []);
+      const contexto = Object.assign({}, s || {}, {
+        bloques_texto: (estadoEditor.bloques_texto && estadoEditor.bloques_texto.length)
+          ? estadoEditor.bloques_texto
+          : (s && s.borrador && s.borrador.bloques_texto)
+      });
+      return window.BACO.panelMultimedia.componerVistaPrevia(cuerpo, listaRecs, contexto);
     }
-    if (s && s.borrador && typeof s.borrador.texto === 'string' && s.borrador.texto.trim()) {
-      return s.borrador.texto;
+    if (s && s.borrador && typeof s.borrador.texto_alineado_discourse === 'string' && s.borrador.texto_alineado_discourse.trim()) {
+      return s.borrador.texto_alineado_discourse;
     }
     return cuerpo;
   }
@@ -1021,8 +1261,7 @@
     const actualId = (s.form.categoria_id && Number(s.form.categoria_id) > 1) ? Number(s.form.categoria_id) : null;
 
     let selHtml = '<option value=""' + (!actualId ? ' selected' : '') + ' disabled>Elegí una categoría del desplegable…</option>';
-    
-    // Ordenar alfabéticamente para facilitar la navegación en las 165 opciones
+
     const catsOrdenadas = [...cats].sort((a, b) =>
       (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
     );
@@ -1037,7 +1276,6 @@
     chipsRow.innerHTML = '';
     if (!cats.length) return;
 
-    // Mostrar como chips rápidos solo las categorías principales/frecuentes
     const IDS_CHIPS_FRECUENTES = new Set([
       20, 21, 24, 22, 23, 19, 37, 39, 25, 26, 28, 29, 33, 40, 48, 62, 63, 65, 81, 82, 83
     ]);
@@ -1129,8 +1367,6 @@
       '</div>';
   }
 
-  /* Pinta un contador: mientras falta, "12 / 15 mín."; cuando ya
-     alcanza, solo el número. Si hay máximo, avisa al acercarse. */
   function contador(nodo, actual, minimo, unidad, maximo) {
     if (actual === 0) {
       nodo.textContent = minimo + ' ' + unidad + ' mín.';
@@ -1179,10 +1415,13 @@
   }
 
   function listoParaEnviar(s, campo) {
-    if (campo === 'titulo') return s.form.titulo.trim().length >= cfg.MIN_TITULO;
-    if (campo === 'texto')  return s.form.texto.trim().length >= cfg.MIN_TEXTO && s.form.texto.length <= cfg.MAX_TEXTO_PERCENTIL_99;
+    const lenTitTrim = Array.from((s.form.titulo || '').trim()).length;
+    const lenTxtTrim = Array.from((s.form.texto || '').trim()).length;
+    const lenTxt = Array.from(s.form.texto || '').length;
+    if (campo === 'titulo') return lenTitTrim >= cfg.MIN_TITULO;
+    if (campo === 'texto')  return lenTxtTrim >= cfg.MIN_TEXTO && lenTxt <= cfg.MAX_TEXTO_PERCENTIL_99;
     if (campo === 'tags')   return s.form.tags.length >= cfg.MIN_TAGS && Number(s.form.categoria_id) > 1;
-    if (campo === 'todo') return hayCambios(s) && s.form.texto.length <= cfg.MAX_TEXTO_PERCENTIL_99;
+    if (campo === 'todo')   return hayCambios(s) && lenTxt <= cfg.MAX_TEXTO_PERCENTIL_99;
     return true;
   }
 
@@ -1200,6 +1439,7 @@
   /* ---------------- etiquetas ---------------- */
   function pintarTags(s) {
     const box = $('#tagBox'), input = $('#tagInput');
+    if (!box || !input) return;
     box.querySelectorAll('.tag').forEach((n) => n.remove());
     const plantilla = s.borrador && s.borrador.tipo_plantilla;
 
@@ -1214,7 +1454,9 @@
       box.insertBefore(chip, input);
     });
 
-    const row = $('#suggRow'); row.innerHTML = '';
+    const row = $('#suggRow');
+    if (!row) return;
+    row.innerHTML = '';
     if (input.disabled) return;
 
     let cands = [];
@@ -1246,6 +1488,7 @@
   /* ---------------- cabecera del borrador ---------------- */
   function pintarBorrador(s) {
     const slot = $('#slotBorrador');
+    if (!slot) return;
     if (!s.borrador) { slot.innerHTML = ''; return; }
     const b = s.borrador;
     const enriq = b.modo === 'enriquecimiento';
@@ -1269,6 +1512,7 @@
   /* ---------------- validación ---------------- */
   function pintarValidacion(s) {
     const slot = $('#slotValidacion');
+    if (!slot) return;
     const v = s.validacion;
     if (!v) { slot.innerHTML = ''; return; }
 
@@ -1336,13 +1580,12 @@
   /* ---------------- opciones del backend ---------------- */
   function pintarOpciones(s) {
     const barra = $('#opcionesBarra');
+    if (!barra) return;
     barra.innerHTML = '';
     if (!s.opciones.length) return;
     const tieneMetaPendiente = s.flujo === 'REVISION_BORRADOR' && !!(s.aviso_metadatos_heredados || (s.borrador && s.borrador.metadatos_anteriores && !s.borrador.metadatos_heredados_revisados));
     if (tieneMetaPendiente) return;
     s.opciones.forEach((op) => {
-      /* Si la acción principal ya es confirmar_texto (el botón principal del panel izquierdo),
-         no la duplicamos en opcionesBarra para no tener dos botones idénticos uno al lado del otro. */
       if (op === 'confirmar_texto' && BACO.ACCION_PRINCIPAL[s.flujo] && BACO.ACCION_PRINCIPAL[s.flujo].campo === 'texto') {
         return;
       }
@@ -1369,7 +1612,6 @@
       return confirmarTexto();
     }
 
-    /* 'editar' en revisión manda los campos del formulario */
     if (op === 'editar' && s.flujo === 'REVISION_BORRADOR') {
       return enviarTurno({
         accion: 'editar',
@@ -1387,29 +1629,68 @@
       $('#bannerAviso').innerHTML = '';
       const chatIn = $('#chatInput');
       if (chatIn) { chatIn.value = ''; chatIn.style.height = 'auto'; }
+      reconstruirBloques([''], [], null);
+      renderBloques();
       return enviarTurno({ accion: 'reiniciar' });
     }
     enviarTurno({ accion: op }, label);
   }
 
-  function confirmarTexto() {
+  async function confirmarTexto() {
     const s = store.get();
     const fc = $('#fCuerpo');
-    if (fc && fc.value !== s.form.texto) {
+    if (fc && !fc.hidden && fc.value !== s.form.texto) {
       store.setForm({ texto: fc.value });
     }
+    // Si hay múltiples bloques o recursos intercalados, sincronizamos primero /chat/bloques
+    if (
+      typeof api.confirmarBloques === 'function' &&
+      (estadoEditor.bloques_texto.length > 1 || estadoEditor.recursos.length > 0)
+    ) {
+      try {
+        const payloadBloques = [];
+        sincronizarSecuenciaVisual();
+        estadoEditor.bloques.forEach((b) => {
+          if (b.tipo === 'texto') {
+            payloadBloques.push({ tipo: 'texto', contenido: b.contenido || '' });
+          } else if (b.tipo === 'recurso' && b.recurso) {
+            const recObj = {
+              nombre: b.recurso.nombre || '',
+              tipo: b.recurso.tipo || 'imagen'
+            };
+            if (b.recurso.id) {
+              recObj.id = b.recurso.id;
+            }
+            if (b.recurso.referencia || b.recurso.url) {
+              recObj.url = b.recurso.referencia || b.recurso.url;
+            }
+            payloadBloques.push({
+              tipo: 'recurso',
+              recurso: recObj
+            });
+          }
+        });
+        const resB = await api.confirmarBloques(payloadBloques);
+        if (resB && typeof resB.texto_limpio === 'string') {
+          store.setForm({ texto: resB.texto_limpio });
+        }
+      } catch (_) {}
+    }
+
     const texto = (s.form && typeof s.form.texto === 'string' ? s.form.texto : (fc ? fc.value : '')).trim();
     if (texto) {
-      if (texto.length > cfg.MAX_TEXTO_PERCENTIL_99) return;
-      return enviarTurno({ accion: 'confirmar_texto', texto: texto }, 'Confirmar texto (' + texto.length + ' caracteres)');
+      const lenCp = Array.from(texto).length;
+      if (lenCp > cfg.MAX_TEXTO_PERCENTIL_99) return;
+      return enviarTurno({ accion: 'confirmar_texto', texto: texto }, 'Confirmar texto (' + lenCp + ' caracteres)');
     }
     const chatIn = $('#chatInput');
     const pendiente = chatIn ? chatIn.value.trim() : '';
     if (pendiente) {
-      if (pendiente.length > cfg.MAX_TEXTO_PERCENTIL_99) return;
+      const lenPend = Array.from(pendiente).length;
+      if (lenPend > cfg.MAX_TEXTO_PERCENTIL_99) return;
       chatIn.value = '';
       chatIn.style.height = 'auto';
-      return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + pendiente.length + ' caracteres)');
+      return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + lenPend + ' caracteres)');
     }
     return enviarTurno({ accion: 'confirmar_texto' }, 'Confirmar texto');
   }
@@ -1433,13 +1714,12 @@
     }, 'Guardar cambios');
   }
 
-  /* Elimina los marcadores markdown de sección (ej. "## Objetivo" -> "Objetivo") */
   function limpiarMarcadoresSeccion(texto) {
     if (!texto || typeof texto !== 'string') return '';
     return texto.replace(/^#{1,6}\s+/gm, '');
   }
 
-  /* Transfiere el texto limpio (sin marcadores ##) al panel izquierdo (Editor y Vista previa) */
+  /* Cuando una skill devuelve texto, se vuelca en el panel izquierdo como un único bloque de texto (bloques_texto = [resultado]) */
   function transferirTextoAlPanelIzquierdo(texto, avisoToast = true) {
     const s = store.get();
     const textoLimpio = limpiarMarcadoresSeccion(texto);
@@ -1447,6 +1727,7 @@
 
     store.setForm({ texto: textoLimpio });
     if (s.borrador) {
+      s.borrador.bloques_texto = [textoLimpio];
       s.borrador.texto_limpio = textoLimpio;
       if (s.borrador.texto != null) s.borrador.texto = textoLimpio;
     }
@@ -1454,7 +1735,7 @@
     const fc = $('#fCuerpo');
     if (fc) fc.value = textoLimpio;
 
-    reconstruirBloques(textoLimpio, recs);
+    reconstruirBloques([textoLimpio], recs, s.borrador);
     renderBloques();
 
     const prev = $('#preview');
@@ -1463,7 +1744,7 @@
     }
 
     if (avisoToast) {
-      toast('Texto transferido al panel de carga (sin marcadores ##)');
+      toast('Texto transferido al panel de carga (como bloque único)');
     }
   }
 
@@ -1474,8 +1755,13 @@
       decir('Todavía no hay un borrador armado. Las skills se habilitan recién cuando lleguemos a la revisión.');
       return;
     }
-    if (s.borrador && s.borrador.skills_habilitadas === false) {
-      const mot = s.borrador.skills_motivo || 'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+    const tieneRecursos = Boolean(
+      (Array.isArray(s.borrador.multimedia) && s.borrador.multimedia.length > 0) ||
+      (s.borrador.recursos && Object.keys(s.borrador.recursos).length > 0) ||
+      (estadoEditor.recursos && estadoEditor.recursos.length > 0)
+    );
+    if (s.borrador.skills_habilitadas === false || tieneRecursos) {
+      const mot = s.borrador.skills_motivo || 'Quitá los recursos cargados si querés aplicar las skills de asistencia.';
       toast('Skills deshabilitadas: ' + mot);
       decir('⚠️ Las skills no están disponibles para este borrador:\n' + esc(mot));
       return;
@@ -1496,7 +1782,6 @@
 
       const textoRespuesta = (r && (r.texto_resultante || r.response)) || '';
 
-      // Transferir automáticamente al panel izquierdo (sin marcadores ##)
       if (textoRespuesta) {
         transferirTextoAlPanelIzquierdo(textoRespuesta, true);
       }
@@ -1557,18 +1842,19 @@
       $('#overlay').hidden = false;
     } catch (e) { mostrarError(e); }
   }
-  const mostrarAprobado = mostrarConforme;
 
   async function copiarBorrador() {
     const s = store.get();
     try {
       let b = s.borrador;
-      if (!b && (s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO')) {
-        b = (api.borradorConforme ? await api.borradorConforme() : await api.borradorAprobado());
+      if (s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO') {
+        try {
+          b = (api.borradorConforme ? await api.borradorConforme() : await api.borradorAprobado()) || b;
+        } catch (_) {}
       }
       const titulo = (b && b.titulo) || s.form.titulo || '';
-      const texto = (b && (b.texto || b.texto_limpio)) || s.form.texto || '';
-      const textoACopiar = `# ${titulo}\n\n${texto}`.trim();
+      const textoDiscourse = (b && (b.texto_alineado_discourse || b.texto_limpio)) || s.form.texto || '';
+      const textoACopiar = `# ${titulo}\n\n${textoDiscourse}`.trim();
       if (!textoACopiar) {
         toast('No hay contenido en el borrador para copiar');
         return;
@@ -1639,11 +1925,13 @@
       if (cmd === 'confirmar' || cmd === 'confirmar texto' || cmd === 'confirmar_texto') {
         return confirmarTexto();
       }
-      const actual = (s.form && typeof s.form.texto === 'string') ? s.form.texto.trim() : '';
-      const acumulado = actual ? (actual + '\n\n' + v) : v;
-      store.setForm({ texto: acumulado });
-      const fc = $('#fCuerpo');
-      if (fc) fc.value = acumulado;
+      // Si ya hay bloques existentes, agregamos al final del último bloque de texto
+      const lastIdx = Math.max(0, estadoEditor.bloques_texto.length - 1);
+      const prevLast = String(estadoEditor.bloques_texto[lastIdx] || '').trim();
+      estadoEditor.bloques_texto[lastIdx] = prevLast ? (prevLast + '\n\n' + v) : v;
+      sincronizarTextoConStore();
+      renderBloques();
+      const acumulado = componerTextoDesdeBloques();
       return enviarTurno({ mensaje: v, texto: acumulado }, v);
     }
     if (s.flujo === 'ESPERANDO_METADATOS') {
@@ -1661,6 +1949,7 @@
      ========================================================= */
   function mostrarError(e) {
     const b = $('#bannerError');
+    if (!b) return;
     const ayuda = {
       SIN_API_KEY: 'Abrí js/config.js y pegá la API_KEY que te pase Caro.',
       NO_AUTORIZADO: 'La API key no coincide con la del backend.',
@@ -1690,6 +1979,7 @@
 
   function mostrarAviso(texto) {
     const b = $('#bannerAviso');
+    if (!b) return;
     b.innerHTML = '<div class="banner aviso">' +
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.8l5 2v4.4c0 3-2.2 5.3-5 6-2.8-.7-5-3-5-6V3.8l5-2z" stroke="currentColor" stroke-width="1.3"/><path d="M5.9 8.1l1.5 1.5 3-3.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       '<span><b>Datos sensibles anonimizados</b> · ' + esc(texto) + '</span>' +
@@ -1699,6 +1989,7 @@
 
   function toast(msg) {
     const t = $('#toast');
+    if (!t) return;
     t.textContent = msg; t.classList.add('show');
     clearTimeout(tToast);
     tToast = setTimeout(() => t.classList.remove('show'), 2400);
@@ -1724,7 +2015,6 @@
 
     let h = '';
 
-    // 2. Sección de Contenido adicional (habilitada en flujos de actualizar o enriquecer)
     if (esEnriquecerOActualizar) {
       h += '<div class="eib-sec-adicional">' +
         '<div class="eib-sec-adicional-head">' +
@@ -1786,7 +2076,6 @@
     const prev = $('#preview');
     bar.hidden = !!(prev && !prev.hidden);
 
-    // Handlers para agregar contenido nuevo mediante el formulario directo
     const ejecutarAgregar = async () => {
       const input = $('#inputNuevoContenido');
       if (!input) return;
@@ -1850,7 +2139,6 @@
       });
     }
 
-    // Handlers para abrir modo de edición de un ítem
     bar.querySelectorAll('.btn-editar-item').forEach((btn) => {
       btn.onclick = (e) => {
         e.preventDefault();
@@ -1866,7 +2154,6 @@
       };
     });
 
-    // Handlers para cancelar la edición de un ítem
     bar.querySelectorAll('.btn-cancelar-item').forEach((btn) => {
       btn.onclick = (e) => {
         e.preventDefault();
@@ -1880,7 +2167,6 @@
       };
     });
 
-    // Guardar edición de un ítem modificado
     const guardarEdicion = async (id) => {
       const inp = $('#inputEdit_' + id);
       if (!inp) return;
@@ -1936,7 +2222,6 @@
       });
     });
 
-    // Handlers para eliminar ítems individuales
     bar.querySelectorAll('.btn-eliminar-item').forEach((btn) => {
       btn.onclick = async (e) => {
         e.preventDefault();
@@ -1964,7 +2249,6 @@
       };
     });
 
-    // Handlers para reordenar ítems (subir / bajar)
     bar.querySelectorAll('.btn-mover-item').forEach((btn) => {
       btn.onclick = async (e) => {
         e.preventDefault();
@@ -2008,22 +2292,19 @@
   /* Markdown adaptativo para la vista previa */
   function renderMd(src) {
     const renderInline = (s) => {
-      // 1. Tokens de reemplazo previo al escape HTML
       let res = String(s).replace(
-        /!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g,
+        /!\[([^\]]*)\]\(((?:https?:\/\/|\/api\/recursos-temp\/)[^\s\)]+)\)/g,
         '___IMG_START___$1___SEP___$2___IMG_END___'
       ).replace(
-        /\[([^\]]+)\|attachment\]\((https?:\/\/[^\s\)]+)\)/g,
+        /\[([^\]]+)\|attachment\]\(((?:https?:\/\/|\/api\/recursos-temp\/)[^\s\)]+)\)/g,
         '___ATT_START___$1___SEP___$2___ATT_END___'
       ).replace(
         /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g,
         '___LINK_START___$1___SEP___$2___LINK_END___'
       );
 
-      // 2. Escapar caracteres HTML peligrosos
       res = esc(res);
 
-      // 3. Restaurar imágenes y medios seguros
       res = res.replace(
         /___IMG_START___(.*?)___SEP___(.*?)___IMG_END___/g,
         '<div class="preview-img-box"><img src="$2" alt="$1" class="preview-img" loading="lazy" referrerpolicy="no-referrer" /><span class="caption">$1</span></div>'
@@ -2047,9 +2328,9 @@
         }
       );
 
-      // 4. Formatos inline estándar (negrita, código)
       return res
         .replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^\*]+)\*/g, '<em>$1</em>')
         .replace(/`([^`]+)`/g, '<code>$1</code>');
     };
 
@@ -2060,8 +2341,7 @@
       const l = raw.trim();
       if (!l) { cerrar(); return; }
 
-      // Línea solitaria con imagen
-      const imgMatch = l.match(/^!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)$/);
+      const imgMatch = l.match(/^!\[([^\]]*)\]\(((?:https?:\/\/|\/api\/recursos-temp\/)[^\s\)]+)\)$/);
       if (imgMatch) {
         cerrar();
         const alt = esc(imgMatch[1]);
@@ -2070,7 +2350,6 @@
         return;
       }
 
-      // Línea solitaria con video de YouTube (reproductor integrado)
       const ytMatch = l.match(/^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s]*)?$/);
       if (ytMatch) {
         cerrar();
@@ -2080,7 +2359,6 @@
         return;
       }
 
-      // Línea solitaria con URL cruda de docs, diapositivas o video
       const urlSoleMatch = l.match(/^(https?:\/\/[^\s]+)$/);
       if (urlSoleMatch) {
         const u = urlSoleMatch[1];
@@ -2116,6 +2394,39 @@
   }
 
   /* =========================================================
+     Selector Unicode simple de Emojis
+     ========================================================= */
+  function inicializarEmojiPicker() {
+    const pop = $('#emojiPickerPopover');
+    if (!pop) return;
+    pop.innerHTML = EMOJIS_DISCOURSE.map((em) =>
+      '<button type="button" class="emoji-option" role="option" data-emoji="' + em + '" aria-label="Emoji ' + em + '" title="Insertar ' + em + '">' + em + '</button>'
+    ).join('');
+  }
+
+  function cerrarEmojiPicker() {
+    const pop = $('#emojiPickerPopover');
+    const btn = $('#btnEmojiToolbar');
+    if (pop) pop.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function insertarEmojiEnBloqueActivo(emoji) {
+    const ta = obtenerTextareaObjetivo();
+    if (!ta) return;
+    const val = String(ta.value || '');
+    const start = typeof ta.selectionStart === 'number' ? ta.selectionStart : val.length;
+    const end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : start;
+    ta.value = val.slice(0, start) + emoji + val.slice(end);
+    const pos = start + emoji.length;
+    if (typeof ta.focus === 'function') ta.focus();
+    if (typeof ta.setSelectionRange === 'function') {
+      try { ta.setSelectionRange(pos, pos); } catch (_) {}
+    }
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /* =========================================================
      Eventos Mini Panel Multimedia
      ========================================================= */
   function conectarEventosMultimedia() {
@@ -2125,7 +2436,6 @@
     let arrastrandoIdx = null;
 
     cont.addEventListener('click', async (e) => {
-      // 1. Abrir / cerrar área de carga
       const btnCarga = e.target.closest('[data-accion="abrir-carga"]');
       if (btnCarga && !btnCarga.disabled) {
         e.preventDefault();
@@ -2135,27 +2445,15 @@
         return;
       }
 
-      // 2. Quitar recurso (botón ×)
       const btnQuitar = e.target.closest('[data-accion="quitar"]');
       if (btnQuitar && !btnQuitar.disabled) {
         e.preventDefault();
         const id = btnQuitar.getAttribute('data-id');
         if (!id) return;
-        try {
-          store.set({ enviando: true });
-          await api.eliminarRecurso(id);
-          const recs = await api.obtenerRecursos();
-          store.actualizarRecursos(recs);
-          toast('Recurso quitado');
-        } catch (err) {
-          toast(err.message || 'No se pudo quitar el recurso');
-        } finally {
-          store.set({ enviando: false });
-        }
+        await eliminarBloque(id);
         return;
       }
 
-      // 3. Reordenar con botones ↑ / ↓
       const btnMover = e.target.closest('[data-accion="subir"], [data-accion="bajar"]');
       if (btnMover && !btnMover.disabled) {
         e.preventDefault();
@@ -2165,9 +2463,8 @@
         const targetIdx = accion === 'subir' ? idx - 1 : idx + 1;
         try {
           store.set({ enviando: true });
-          await api.reordenarMultimedia(idx, targetIdx);
-          const recs = await api.obtenerRecursos();
-          store.actualizarRecursos(recs);
+          const res = await api.reordenarMultimedia(idx, targetIdx);
+          aplicarEstadoRecursosServidor(res);
         } catch (err) {
           toast(err.message || 'No se pudo reordenar');
         } finally {
@@ -2176,7 +2473,6 @@
         return;
       }
 
-      // 4. Agregar por URL
       const btnUrl = e.target.closest('[data-accion="agregar-url"]');
       if (btnUrl && !btnUrl.disabled) {
         e.preventDefault();
@@ -2195,28 +2491,12 @@
       }
       try {
         store.set({ enviando: true });
-        await api.agregarRecursoMultimedia({ referencia: url });
+        const res = await api.agregarRecursoMultimedia({ referencia: url });
         inputUrl.value = '';
-        const recs = await api.obtenerRecursos();
-        store.actualizarRecursos(recs);
+        aplicarEstadoRecursosServidor(res);
         toast('Recurso agregado');
       } catch (err) {
         toast(err.message || 'No se pudo agregar la URL');
-      } finally {
-        store.set({ enviando: false });
-      }
-    }
-
-    async function subirArchivoMultimedia(file) {
-      if (!file) return;
-      try {
-        store.set({ enviando: true });
-        await api.subirRecursoMultimedia(file);
-        const recs = await api.obtenerRecursos();
-        store.actualizarRecursos(recs);
-        toast('Archivo subido');
-      } catch (err) {
-        toast(err.message || 'No se pudo subir el archivo');
       } finally {
         store.set({ enviando: false });
       }
@@ -2234,91 +2514,14 @@
         const file = e.target.files && e.target.files[0];
         if (file) {
           e.target.value = '';
-          subirArchivoMultimedia(file);
-        }
-      }
-    });
-
-    // Drag and drop de archivos sobre .pm-drop
-    cont.addEventListener('dragover', (e) => {
-      const drop = e.target.closest('.pm-drop');
-      if (drop && e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
-        e.preventDefault();
-        drop.classList.add('sobre');
-      }
-    });
-    cont.addEventListener('dragleave', (e) => {
-      const drop = e.target.closest('.pm-drop');
-      if (drop) drop.classList.remove('sobre');
-    });
-    cont.addEventListener('drop', (e) => {
-      const drop = e.target.closest('.pm-drop');
-      if (drop && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        e.preventDefault();
-        drop.classList.remove('sobre');
-        subirArchivoMultimedia(e.dataTransfer.files[0]);
-      }
-    });
-
-    // Drag and drop para reordenar items .pm-item
-    cont.addEventListener('dragstart', (e) => {
-      const item = e.target.closest('.pm-item');
-      if (!item) return;
-      arrastrandoIdx = parseInt(item.getAttribute('data-idx'), 10);
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(arrastrandoIdx));
-      }
-      item.classList.add('arrastrando');
-    });
-
-    cont.addEventListener('dragover', (e) => {
-      const item = e.target.closest('.pm-item');
-      if (item && arrastrandoIdx !== null) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        item.classList.add('destino');
-      }
-    });
-
-    cont.addEventListener('dragleave', (e) => {
-      const item = e.target.closest('.pm-item');
-      if (item) item.classList.remove('destino');
-    });
-
-    cont.addEventListener('dragend', (e) => {
-      const item = e.target.closest('.pm-item');
-      if (item) item.classList.remove('arrastrando');
-      cont.querySelectorAll('.pm-item.destino').forEach(el => el.classList.remove('destino'));
-      arrastrandoIdx = null;
-    });
-
-    cont.addEventListener('drop', async (e) => {
-      const item = e.target.closest('.pm-item');
-      if (item && arrastrandoIdx !== null) {
-        e.preventDefault();
-        item.classList.remove('destino');
-        const destinoIdx = parseInt(item.getAttribute('data-idx'), 10);
-        const origenIdx = arrastrandoIdx;
-        arrastrandoIdx = null;
-        if (!isNaN(destinoIdx) && origenIdx !== destinoIdx) {
-          try {
-            store.set({ enviando: true });
-            await api.reordenarMultimedia(origenIdx, destinoIdx);
-            const recs = await api.obtenerRecursos();
-            store.actualizarRecursos(recs);
-          } catch (err) {
-            toast(err.message || 'No se pudo reordenar');
-          } finally {
-            store.set({ enviando: false });
-          }
+          validarYSubirArchivoIntercalado(file, { tieneFoco: false });
         }
       }
     });
   }
 
   /* =========================================================
-     Eventos
+     Eventos Principales y Barra de Herramientas
      ========================================================= */
   function conectarEventos() {
     const fTit = $('#fTitulo');
@@ -2335,7 +2538,7 @@
           const s = store.get();
           if (s.flujo === 'ESPERANDO_TITULO') {
             const tit = s.form.titulo.trim();
-            if (tit.length >= cfg.MIN_TITULO && !s.enviando) {
+            if (Array.from(tit).length >= cfg.MIN_TITULO && !s.enviando) {
               enviarTurno({ titulo: tit }, tit);
             }
           } else if ($('#btnPrincipal') && !$('#btnPrincipal').disabled) {
@@ -2376,28 +2579,106 @@
 
     if ($('#btnPrincipal')) $('#btnPrincipal').onclick = enviarPrincipal;
 
+    /* Barra de herramientas estilo Discourse: botones Markdown, Emoji, Imagen y navegación por teclado */
+    const toolbar = $('#editorToolbar');
+    if (toolbar) {
+      toolbar.addEventListener('click', (e) => {
+        const btnMd = e.target.closest('[data-md]');
+        if (btnMd && !btnMd.disabled) {
+          e.preventDefault();
+          const tipoMd = btnMd.getAttribute('data-md');
+          const ta = obtenerTextareaObjetivo();
+          if (ta) {
+            insertarFormatoMarkdown(ta, tipoMd);
+          }
+          return;
+        }
+
+        const btnEmojiOpt = e.target.closest('.emoji-option');
+        if (btnEmojiOpt) {
+          e.preventDefault();
+          e.stopPropagation();
+          const emoji = btnEmojiOpt.getAttribute('data-emoji');
+          if (emoji) insertarEmojiEnBloqueActivo(emoji);
+          cerrarEmojiPicker();
+          return;
+        }
+      });
+
+      toolbar.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          cerrarEmojiPicker();
+          const btnEm = $('#btnEmojiToolbar');
+          if (btnEm) btnEm.focus();
+          return;
+        }
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          const botones = Array.from(toolbar.querySelectorAll('button:not(:disabled)')).filter((b) => !b.closest('[hidden]'));
+          const idx = botones.indexOf(document.activeElement);
+          if (idx !== -1) {
+            e.preventDefault();
+            const next = e.key === 'ArrowRight'
+              ? botones[(idx + 1) % botones.length]
+              : botones[(idx - 1 + botones.length) % botones.length];
+            if (next) next.focus();
+          }
+        }
+      });
+    }
+
+    const btnEmoji = $('#btnEmojiToolbar');
+    if (btnEmoji) {
+      btnEmoji.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (btnEmoji.disabled) return;
+        const pop = $('#emojiPickerPopover');
+        if (!pop) return;
+        const abrir = pop.hidden;
+        pop.hidden = !abrir;
+        btnEmoji.setAttribute('aria-expanded', String(abrir));
+        if (abrir) {
+          const firstOpt = pop.querySelector('.emoji-option');
+          if (firstOpt) firstOpt.focus();
+        }
+      });
+    }
+
+    const btnImgToolbar = $('#btnImagenToolbar');
+    if (btnImgToolbar) {
+      // Capturamos el cursor del bloque activo en mousedown antes de que el clic mueva el foco al botón
+      btnImgToolbar.addEventListener('mousedown', () => {
+        ultimoCursorCapturado = capturarCursorActualParaImagen();
+      });
+      btnImgToolbar.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (btnImgToolbar.disabled) return;
+        if (!ultimoCursorCapturado) {
+          ultimoCursorCapturado = capturarCursorActualParaImagen();
+        }
+        abrirSelectorImagenToolbar();
+      });
+    }
+
+    /* Eventos del contenedor de bloques intercalados (Texto / Recurso / Texto) */
     const contBloques = $('#contenedorBloques');
+    let recursoArrastradoId = null;
+
     if (contBloques) {
+      contBloques.addEventListener('focusin', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('bloque-textarea')) {
+          ultimoTextareaActivo = e.target;
+        }
+      });
+
       contBloques.addEventListener('click', (e) => {
         const targetAccion = e.target.closest('[data-accion]');
-        if (!targetAccion) return;
+        if (!targetAccion || targetAccion.disabled) return;
 
         const accion = targetAccion.getAttribute('data-accion');
         const id = targetAccion.getAttribute('data-id');
-        const posStr = targetAccion.getAttribute('data-pos');
-        const pos = posStr != null ? parseInt(posStr, 10) : null;
-        const tipo = targetAccion.getAttribute('data-tipo');
 
-        if (accion === 'toggle-menu') {
-          e.stopPropagation();
-          estadoEditor.menuAbiertoPos = estadoEditor.menuAbiertoPos === pos ? null : pos;
-          renderBloques();
-        } else if (accion === 'abrir-selector') {
-          e.stopPropagation();
-          estadoEditor.menuAbiertoPos = null;
-          renderBloques();
-          abrirSelectorParaTipo(tipo, pos);
-        } else if (accion === 'eliminar-bloque') {
+        if (accion === 'eliminar-bloque') {
           e.stopPropagation();
           eliminarBloque(id);
         } else if (accion === 'subir-bloque') {
@@ -2411,20 +2692,91 @@
 
       contBloques.addEventListener('input', (e) => {
         if (e.target && e.target.classList.contains('bloque-textarea')) {
-          const id = e.target.getAttribute('data-id');
-          const b = estadoEditor.bloques.find((x) => x.id === id);
-          if (b) {
-            b.contenido = e.target.value;
-            sincronizarTextoConStore();
+          ultimoTextareaActivo = e.target;
+          const idx = parseInt(e.target.getAttribute('data-bloque-idx'), 10);
+          if (!isNaN(idx) && idx >= 0 && idx < estadoEditor.bloques_texto.length) {
+            estadoEditor.bloques_texto[idx] = e.target.value;
+          }
+          const b = estadoEditor.bloques.find((x) => x.id === e.target.getAttribute('data-id'));
+          if (b) b.contenido = e.target.value;
+          sincronizarTextoConStore();
+        }
+      });
+
+      contBloques.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          if ($('#btnPrincipal') && !$('#btnPrincipal').disabled) enviarPrincipal();
+        }
+      });
+
+      // Drag & Drop de recursos intercalados
+      contBloques.addEventListener('dragstart', (e) => {
+        const item = e.target.closest('.bloque-recurso-item');
+        if (!item || item.getAttribute('draggable') !== 'true') return;
+        recursoArrastradoId = item.getAttribute('data-recurso-id');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', String(recursoArrastradoId));
+        }
+        item.classList.add('arrastrando');
+      });
+
+      contBloques.addEventListener('dragover', (e) => {
+        if (!recursoArrastradoId) return;
+        const destRec = e.target.closest('.bloque-recurso-item');
+        const destTxt = e.target.closest('.bloque-texto-item');
+        if (destRec || destTxt) {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          if (destRec) destRec.classList.add('destino');
+        }
+      });
+
+      contBloques.addEventListener('dragleave', (e) => {
+        const destRec = e.target.closest('.bloque-recurso-item');
+        if (destRec) destRec.classList.remove('destino');
+      });
+
+      contBloques.addEventListener('dragend', () => {
+        contBloques.querySelectorAll('.bloque-recurso-item.arrastrando, .bloque-recurso-item.destino').forEach((n) => {
+          n.classList.remove('arrastrando', 'destino');
+        });
+        recursoArrastradoId = null;
+      });
+
+      contBloques.addEventListener('drop', (e) => {
+        if (!recursoArrastradoId) return;
+        const idOrigen = recursoArrastradoId;
+        recursoArrastradoId = null;
+        contBloques.querySelectorAll('.bloque-recurso-item.destino').forEach((n) => n.classList.remove('destino'));
+
+        const destRec = e.target.closest('.bloque-recurso-item');
+        if (destRec) {
+          e.preventDefault();
+          const idDest = destRec.getAttribute('data-recurso-id');
+          if (idDest && idDest !== idOrigen) {
+            const nuevaPos = parseInt(destRec.getAttribute('data-posicion'), 10);
+            const nuevoOrd = parseInt(destRec.getAttribute('data-orden'), 10);
+            reordenarRecursoHaciaDestino(idOrigen, isNaN(nuevaPos) ? 0 : nuevaPos, isNaN(nuevoOrd) ? 0 : nuevoOrd);
+          }
+          return;
+        }
+
+        const destTxt = e.target.closest('.bloque-texto-item');
+        if (destTxt) {
+          e.preventDefault();
+          const bloqueIdx = parseInt(destTxt.getAttribute('data-bloque-idx'), 10);
+          if (!isNaN(bloqueIdx)) {
+            reordenarRecursoHaciaDestino(idOrigen, bloqueIdx, estadoEditor.recursos.length);
           }
         }
       });
     }
 
     document.addEventListener('click', (e) => {
-      if (estadoEditor.menuAbiertoPos !== null && !e.target.closest('.bloque-divider')) {
-        estadoEditor.menuAbiertoPos = null;
-        renderBloques();
+      if (!e.target.closest('.ed-emoji-wrap')) {
+        cerrarEmojiPicker();
       }
     });
 
@@ -2432,8 +2784,10 @@
     if (inputSelector) {
       inputSelector.addEventListener('change', (e) => {
         const f = e.target.files && e.target.files[0];
+        const cursorInfo = ultimoCursorCapturado || capturarCursorActualParaImagen();
+        ultimoCursorCapturado = null;
         if (f) {
-          validarYSubirArchivo(f, selectorTargetTipo, selectorTargetPos);
+          validarYSubirArchivoIntercalado(f, cursorInfo);
         }
         e.target.value = '';
       });
@@ -2447,24 +2801,34 @@
     if ($('#btnConfirmarTexto')) {
       $('#btnConfirmarTexto').onclick = confirmarTexto;
     }
+
+    /* Alternar Markdown / Vista previa reutilizando #btnEditor y #btnPreview */
     if ($('#btnEditor')) {
       $('#btnEditor').onclick = () => {
-        if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
-        const fc = $('#fCuerpo'); if (fc) fc.hidden = false;
-        const pr = $('#preview'); if (pr) pr.hidden = true;
+        const wrapper = $('#editorBloquesWrapper');
+        if (wrapper) wrapper.hidden = false;
+        const fc = $('#fCuerpo');
+        if (fc) fc.hidden = true;
+        const pr = $('#preview');
+        if (pr) pr.hidden = true;
         $('#btnEditor').classList.add('sel');
-        if ($('#btnPreview')) $('#btnPreview').classList.remove('sel');
+        $('#btnEditor').setAttribute('aria-pressed', 'true');
+        if ($('#btnPreview')) {
+          $('#btnPreview').classList.remove('sel');
+          $('#btnPreview').setAttribute('aria-pressed', 'false');
+        }
         estadoEditor.modo = 'edicion';
-        if (fc) fc.focus();
+        pintar(store.get());
+        const ta = obtenerTextareaObjetivo();
+        if (ta) ta.focus();
       };
     }
     if ($('#btnPreview')) {
       $('#btnPreview').onclick = () => {
+        const wrapper = $('#editorBloquesWrapper');
+        if (wrapper) wrapper.hidden = true;
         const fc = $('#fCuerpo');
-        if (fc) {
-          fc.hidden = true;
-          store.setForm({ texto: fc.value });
-        }
+        if (fc) fc.hidden = true;
         let pr = $('#preview');
         if (!pr && $('#campoTexto')) {
           pr = el('div', 'preview');
@@ -2475,9 +2839,12 @@
           pr.innerHTML = renderMd(textoVistaPrevia(store.get()));
           pr.hidden = false;
         }
-        if ($('#editorBloquesWrapper')) $('#editorBloquesWrapper').hidden = true;
         $('#btnPreview').classList.add('sel');
-        if ($('#btnEditor')) $('#btnEditor').classList.remove('sel');
+        $('#btnPreview').setAttribute('aria-pressed', 'true');
+        if ($('#btnEditor')) {
+          $('#btnEditor').classList.remove('sel');
+          $('#btnEditor').setAttribute('aria-pressed', 'false');
+        }
         estadoEditor.modo = 'preview';
         const bar = $('#editorImgBar'); if (bar) bar.hidden = true;
         const pm = $('#panelMultimedia'); if (pm) { pm.hidden = true; pm.innerHTML = ''; }
@@ -2496,17 +2863,11 @@
         }
         const lector = new FileReader();
         lector.onload = () => {
-          const s = store.get();
-          const nuevo = (s.form.texto.trim() ? s.form.texto + '\n\n' : '') + lector.result;
-          store.setForm({ texto: nuevo });
-          const fc = $('#fCuerpo');
-          if (fc) fc.value = nuevo;
-          if (estadoEditor.bloques.length && estadoEditor.bloques[estadoEditor.bloques.length - 1].tipo === 'texto') {
-            const ult = estadoEditor.bloques[estadoEditor.bloques.length - 1];
-            ult.contenido = (ult.contenido.trim() ? ult.contenido + '\n\n' : '') + lector.result;
-          } else {
-            estadoEditor.bloques.push({ id: genId(), tipo: 'texto', contenido: String(lector.result) });
-          }
+          const contenidoArchivo = String(lector.result || '');
+          const lastIdx = Math.max(0, estadoEditor.bloques_texto.length - 1);
+          const actual = String(estadoEditor.bloques_texto[lastIdx] || '').trim();
+          estadoEditor.bloques_texto[lastIdx] = actual ? (actual + '\n\n' + contenidoArchivo) : contenidoArchivo;
+          sincronizarTextoConStore();
           renderBloques();
           toast('Documento volcado en el editor');
           confirmarBloques();
@@ -2542,7 +2903,7 @@
         e.target.style.height = Math.min(110, e.target.scrollHeight) + 'px';
         const s = store.get();
         if (s.flujo === 'ESPERANDO_TEXTO') {
-          contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), e.target.value.length, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
+          contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), Array.from(e.target.value || '').length, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
         }
       });
     }
@@ -2560,7 +2921,7 @@
       const fc = $('#fCuerpo');
       if (fc) fc.value = c;
       store.setForm({ texto: c });
-      estadoEditor.bloques = [{ id: genId(), tipo: 'texto', contenido: c }];
+      estadoEditor.bloques_texto = [c];
       renderBloques();
       toast('Contenido de ejemplo cargado en el editor. Tocá "Confirmar texto" cuando estés listo.');
     } else {

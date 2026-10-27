@@ -28,24 +28,21 @@ def test_articulo_con_capturas_paso_a_paso_reemplaza_por_marcadores_en_posicion_
 
     texto_limpio, recursos = extraer_recursos_y_texto_limpio(texto_entrada)
 
-    # 1. Verificar que texto_limpio tiene los marcadores junto a cada paso
-    assert "[[recurso:rec_1]]" in texto_limpio
-    assert "[[recurso:rec_2]]" in texto_limpio
-    assert "[[recurso:rec_3]]" in texto_limpio
-    assert "[[recurso:rec_4]]" in texto_limpio
+    # 1. Verificar que texto_limpio queda sin marcadores [[recurso:...]]
+    assert "[[recurso:" not in texto_limpio
 
     # 2. Las URLs originales no están en texto_limpio
     assert "https://bc.finneg.com/uploads/menu_contable.png" not in texto_limpio
     assert "https://bc.finneg.com/uploads/asientos_pendientes.png" not in texto_limpio
     assert "https://www.youtube.com/watch?v=cierre2026" not in texto_limpio
 
-    # 3. Cada marcador está inmediatamente asociado a su paso correspondiente
+    # 3. Cada recurso tiene la posicion del bloque de texto tras el cual va
     bloques = [b.strip() for b in texto_limpio.split("\n\n") if b.strip()]
     idx_p1 = next(i for i, b in enumerate(bloques) if "Paso 1" in b)
-    assert "[[recurso:rec_1]]" in bloques[idx_p1] or (idx_p1 + 1 < len(bloques) and "[[recurso:rec_1]]" in bloques[idx_p1 + 1])
+    assert recursos["rec_1"].posicion == idx_p1
 
     idx_p2 = next(i for i, b in enumerate(bloques) if "Paso 2" in b)
-    assert "[[recurso:rec_2]]" in bloques[idx_p2] or (idx_p2 + 1 < len(bloques) and "[[recurso:rec_2]]" in bloques[idx_p2 + 1])
+    assert recursos["rec_2"].posicion == idx_p2
 
     # 4. Los recursos tienen IDs estables y orden según aparición
     assert len(recursos) == 4
@@ -130,12 +127,12 @@ def test_marcador_escrito_a_mano_por_persona_es_rechazado_sin_borrado_silencioso
 
 
 def test_marcador_valido_referenciando_recurso_existente_es_preservado():
-    """Cambio 3: cada marcador válido que referencia un recurso existente se preserva intacto."""
+    """Cambio 3: cada marcador válido que referencia un recurso existente se convierte en posicion de bloque sin quedar en texto_limpio."""
     r1 = Recurso(id="rec_1", tipo="imagen", nombre="captura.png", referencia="https://bc.finneg.com/c.png", orden=0)
     r2 = Recurso(id="rec_2", tipo="video", nombre="tutorial.mp4", referencia="https://youtube.com/v", orden=1)
     recursos = {"rec_1": r1, "rec_2": r2}
 
-    texto = "Paso 1: Ver captura [[recurso:rec_1]].\n\nPaso 2: Ver video explicativo [[recurso:rec_2]]."
+    texto = "Paso 1: Ver captura [[recurso:rec_1]]\n\nPaso 2: Ver video explicativo [[recurso:rec_2]]"
     borrador = BorradorSesion(
         modo="nuevo",
         titulo="Guía con recursos existentes",
@@ -143,14 +140,15 @@ def test_marcador_valido_referenciando_recurso_existente_es_preservado():
         recursos=recursos,
     )
 
-    # Ambos marcadores deben permanecer exactamente en su lugar (nada de borrado)
-    assert borrador.texto_limpio == texto
-    assert "[[recurso:rec_1]]" in borrador.texto_limpio
-    assert "[[recurso:rec_2]]" in borrador.texto_limpio
+    assert "[[recurso:" not in borrador.texto_limpio
+    assert borrador.recursos["rec_1"].posicion == 0
+    assert borrador.recursos["rec_2"].posicion == 1
+    assert "https://bc.finneg.com/c.png" in borrador.texto_alineado_discourse
+    assert "https://youtube.com/v" in borrador.texto_alineado_discourse
 
 
 def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recursos():
-    """Riesgo 4: borrador.texto coincide siempre con componer_texto_publicable y es de solo lectura."""
+    """Riesgo 4: borrador.texto_alineado_discourse coincide siempre con componer_texto_publicable y es de solo lectura."""
     from baco.server.services.orquestador.recursos_service import componer_texto_publicable
 
     r1 = Recurso(id="rec_1", tipo="imagen", nombre="captura.png", referencia="https://bc.finneg.com/c.png", orden=0)
@@ -163,11 +161,14 @@ def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recur
     )
 
     # Coincide exactamente con componer_texto_publicable
-    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
+    assert borrador.texto_alineado_discourse == componer_texto_publicable(borrador.bloques_texto, borrador.recursos)
+    assert not hasattr(borrador, "texto")
 
     # Es propiedad derivada: no se puede reasignar directamente
     with pytest.raises(AttributeError):
         borrador.texto = "Intento de sobreescritura directa"
+    with pytest.raises(AttributeError):
+        borrador.texto_alineado_discourse = "Intento de sobreescritura directa"
 
 def test_skill_plantillas_rechaza_borrador_con_recursos_o_marcadores():
     """La aplicación de skills y los recursos son mutuamente excluyentes: corta con HTTPException 400 y no llama al modelo."""
@@ -247,7 +248,7 @@ def test_componer_texto_publicable_sustituye_marcadores_inline_sin_seccion_final
         recursos=recursos,
     )
 
-    publicable = borrador.texto
+    publicable = borrador.texto_alineado_discourse
 
     # 1. NO existe sección ## Recursos al final
     assert "## Recursos" not in publicable

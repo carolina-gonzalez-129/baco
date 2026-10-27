@@ -41,6 +41,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 except Exception:
                     pass
             return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Docs"'})
+
+        if request.url.path.startswith("/api/recursos-temp/"):
+            return await call_next(request)
         token = api_key or (auth[7:] if auth.startswith("Bearer ") else None)
         if not token or not secrets.compare_digest(token, API_KEY):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})

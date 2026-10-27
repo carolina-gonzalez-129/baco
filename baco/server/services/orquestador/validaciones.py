@@ -460,21 +460,30 @@ def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest)
         and req.texto.strip()
         and sesion.estado == EstadoFlujo.ESPERANDO_TITULO
     ):
-        tl, recs = extraer_recursos_y_texto_limpio(
+        from baco.server.services.orquestador.recursos_service import (
+            extraer_recursos_y_bloques_texto,
+            fusionar_bloques_y_recursos_sin_colision,
+        )
+        bloques_ext, recs = extraer_recursos_y_bloques_texto(
             req.texto.strip(),
             recursos_previos=sesion.recursos,
             ultimo_id=sesion.ultimo_id_recurso,
         )
-        tl, recs_merged = fusionar_texto_y_recursos_sin_colision(
-            tl, sesion.recursos, recs, ultimo_id=sesion.ultimo_id_recurso
+        bloques_ext, recs_merged = fusionar_bloques_y_recursos_sin_colision(
+            bloques_ext, sesion.recursos, recs, ultimo_id=sesion.ultimo_id_recurso
         )
-        sanit = sanitizar_borrador(texto=tl, titulo=sesion.titulo)
-        sesion.texto_limpio = sanit["texto_sanitizado"]
+        bloques_san = [
+            sanitizar_borrador(texto=b, titulo=sesion.titulo if i == 0 else "")["texto_sanitizado"].strip()
+            for i, b in enumerate(bloques_ext)
+            if b.strip()
+        ]
+        sesion.bloques_texto = [b for b in bloques_san if b]
+        sesion.texto_limpio = "\n\n".join(sesion.bloques_texto).strip()
         sesion.recursos = recs_merged
         sesion.ultimo_id_recurso = max(sesion.ultimo_id_recurso, _max_num_recurso(recs_merged))
         sesion.orden_multimedia = list(range(len(recs_merged)))
-        sesion.posiciones = list(range(len(recs_merged)))
-        sesion.texto = componer_texto_publicable(sesion.texto_limpio, sesion.recursos)
+        sesion.posiciones = [r.posicion for r in recs_merged.values()]
+        sesion.texto = componer_texto_publicable(sesion.bloques_texto, sesion.recursos)
     if req.categoria_id is not None:
         sesion.categoria_id = req.categoria_id
     if req.tags is not None:
@@ -765,7 +774,7 @@ def construir_respuesta(
 
 def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[str]]:
     b = sesion.borrador
-    texto_eval = (b.texto_limpio if (b and b.texto_limpio) else (b.texto if b else ""))
+    texto_eval = (b.texto_limpio if (b and b.texto_limpio) else (b.texto_alineado_discourse if b else ""))
     try:
         articulo = ArticuloSchema(
             id=b.articulo_original_id or 0,

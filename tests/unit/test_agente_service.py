@@ -52,16 +52,19 @@ def test_skills_rechazan_si_borrador_tiene_recursos_o_marcadores_y_no_llaman_al_
     assert "recursos multimedia" in exc2.value.detail
     mock_baco.assert_not_called()
 
-    # Caso 2: borrador sin dict de recursos pero con marcador [[recurso:rec_1]] en el texto
+    # Caso 2: borrador sin dict de recursos pero con marcador [[recurso:rec_1]] forzado en bloques_texto
     borrador_con_marcador = BorradorSesion(
         modo="nuevo",
         titulo="Cómo configurar el sistema contable",
-        texto_limpio="Texto preliminar con marcador [[recurso:rec_1]] en el cuerpo.",
-        recursos={"rec_1": recs["rec_1"]},
+        bloques_texto=["Texto preliminar en el cuerpo."],
         tipo_plantilla="instructivo",
         conforme=True,
     )
-    borrador_con_marcador.recursos = {}  # forzamos recursos vacíos para aislar el check de texto
+    object.__setattr__(
+        borrador_con_marcador,
+        "bloques_texto",
+        ["Texto preliminar con marcador [[recurso:rec_1]] en el cuerpo."],
+    )
 
     with pytest.raises(HTTPException) as exc3:
         ejecutar_skill_plantillas(sid, borrador_con_marcador, mock_baco)
@@ -181,39 +184,43 @@ def test_agente_corta_con_error_claro_si_no_hay_texto():
 
 
 def test_borrador_texto_no_es_asignable_y_coincide_siempre_con_componer_texto_publicable():
-    """Riesgo 4: borrador.texto no se puede asignar directamente y se deriva de texto_limpio y recursos."""
+    """Riesgo 4: borrador.texto_alineado_discourse no se puede asignar directamente y se deriva de bloques_texto y recursos."""
     from baco.server.services.orquestador.recursos_service import componer_texto_publicable
 
     borrador = BorradorSesion(
         modo="nuevo",
         titulo="Título de prueba",
-        texto_limpio="Texto inicial de prueba para la composición de borrador.",
+        bloques_texto=["Texto inicial de prueba para la composición de borrador."],
         conforme=True,
     )
 
-    # 1. borrador.texto coincide exactamente con componer_texto_publicable
-    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
+    # 1. borrador.texto_alineado_discourse coincide exactamente con componer_texto_publicable
+    assert borrador.texto_alineado_discourse == componer_texto_publicable(borrador.bloques_texto, borrador.recursos)
+    assert not hasattr(borrador, "texto")
 
-    # 2. Intentar asignar borrador.texto debe fallar (no es un campo asignable)
+    # 2. Intentar asignar borrador.texto o borrador.texto_alineado_discourse debe fallar
     with pytest.raises((AttributeError, TypeError)):
         borrador.texto = "Intento de asignación manual directa"
+    with pytest.raises((AttributeError, TypeError)):
+        borrador.texto_alineado_discourse = "Intento de asignación manual directa"
 
-    # 3. Al cambiar texto_limpio, borrador.texto se actualiza inmediatamente
-    borrador.texto_limpio = "Texto modificado paso a paso sin reasignar borrador.texto."
-    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
-    assert "Texto modificado paso a paso" in borrador.texto
+    # 3. Al cambiar bloques_texto, borrador.texto_alineado_discourse se actualiza inmediatamente
+    borrador.bloques_texto = ["Texto modificado paso a paso sin reasignar texto_alineado_discourse."]
+    assert borrador.texto_alineado_discourse == componer_texto_publicable(borrador.bloques_texto, borrador.recursos)
+    assert "Texto modificado paso a paso" in borrador.texto_alineado_discourse
 
-    # 4. Al agregar un recurso, borrador.texto se actualiza inmediatamente reflejando el recurso
+    # 4. Al agregar un recurso, borrador.texto_alineado_discourse se actualiza inmediatamente reflejando el recurso
     nuevo_rec = Recurso(
         id="rec_1",
         tipo="imagen",
         nombre="Diagrama de flujo",
         referencia="https://bc.finneg.com/uploads/diagrama.png",
+        posicion=0,
         orden=0,
     )
     borrador.agregar_multimedia(nuevo_rec)
-    assert borrador.texto == componer_texto_publicable(borrador.texto_limpio, borrador.recursos)
-    assert "https://bc.finneg.com/uploads/diagrama.png" in borrador.texto
+    assert borrador.texto_alineado_discourse == componer_texto_publicable(borrador.bloques_texto, borrador.recursos)
+    assert "https://bc.finneg.com/uploads/diagrama.png" in borrador.texto_alineado_discourse
 
 
 def test_escapar_delimitadores_xml_usa_constante_buffer():
