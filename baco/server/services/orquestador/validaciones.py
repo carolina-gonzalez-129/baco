@@ -1,8 +1,12 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple
+import difflib
+import unicodedata
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.schemas.chat_orquestado import (
+    BorradorSesion,
     CategoriaOpcion,
     ChatOrquestadorRequest,
     ChatOrquestadorResponse,
@@ -446,8 +450,9 @@ def consolidar_texto_enriquecimiento(
     aviso_priv = sanit.get("aviso_privacidad")
 
     if aporte_limpio and base:
-        if len(aporte_limpio) <= 70:
-            return f"{base}\n\n{aporte_limpio}", aviso_priv
+        if base in aporte_limpio:
+            return aporte_limpio, aviso_priv
+        # Si la base fue modificada o editada por el usuario, se respeta la edición manual sin forzar append de la base original
         return aporte_limpio, aviso_priv
     return (aporte_limpio or base), aviso_priv
 
@@ -484,6 +489,10 @@ def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest)
         sesion.orden_multimedia = list(range(len(recs_merged)))
         sesion.posiciones = [r.posicion for r in recs_merged.values()]
         sesion.texto = componer_texto_publicable(sesion.bloques_texto, sesion.recursos)
+    if getattr(req, "texto_editor", None) is not None:
+        sesion.texto_editor = req.texto_editor
+        if sesion.borrador is not None:
+            sesion.borrador.texto_editor = req.texto_editor
     if req.categoria_id is not None:
         sesion.categoria_id = req.categoria_id
     if req.tags is not None:
@@ -637,6 +646,114 @@ def normalizar_coincidencias(
     ]
 
 
+def normalizar_texto_categoria(texto: str) -> str:
+    if not texto:
+        return ""
+    t = str(texto).strip().lower()
+    t = unicodedata.normalize("NFKD", t)
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return t.strip()
+
+
+@dataclass
+class ResultadoCategoria:
+    categoria_id: Optional[int]
+    categoria_nombre: Optional[str]
+    candidatos: List[CategoriaOpcion] = field(default_factory=list)
+    estado: Literal["asignado", "ambiguo", "no_encontrado", "vacio"] = "vacio"
+
+
+def resolver_categoria(
+    entrada: Union[str, int, None],
+    categorias_disponibles: Optional[List[CategoriaOpcion]] = None,
+) -> ResultadoCategoria:
+    if entrada is None:
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, estado="vacio")
+
+    catalogo: List[CategoriaOpcion] = list(categorias_disponibles or CATALOGO_OFICIAL_165_CATEGORIAS)
+
+    # 1. Entrada numérica (id directo)
+    es_digito = isinstance(entrada, int) or (isinstance(entrada, str) and str(entrada).strip().isdigit())
+    if es_digito:
+        cid = int(entrada)
+        nom = None
+        for c in catalogo:
+            if c.id == cid:
+                nom = c.nombre
+                break
+        if not nom:
+            nom = DICCIONARIO_OFICIAL_CATEGORIAS.get(cid, f"Categoría {cid}")
+        return ResultadoCategoria(categoria_id=cid, categoria_nombre=nom, estado="asignado")
+
+    raw = str(entrada).strip()
+    if not raw:
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, estado="vacio")
+
+    norm_in = normalizar_texto_categoria(raw)
+    if not norm_in:
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, estado="vacio")
+
+    # Mapeo y deduplicación de categorías válidas (sin dummies sintéticos sin nombre real)
+    mapa_unicos: Dict[str, CategoriaOpcion] = {}
+    for c in catalogo:
+        nom = (c.nombre or "").strip()
+        if not nom:
+            continue
+        norm_c = normalizar_texto_categoria(nom)
+        if norm_c.startswith("categoria ") and norm_c[10:].isdigit():
+            if c.id in DICCIONARIO_OFICIAL_CATEGORIAS:
+                nom_real = DICCIONARIO_OFICIAL_CATEGORIAS[c.id]
+                c = CategoriaOpcion(id=c.id, nombre=nom_real)
+                norm_c = normalizar_texto_categoria(nom_real)
+            else:
+                continue
+
+        if norm_c not in mapa_unicos:
+            mapa_unicos[norm_c] = c
+        else:
+            existente = mapa_unicos[norm_c]
+            if c.id < existente.id:
+                mapa_unicos[norm_c] = c
+
+    lista_unicos = list(mapa_unicos.values())
+
+    # a) Coincidencia exacta normalizada
+    if norm_in in mapa_unicos:
+        c_exact = mapa_unicos[norm_in]
+        return ResultadoCategoria(categoria_id=c_exact.id, categoria_nombre=c_exact.nombre, estado="asignado")
+
+    # b) Coincidencia por prefijo
+    cands_prefijo = [c for c in lista_unicos if normalizar_texto_categoria(c.nombre).startswith(norm_in)]
+    if len(cands_prefijo) == 1:
+        return ResultadoCategoria(categoria_id=cands_prefijo[0].id, categoria_nombre=cands_prefijo[0].nombre, estado="asignado")
+    elif len(cands_prefijo) > 1:
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, candidatos=cands_prefijo, estado="ambiguo")
+
+    # c) Coincidencia por contains (subcadena)
+    cands_contains = [c for c in lista_unicos if norm_in in normalizar_texto_categoria(c.nombre)]
+    if len(cands_contains) == 1:
+        return ResultadoCategoria(categoria_id=cands_contains[0].id, categoria_nombre=cands_contains[0].nombre, estado="asignado")
+    elif len(cands_contains) > 1:
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, candidatos=cands_contains, estado="ambiguo")
+
+    # d) Coincidencia aproximada (difflib)
+    nombres_norm = list(mapa_unicos.keys())
+    matches = difflib.get_close_matches(norm_in, nombres_norm, n=5, cutoff=0.65)
+    if len(matches) == 1:
+        matched = mapa_unicos[matches[0]]
+        return ResultadoCategoria(categoria_id=matched.id, categoria_nombre=matched.nombre, estado="asignado")
+    elif len(matches) > 1:
+        cands = [mapa_unicos[m] for m in matches]
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, candidatos=cands, estado="ambiguo")
+
+    # e) No encontrado: sugerencias de categorías estándar
+    sug_matches = difflib.get_close_matches(norm_in, nombres_norm, n=3, cutoff=0.35)
+    sug_cands = [mapa_unicos[m] for m in sug_matches]
+    if not sug_cands:
+        sug_cands = [c for c in lista_unicos if c.nombre in ("Ventas", "Compras", "Contabilidad", "Agro", "Tesorería")][:3]
+    return ResultadoCategoria(categoria_id=None, categoria_nombre=None, candidatos=sug_cands, estado="no_encontrado")
+
+
 def parsear_metadatos_mensaje(
     mensaje: Optional[str],
     tags_req: Optional[List[str]],
@@ -644,44 +761,58 @@ def parsear_metadatos_mensaje(
     texto_fallback: Optional[str] = None,
     categorias_disponibles: Optional[List[CategoriaOpcion]] = None,
     tags_disponibles: Optional[List[str]] = None,
-) -> Tuple[List[str], Optional[int]]:
+) -> Tuple[List[str], Optional[int], Optional[str]]:
     nuevos_tags: List[str] = list(tags_req or [])
     cat_res = cat_req
-    mapa_cat_nombre = {
-        c.nombre.strip().lower(): c.id for c in (categorias_disponibles or []) if c.nombre
-    }
-    set_tags = {t.strip().lower() for t in (tags_disponibles or []) if t and str(t).strip()}
+    cat_nom = None
+    if cat_res is not None:
+        res_init = resolver_categoria(cat_res, categorias_disponibles)
+        cat_nom = res_init.categoria_nombre
+
     cadena = (mensaje or texto_fallback or "").strip()
     if not cadena:
-        return nuevos_tags, cat_res
+        return nuevos_tags, cat_res, cat_nom
 
     vino_de_mensaje = bool(mensaje and mensaje.strip())
+    set_tags = {normalizar_texto_categoria(t) for t in (tags_disponibles or []) if t and str(t).strip()}
     fragmentos = [f.strip() for f in cadena.split(",") if f.strip()]
-
-    # Si hay un fragmento numérico explícito, tiene prioridad absoluta como categoria_id
-    if cat_res is None:
-        for f in fragmentos:
-            if f.isdigit():
-                cat_res = int(f)
-                break
 
     for item in fragmentos:
         if item.isdigit():
-            # Si coincide con cat_res ya asignado, no lo agregamos a tags
-            if cat_res is not None and int(item) == cat_res:
-                continue
+            if cat_res is None:
+                res_num = resolver_categoria(int(item), categorias_disponibles)
+                if res_num.categoria_id is not None:
+                    cat_res = res_num.categoria_id
+                    cat_nom = res_num.categoria_nombre
+                    continue
             if not tags_req:
                 nuevos_tags.append(item)
-        elif item.lower() in set_tags:
-            if not tags_req:
-                nuevos_tags.append(item)
-        elif vino_de_mensaje and cat_res is None and item.lower() in mapa_cat_nombre:
-            cat_res = mapa_cat_nombre[item.lower()]
-        else:
-            if not tags_req:
-                nuevos_tags.append(item)
+            continue
 
-    return nuevos_tags, cat_res
+        item_norm = normalizar_texto_categoria(item)
+
+        # Si coincide con un tag existente en la base, es prioritariamente una etiqueta temática
+        if set_tags and item_norm in set_tags:
+            if not tags_req:
+                nuevos_tags.append(item)
+            continue
+
+        # Si no coincide con un tag y aún no hay categoría, verificar si es el nombre de una categoría.
+        # Regla sine qua non: En turno 1 nunca se infiere categoría desde palabras simples (ej. "ventas", "agro"),
+        # ya que los vocabularios de tags y categorías colisionan. Sólo se asigna categoría si es una frase
+        # multipalabra exacta del catálogo oficial (ej. "Liquidación de Haberes").
+        if cat_res is None and vino_de_mensaje and len(item.split()) > 1:
+            res_c = resolver_categoria(item, categorias_disponibles)
+            if res_c.estado == "asignado":
+                cat_res = res_c.categoria_id
+                cat_nom = res_c.categoria_nombre
+                continue
+
+        # Si no fue categoría ni tag conocido, se toma como nuevo tag temático
+        if not tags_req:
+            nuevos_tags.append(item)
+
+    return nuevos_tags, cat_res, cat_nom
 
 
 def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
@@ -709,6 +840,21 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "soluciones": "soluciones", "solucion": "soluciones", "solución": "soluciones",
     }
     return mapa.get(bruto, bruto)
+
+
+def obtener_aviso_metadatos_heredados(borrador: Optional[BorradorSesion]) -> Optional[str]:
+    if not borrador or not borrador.metadatos_anteriores or borrador.metadatos_heredados_revisados:
+        return None
+    ant = borrador.metadatos_anteriores
+    cat_nom = ant.get("categoria_nombre") or (
+        DICCIONARIO_OFICIAL_CATEGORIAS.get(ant.get("categoria_id"), f"Categoría {ant.get('categoria_id')}")
+        if ant.get("categoria_id") else "Sin categoría"
+    )
+    tags_str = ", ".join(ant.get("tags") or []) or "ninguna"
+    return (
+        f"El artículo en su versión anterior tenía asociada la categoría '{cat_nom}' y las etiquetas: [{tags_str}]. "
+        "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
+    )
 
 
 def construir_respuesta(
@@ -751,12 +897,32 @@ def construir_respuesta(
             skills_hab = True
             skills_mot = None
 
+    tiene_meta_pendiente = bool(
+        sesion.borrador
+        and sesion.borrador.metadatos_anteriores
+        and not sesion.borrador.metadatos_heredados_revisados
+        and sesion.estado not in (
+            EstadoFlujo.ESPERANDO_TITULO,
+            EstadoFlujo.DECISION_TITULO,
+            EstadoFlujo.ESPERANDO_TEXTO,
+            EstadoFlujo.DECISION_TEXTO,
+        )
+    )
+    meta_aviso_final = aviso_metadatos_heredados
+    if tiene_meta_pendiente and not meta_aviso_final:
+        meta_aviso_final = obtener_aviso_metadatos_heredados(sesion.borrador)
+
+    opciones_finales = list(opciones)
+    if tiene_meta_pendiente:
+        if "aceptar" not in opciones_finales and "aceptar_metadatos" not in opciones_finales:
+            opciones_finales = ["aceptar", "rechazar"] + [o for o in opciones_finales if o not in ("aceptar", "rechazar")]
+
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
         estado=sesion.estado,
         etapa=obtener_etapa_flujo(sesion.estado),
         mensaje=mensaje,
-        opciones=opciones,
+        opciones=opciones_finales,
         tags_acumulados=obtener_tags_acumulados(sesion),
         categorias_disponibles=list(sesion.categorias_disponibles),
         tags_disponibles=list(sesion.tags_disponibles),
@@ -768,7 +934,7 @@ def construir_respuesta(
         skills_motivo=skills_mot,
         validacion=sesion.validacion,
         aviso_privacidad=aviso_privacidad,
-        aviso_metadatos_heredados=aviso_metadatos_heredados,
+        aviso_metadatos_heredados=meta_aviso_final,
     )
 
 
@@ -825,7 +991,8 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         b.texto_limpio = texto_preservado
         b.texto_base_limpio = texto_preservado
         res["texto_sanitizado"] = texto_preservado
-        res["aviso_privacidad"] = aviso_preservado
+        if aviso_preservado:
+            res["aviso_privacidad"] = aviso_preservado
     elif res.get("texto_sanitizado"):
         b.texto_limpio = res["texto_sanitizado"]
     if res.get("titulo_sanitizado"):

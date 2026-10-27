@@ -117,6 +117,9 @@ def test_camino_coincidencia_titulo_enriquecer_con_datos_db_valida_y_aprueba(cli
     with TestClient(app, headers={"X-API-Key": API_KEY}) as c_inexistente:
         assert c_inexistente.get("/chat/borrador", headers={"X-Session-ID": "inexistente-123"}).status_code == 404
 
+    # Acepta los metadatos heredados de la versión anterior
+    client.post("/chat", json={"session_id": sid, "accion": "aceptar"})
+
     # 4. Revisión humana final -> da conformidad y garantiza sanitización determinista
     r4 = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
     assert r4["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
@@ -161,13 +164,17 @@ def test_camino_descarta_titulo_duplicado_en_texto_y_enriquece(client, mock_busc
     assert r3["estado"] == EstadoFlujo.DECISION_TEXTO
     assert r3["coincidencias"][0]["id"] == 305
 
-    # Acepta enriquecer -> borrador de enriquecimiento con datos de DB + validar_articulo
+    # Acepta enriquecer -> pasa a ESPERANDO_TEXTO en modo enriquecimiento
     r4 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_TEXTO
     assert r4["borrador"]["modo"] == "enriquecimiento"
     assert r4["borrador"]["articulo_original_id"] == 305
-    assert r4["borrador"]["tipo_plantilla"] == "soluciones"
-    assert r4["validacion"]["valido"] is True
+
+    # Confirma texto -> avanza a REVISION_BORRADOR con datos de DB + validar_articulo
+    r5 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r4["borrador"]["texto_alineado_discourse"]}).json()
+    assert r5["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r5["borrador"]["tipo_plantilla"] == "soluciones"
+    assert r5["validacion"]["valido"] is True
 
 
 def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(client, mock_buscador):
@@ -1534,7 +1541,7 @@ def test_metadatos_heredados_rechazar_y_volver_permite_reconsiderar(client, mock
 
 
 def test_solicitar_categoria_en_formulario_desde_chat(client, mock_buscador):
-    """Verifica que en ESPERANDO_METADATOS el chat indique seleccionar la categoría desde el menú desplegable en el formulario."""
+    """Verifica que en ESPERANDO_METADATOS el chat indique etiquetas en turno 1 y categoría en turno 2 con menú desplegable."""
     mock_buscador.evaluar_titulo.return_value = None
     mock_buscador.evaluar_texto.return_value = None
 
@@ -1543,13 +1550,42 @@ def test_solicitar_categoria_en_formulario_desde_chat(client, mock_buscador):
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
 
+    # Turno 1: solicita etiquetas temáticas
     assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "menú desplegable en el formulario de la izquierda" in r_meta["mensaje"]
     assert "etiquetas temáticas" in r_meta["mensaje"]
 
-    r_rev = client.post("/chat", json={"session_id": sid, "categoria_id": 4, "tags": ["facturacion", "afip"]}).json()
+    # Turno 2: usuario envía etiquetas temáticas; el bot solicita la categoría con opción de chat o menú desplegable
+    r_cat = client.post("/chat", json={"session_id": sid, "mensaje": "facturacion, afip"}).json()
+    assert r_cat["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "menú desplegable en la sección inferior del panel izquierdo" in r_cat["mensaje"]
+    assert "decime la categoría por acá" in r_cat["mensaje"]
+
+    # Turno 3: define categoría y avanza a revisión
+    r_rev = client.post("/chat", json={"session_id": sid, "categoria_id": 4}).json()
     assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_rev["borrador"]["categoria_id"] == 4
+    assert "facturacion" in r_rev["borrador"]["tags"]
+
+
+def test_mapear_categoria_directamente_desde_chat_en_turno_2(client, mock_buscador):
+    """Verifica que en el Turno 2 el usuario pueda escribir la categoría en el chat y se mapee directamente."""
+    mock_buscador.evaluar_titulo.return_value = None
+    mock_buscador.evaluar_texto.return_value = None
+
+    r1 = client.post("/chat", json={"mensaje": "Nueva Guía de Facturación Electrónica"}).json()
+    sid = r1["session_id"]
+    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
+    r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+
+    # Turno 1: ingresa etiquetas por chat
+    assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    r_cat = client.post("/chat", json={"session_id": sid, "mensaje": "facturacion, afip"}).json()
+    assert r_cat["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+
+    # Turno 2: usuario ingresa la categoría escribiendo 'Ventas' en el chat
+    r_rev = client.post("/chat", json={"session_id": sid, "mensaje": "Ventas"}).json()
+    assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_rev["borrador"]["categoria_id"] is not None
     assert "facturacion" in r_rev["borrador"]["tags"]
 
 

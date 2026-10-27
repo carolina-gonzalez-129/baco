@@ -138,6 +138,10 @@ class BorradorSesion(BaseModel):
     )
     texto_base_limpio: str = ""
     texto_en_edicion: str = ""
+    texto_editor: Optional[str] = Field(
+        default=None,
+        description="Texto escrito exclusivamente por la persona en el Editor, independiente de la Vista previa.",
+    )
     orden_multimedia: List[int] = Field(
         default_factory=list,
         description="Vector numérico que guarda el orden explícito de los contenidos multimedia en el borrador."
@@ -157,6 +161,10 @@ class BorradorSesion(BaseModel):
     conformidad_invalidada: bool = Field(default=False, description="Indica si una conformidad previa fue invalidada por una modificación posterior.")
     tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = None
     categoria_id: Optional[int] = None
+    categoria_nombre: Optional[str] = Field(
+        default=None,
+        description="Nombre legible de la categoría para visualización y resúmenes."
+    )
     tags: List[str] = Field(default_factory=list)
     metadatos_anteriores: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -242,6 +250,15 @@ class BorradorSesion(BaseModel):
                         data["recursos"] = recs
                 else:
                     data["bloques_texto"] = []
+
+            cid = data.get("categoria_id")
+            if cid is not None and not data.get("categoria_nombre"):
+                try:
+                    from baco.server.services.orquestador.validaciones import DICCIONARIO_OFICIAL_CATEGORIAS
+                    if int(cid) in DICCIONARIO_OFICIAL_CATEGORIAS:
+                        data["categoria_nombre"] = DICCIONARIO_OFICIAL_CATEGORIAS[int(cid)]
+                except Exception:
+                    pass
         return data
 
     @computed_field  # type: ignore[prop-decorator]
@@ -263,8 +280,11 @@ class BorradorSesion(BaseModel):
         """Indica si las skills del agente están habilitadas para el borrador.
 
         Calculado estrictamente en el servidor:
-        False si el largo efectivo supera TEXTO_MAX (6687) o si el borrador tiene recursos.
+        False si el modo es enriquecimiento (enriquecer o actualizar),
+        si el largo efectivo supera TEXTO_MAX (6687) o si el borrador tiene recursos.
         """
+        if self.modo == "enriquecimiento":
+            return False
         from baco.server.config_limites import TEXTO_MAX
         from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 
@@ -279,6 +299,8 @@ class BorradorSesion(BaseModel):
     @property
     def skills_motivo(self) -> Optional[str]:
         """Texto explicativo del motivo por el cual las skills están deshabilitadas."""
+        if self.modo == "enriquecimiento":
+            return "Las skills de IA están deshabilitadas al enriquecer o actualizar artículos existentes."
         from baco.server.config_limites import TEXTO_MAX
         from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 
@@ -632,6 +654,10 @@ class ChatOrquestadorRequest(BaseModel):
         default=None,
         description="Cuerpo al cargar texto o editar el borrador."
     )
+    texto_editor: Optional[str] = Field(
+        default=None,
+        description="Texto escrito exclusivamente por la persona en el Editor."
+    )
     categoria_id: Optional[int] = Field(
         default=None,
         description="Categoría o ID de módulo ERP del borrador."
@@ -641,7 +667,7 @@ class ChatOrquestadorRequest(BaseModel):
         description="Lista de tags del borrador."
     )
 
-    @field_validator("texto", "mensaje", mode="before")
+    @field_validator("texto", "mensaje", "texto_editor", mode="before")
     @classmethod
     def validar_longitud_texto(cls, v: Optional[str]) -> Optional[str]:
         if v and len(v) > TEXTO_MAX_PERCENTIL_99:

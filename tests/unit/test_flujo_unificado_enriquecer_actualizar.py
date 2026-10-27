@@ -128,10 +128,13 @@ def test_decision_texto_enriquecer_trae_imagenes_y_termina_duplicados(client, mo
         mock_bc.return_value = (TEXTO_CON_IMAGEN, 20, ["soluciones", "finanzas"])
         r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
     assert r3["borrador"]["articulo_original_id"] == 555
     assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
-    assert "conforme" in r3["opciones"]
+
+    r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
+    assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert "conforme" in r3_conf["opciones"]
 
 
 def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, mock_buscador):
@@ -156,10 +159,13 @@ def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, moc
         mock_bc.return_value = (TEXTO_CON_IMAGEN, 10, ["ventas", "afip"])
         r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
+
     # Primero pide confirmación de metadatos heredados
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r3["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r3["opciones"]
+    assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3_conf["aviso_metadatos_heredados"] is not None
+    assert "aceptar" in r3_conf["opciones"]
 
     # Al aceptar, como no tenía tag de plantilla ('instructivo' ni 'soluciones'),
     # se detiene en ESPERANDO_PLANTILLA
@@ -209,10 +215,13 @@ def test_articulo_enriquecido_con_menos_de_2_tags_se_detiene_en_metadatos(client
         mock_bc.return_value = (TEXTO_CON_IMAGEN, 12, ["instructivo"])
         r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
+
     # Primero pide confirmación de metadatos heredados
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r3["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r3["opciones"]
+    assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3_conf["aviso_metadatos_heredados"] is not None
+    assert "aceptar" in r3_conf["opciones"]
 
     # Al aceptar, como tiene 1 tag y requiere mínimo 2 -> se detiene en ESPERANDO_METADATOS
     r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()

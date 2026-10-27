@@ -301,38 +301,17 @@ def confirmar_bloques(
 
     texto_limpio = "\n\n".join(bloques_derivados).strip()
     titulo_ctx = (sesion.borrador.titulo if sesion.borrador else sesion.titulo) or "Artículo"
-    if (
-        sesion.borrador
-        and sesion.borrador.modo == "enriquecimiento"
-        and (
-            sesion.borrador.texto_base_limpio
-            or (sesion.coincidencias and sesion.coincidencias[0].texto_original)
-        )
-    ):
-        texto_base_limpio = (
-            sesion.borrador.texto_base_limpio
-            if sesion.borrador.texto_base_limpio
-            else extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())[0]
-        )
-        texto_sanitizado, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, texto_limpio)
-        bloques_sanitizados = [
-            sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
-            for b in bloques_derivados
-            if b.strip()
-        ]
-        bloques_sanitizados = [b for b in bloques_sanitizados if b]
-        if texto_base_limpio and texto_base_limpio not in "\n\n".join(bloques_sanitizados) and len(texto_limpio) <= 70:
-            bloques_sanitizados = [texto_base_limpio] + bloques_sanitizados
-    else:
-        sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
-        texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
-        aviso_priv = sanit.get("aviso_privacidad")
-        bloques_sanitizados = [
-            sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
-            for b in bloques_derivados
-            if b.strip()
-        ]
-        bloques_sanitizados = [b for b in bloques_sanitizados if b]
+    sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
+    texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
+    aviso_priv = sanit.get("aviso_privacidad")
+    bloques_sanitizados = [
+        sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+        for b in bloques_derivados
+        if b.strip()
+    ]
+    bloques_sanitizados = [b for b in bloques_sanitizados if b]
+    if sesion.borrador and sesion.borrador.modo == "enriquecimiento":
+        sesion.borrador.texto_base_limpio = texto_sanitizado
 
     largo_efectivo = len(texto_efectivo_sin_marcadores(texto_sanitizado))
     if largo_efectivo < TEXTO_MIN:

@@ -555,3 +555,38 @@ def test_particion_cursor_markdown_y_validaciones_cliente_en_app():
     assert out["valOk"]["valido"] is True
     assert out["mdBold"] == "Hola **mundo**"
     assert out["cpEmoji"] == 3 and out["utf16Len"] == 4
+
+
+def test_vista_previa_editable_interactiva():
+    """Verifica la integración de la Vista previa editable e interactiva:
+    - Se definen renderVistaPreviaEditable, extraerMarkdownDeBloque y sincronizarTextoDesdePreview en app.js.
+    - Se asocian a btnPreview, btnEditor, confirmarTexto y enviarPrincipal.
+    - Los bloques editables tienen contenteditable="true" y los recursos contenteditable="false".
+    - En styles.css existe la clase .preview-bloque-editable con cursor text y focus visible.
+    """
+    app_text = (FRONT / "js" / "app.js").read_text(encoding="utf-8")
+    css_text = (FRONT / "styles.css").read_text(encoding="utf-8")
+    pm_text = (FRONT / "js" / "panel-multimedia.js").read_text(encoding="utf-8")
+
+    assert "function renderVistaPreviaEditable(" in app_text
+    assert "function extraerMarkdownDeBloque(" in app_text
+    assert "function sincronizarTextoDesdePreview(" in app_text
+
+    # Conexión al cambiar entre pestañas Editor y Vista previa
+    assert "sincronizarTextoDesdePreview()" in app_text
+    assert "renderVistaPreviaEditable()" in app_text
+
+    # Al confirmar o editar se sincroniza desde la vista previa
+    i_conf = app_text.index("async function confirmarTexto()")
+    assert "sincronizarTextoDesdePreview()" in app_text[i_conf:i_conf + 300]
+
+    # Contenteditable en preview y protección de recursos
+    assert 'bDiv.setAttribute(\'contenteditable\', \'true\')' in app_text
+    assert 'mediaEl.setAttribute(\'contenteditable\', \'false\')' in app_text
+
+    # Estilos en CSS
+    assert ".preview-bloque-editable" in css_text
+    assert "cursor: text" in css_text
+
+    # Exportación de aMarkdown
+    assert "aMarkdown" in pm_text

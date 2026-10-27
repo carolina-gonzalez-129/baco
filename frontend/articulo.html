@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BACO · Artículo final</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23E4614A'/><circle cx='11' cy='11' r='3' fill='white'/><circle cx='21' cy='16' r='3' fill='white'/><circle cx='11' cy='21' r='3' fill='white'/></svg>">
+</head>
+<body class="articulo-page">
+
+<div class="app-articulo">
+  <header class="topbar">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#E4614A"/>
+        <path d="M11 11L21 16L11 21" stroke="white" stroke-width="1.6" fill="none" opacity=".7"/>
+        <circle cx="11" cy="11" r="3" fill="white"/><circle cx="21" cy="16" r="3" fill="white"/><circle cx="11" cy="21" r="3" fill="white"/>
+      </svg>
+      <span class="wm"><b>BACO</b><span>Base de Conocimiento</span></span>
+    </div>
+
+    <nav class="tabs">
+      <span class="tab on">Artículo final</span>
+    </nav>
+
+    <span class="sesion" id="sesionIndicador"></span>
+    <div class="modo"><span class="dot verde"></span> solo lectura</div>
+  </header>
+
+  <main class="articulo-layout">
+    <!-- Estado de carga -->
+    <div id="estadoCarga" class="articulo-mensaje-estado">
+      <span class="spin"></span> Cargando artículo final desde el servidor…
+    </div>
+
+    <!-- Mensaje de estado (vacío, no encontrado, error) -->
+    <div id="mensajeEstado" hidden></div>
+
+    <!-- Contenido del artículo (solo lectura, sin formularios ni edición) -->
+    <article id="articuloContenido" class="articulo-card" hidden>
+      <header class="articulo-header">
+        <h1 class="articulo-titulo-principal" id="articuloTitulo"></h1>
+
+        <div class="articulo-meta-top">
+          <div class="articulo-meta-bloque">
+            <span class="articulo-meta-label">Categoría:</span>
+            <span class="pill info" id="articuloCategoria">—</span>
+          </div>
+
+          <div class="articulo-meta-bloque">
+            <span class="articulo-meta-label">Etiquetas:</span>
+            <div class="articulo-tags-lista" id="articuloTags"></div>
+          </div>
+        </div>
+      </header>
+
+      <div class="articulo-secciones" id="articuloSecciones"></div>
+    </article>
+  </main>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/datos-mock.js"></script>
+<script src="js/articulo.js"></script>
+</body>
+</html>

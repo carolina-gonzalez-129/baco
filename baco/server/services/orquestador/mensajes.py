@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 
@@ -69,7 +69,7 @@ MSG_ELEGIR_SERIE_O_DESCARTAR = (
     "o 'descartar' si se trata de una nueva edición que querés publicar por separado."
 )
 MSG_TEXTO_VACIO = (
-    "Por favor, ncesito que me pases el texto o los pasos del artículo "
+    "Por favor, necesito que me pases el texto o los pasos del artículo "
     "para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes."
 )
 MSG_TEXTO_EN_EDICION = (
@@ -179,6 +179,7 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f"Cargué el texto del artículo #{articulo_id} ('{titulo}').\n\n"
+        "En la sección Vista Previa del panel izquierdo"
         "Podés revisarlo, modificar explicaciones, eliminar secciones  o adicionar nuevos pasos. "
         "Cuando termines tus cambios, enviame la versión completa para avanzar."
     )
@@ -187,6 +188,7 @@ def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f"Cargué el contenido de la última entrega de la serie (#{articulo_id} - '{titulo}').\n\n"
+        "En la sección Vista Previa del panel izquierdo"
         "Tenés total libertad para trabajar sobre él: podés modificar lo que haya cambiado, "
         "eliminar los datos que ya no apliquen o adicionar las novedades. "
         "Cuando esté listo, enviame el texto completo actualizado."
@@ -210,13 +212,39 @@ VARIANTES_TAGS_FALTANTES = [
 
 
 VARIANTES_CATEGORIA_FALTANTE = [
-    "¡Casi listo! Por favor seleccioná la categoría del artículo desde el menú desplegable en el formulario de la izquierda.",
-    "Falta definir la categoría: elegí la opción que corresponda desde el menú desplegable del formulario de la izquierda para continuar.",
+    "¡Perfecto! Ya asignamos las etiquetas temáticas. Ahora por favor decime la categoría por acá si ya sabés cuál es (por ejemplo: Ventas, Compras). Si no sabés cuál es, podés buscarla y seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
+    "Falta definir la categoría: podés escribirla por acá si ya la sabés (ej. Ventas, Compras) o seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
 ]
 
 
 def msg_pedir_categoria(intento: int = 0) -> str:
     return VARIANTES_CATEGORIA_FALTANTE[intento % len(VARIANTES_CATEGORIA_FALTANTE)]
+
+
+def msg_categoria_no_encontrada(termino: str, sugerencias: Optional[List[str]] = None) -> str:
+    sug_txt = ""
+    if sugerencias:
+        if len(sugerencias) == 1:
+            sug_txt = f" (por ejemplo: {sugerencias[0]})"
+        else:
+            sug_txt = f" (por ejemplo: {', '.join(sugerencias[:3])})"
+    return (
+        f"No encontré la categoría '{termino}'. Podés seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo o probar escribiendo una categoría válida{sug_txt}."
+    )
+
+
+def msg_categoria_ambigua(termino: str, candidatos: List[str]) -> str:
+    if not candidatos:
+        return f"Encontré coincidencias ambiguas para '{termino}'. Por favor seleccioná la categoría desde el menú desplegable en la sección inferior del panel izquierdo."
+    if len(candidatos) == 1:
+        return f"¿Te referís a la categoría '{candidatos[0]}'? Podés confirmarla o elegirla desde el menú desplegable en la sección inferior del panel izquierdo."
+    if len(candidatos) == 2:
+        cands_txt = f"{candidatos[0]} o {candidatos[1]}"
+    else:
+        cands_txt = f"{', '.join(candidatos[:-1])} o {candidatos[-1]}"
+    return (
+        f"Encontré varias categorías que coinciden con '{termino}': ¿te referís a {cands_txt}? También podés seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo."
+    )
 
 
 def msg_pedir_tags_y_categoria(plantilla: str = "", intento: int = 0) -> str:
@@ -238,9 +266,8 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
         f"{prefijo}Asignamos el formato '{plantilla}'. "
-        "Para clasificar el artículo, por favor ingresá en la sección del panel izquierdo al menos dos etiquetas temáticas "
-        "(por ejemplo: ventas, facturación) "
-        "y seleccioná la categoría desde el menú desplegable en el formulario de la izquierda."
+        "Para clasificar el artículo, por favor ingresá 2 etiquetas temáticas por acá si ya sabés cuáles son. "
+        "Si no sabés cuáles son, podés buscarlas e ingresarlas desde la sección inferior del panel izquierdo."
     )
 
 
