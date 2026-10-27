@@ -59,11 +59,6 @@ def _obtener_texto_limpio_estricto(borrador: BorradorSesion) -> str:
     """Devuelve estrictamente texto_limpio con texto efectivo real.
     Verifica que no contenga marcadores de recursos ni tags multimedia."""
     texto_limpio = (borrador.texto_limpio or "").strip()
-    if not texto_limpio:
-        raw = getattr(borrador, "texto", "") or ""
-        texto_limpio = raw.strip()
-        borrador.texto_limpio = texto_limpio
-
     _validar_sin_recursos_para_skills(borrador, texto_limpio)
 
     if not texto_limpio or not texto_efectivo_sin_marcadores(texto_limpio):

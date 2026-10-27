@@ -125,7 +125,7 @@ def test_contenido_adicional_no_modifica_texto_limpio():
     texto_limpio_original = (
         "Pasos de configuración:\n"
         "1. Ir al menú contable.\n"
-        "2. Guardar [[recurso:rec_1]]."
+        "2. Guardar."
     )
     sesion.borrador = BorradorSesion(
         modo="enriquecimiento",

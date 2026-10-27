@@ -116,35 +116,36 @@ def test_extraccion_texto_limpio_y_recursos_multimedia():
     assert "https://docs.google.com/document/d/12345/edit" not in texto_limpio
     assert "https://youtu.be/abc987xyz" not in texto_limpio
 
-    # 2. texto_limpio debe contener los marcadores estables
-    assert "[[recurso:rec_1]]" in texto_limpio
-    assert "[[recurso:rec_2]]" in texto_limpio
-    assert "[[recurso:rec_3]]" in texto_limpio
-    assert "[[recurso:rec_4]]" in texto_limpio
-    assert "[[recurso:rec_5]]" in texto_limpio
+    # 2. texto_limpio queda sin marcadores [[recurso:...]]
+    assert "[[recurso:" not in texto_limpio
 
-    # 3. El diccionario de recursos debe contener la metadata clasificada
+    # 3. El diccionario de recursos debe contener la metadata clasificada y posicion de bloque
     assert len(recursos) == 5
     r1 = recursos["rec_1"]
     assert r1.id == "rec_1"
     assert r1.tipo == "imagen"
     assert r1.origen == "existente"
+    assert r1.posicion == 0
     assert "error.png" in r1.referencia
 
     r2 = recursos["rec_2"]
     assert r2.tipo == "documento"
+    assert r2.posicion == 1
     assert "manual.pdf" in r2.referencia
 
     r3 = recursos["rec_3"]
     assert r3.tipo == "video"
+    assert r3.posicion == 2
     assert "youtube.com" in r3.referencia
 
     r4 = recursos["rec_4"]
     assert r4.tipo == "documento"
+    assert r4.posicion == 3
     assert "docs.google.com" in r4.referencia
 
     r5 = recursos["rec_5"]
     assert r5.tipo == "video"
+    assert r5.posicion == 4
     assert "youtu.be" in r5.referencia
 
     # 4. Reconstrucción fiel a Markdown para publicación/previsualización
@@ -239,7 +240,8 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
     # 1. Listar recursos mediante la API
     resp_listar = client.get("/chat/recursos", headers={"X-Session-ID": sid})
     assert resp_listar.status_code == 200
-    recs_api = resp_listar.json()
+    estado_listar = resp_listar.json()
+    recs_api = estado_listar["recursos"]
     assert len(recs_api) == 2
     assert recs_api[0]["id"] == "rec_1"
     assert recs_api[1]["id"] == "rec_2"
@@ -247,12 +249,15 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
     # 2. Eliminar 'rec_1' mediante DELETE /chat/recursos/{id}
     resp_del = client.delete("/chat/recursos/rec_1", headers={"X-Session-ID": sid})
     assert resp_del.status_code == 200
-    assert resp_del.json() == {"status": "ok", "eliminado": "rec_1"}
+    estado_del = resp_del.json()
+    assert [r["id"] for r in estado_del["recursos"]] == ["rec_2"]
 
-    # 3. Invariante 7: eliminar un recurso de recursos no altera texto_limpio
+    # 3. Invariante: eliminar un recurso lo quita de recursos y de texto_alineado_discourse
     assert "rec_1" not in sesion.borrador.recursos
     assert "rec_2" in sesion.borrador.recursos
-    assert 'rec_1' not in sesion.borrador.texto_limpio and 'rec_2' in sesion.borrador.texto_limpio
+    assert "[[recurso:" not in sesion.borrador.texto_limpio
+    assert "img1.png" not in sesion.borrador.texto_alineado_discourse
+    assert "img2.png" in sesion.borrador.texto_alineado_discourse
 
     # 4. Intentar eliminar recurso inexistente debe devolver 404
     resp_del_404 = client.delete("/chat/recursos/rec_inexistente", headers={"X-Session-ID": sid})
@@ -362,12 +367,14 @@ def test_subida_recursos_con_flag_activo(client):
             files={"file": ("grafico_contable.png", io.BytesIO(png_bytes), "image/png")},
         )
         assert resp_valida.status_code == 200
-        data_rec = resp_valida.json()
+        estado_rec = resp_valida.json()
+        data_rec = estado_rec["recursos"][0]
         assert data_rec["id"] == "rec_1"
         assert data_rec["tipo"] == "imagen"
         assert data_rec["origen"] == "subido"
         assert data_rec["mime_type"] == "image/png"
-        assert Path(data_rec["referencia"]).exists()
+        assert data_rec["referencia"] == f"/api/recursos-temp/{sid}/rec_1_grafico_contable.png"
+        assert (DIR_TEMP_SESIONES / sid / "rec_1_grafico_contable.png").exists()
 
         # Invariante 7: Subir un recurso NO altera texto_limpio
         ses = SESIONES[sid]
@@ -419,7 +426,7 @@ def test_subida_recursos_con_flag_activo(client):
 
 def test_expiracion_por_ttl_elimina_archivos_temporales_en_disco():
     sid = "sesion-ttl-cleanup-test"
-    gestor = GestorSesiones()
+    gestor = GestorSesiones(ttl_minutos=30)
 
     # Guardar un archivo en la carpeta temporal de la sesión
     dir_sesion = DIR_TEMP_SESIONES / sid
@@ -529,7 +536,7 @@ def test_vector_orden_multimedia_en_borrador_y_compatibilidad():
     assert hasattr(borrador, "orden_multimedia")
     assert hasattr(borrador, "posiciones")
     assert borrador.orden_multimedia == [0, 1]
-    assert borrador.posiciones == [0, 1]
+    assert borrador.posiciones == [0, 0]
 
     # Validar propiedad multimedia
     assert [r.id for r in borrador.multimedia] == ["rec_a", "rec_b"]
@@ -561,14 +568,14 @@ def test_operaciones_atomicas_borrador_sesion():
         conforme_en="2026-10-24T10:00:00Z",
     )
     assert borrador.orden_multimedia == [0, 1, 2]
-    assert borrador.posiciones == [0, 1, 2]
+    assert borrador.posiciones == [0, 0, 0]
 
     # A. Reordenamiento atómico: mover índice 0 a índice 2
     resultado = borrador.reorder(from_index=0, to_index=2)
     assert [r.id for r in resultado] == ["r1", "r2", "r0"]
     assert [r.orden for r in resultado] == [0, 1, 2]
     assert borrador.orden_multimedia == [0, 1, 2]
-    assert borrador.posiciones == [0, 1, 2]
+    assert borrador.posiciones == [0, 0, 0]
     # Invalida conformidad
     assert borrador.conforme is False
     assert borrador.conforme_en is None
@@ -591,7 +598,7 @@ def test_operaciones_atomicas_borrador_sesion():
     assert [r.id for r in items] == ["r2", "r_new", "r0", "r1"]
     assert [r.orden for r in items] == [0, 1, 2, 3]
     assert borrador.orden_multimedia == [0, 1, 2, 3]
-    assert borrador.posiciones == [0, 1, 2, 3]
+    assert borrador.posiciones == [0, 0, 0, 0]
 
     # E. Eliminación atómica por ID
     eliminado = borrador.eliminar_multimedia("r_new")
@@ -600,7 +607,7 @@ def test_operaciones_atomicas_borrador_sesion():
     assert [r.id for r in items_tras_del] == ["r2", "r0", "r1"]
     assert [r.orden for r in items_tras_del] == [0, 1, 2]
     assert borrador.orden_multimedia == [0, 1, 2]
-    assert borrador.posiciones == [0, 1, 2]
+    assert borrador.posiciones == [0, 0, 0]
 
     # F. Eliminación atómica por índice numérico
     eliminado_idx = borrador.eliminar_multimedia(1)  # elimina "r0" en posición 1
@@ -656,7 +663,7 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
         json={"from_index": 0, "to_index": 2},
     )
     assert resp_reorder.status_code == 200
-    items_reordered = resp_reorder.json()
+    items_reordered = resp_reorder.json()["recursos"]
     assert [r["id"] for r in items_reordered] == ["rec_2", "rec_3", "rec_1"]
 
     # Comprobar estado en la sesión
@@ -679,7 +686,8 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
         },
     )
     assert resp_add.status_code == 200
-    nuevo_rec = resp_add.json()
+    estado_add = resp_add.json()
+    nuevo_rec = next(r for r in estado_add["recursos"] if r["nombre"] == "anexo.pdf")
     assert nuevo_rec["tipo"] == "documento"
     assert nuevo_rec["nombre"] == "anexo.pdf"
     assert nuevo_rec["orden"] == 1
@@ -692,12 +700,12 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
     assert items_tras_add[2].id == "rec_3"
     assert items_tras_add[3].id == "rec_1"
     assert sesion.borrador.orden_multimedia == [0, 1, 2, 3]
-    assert sesion.borrador.posiciones == [0, 1, 2, 3]
+    assert sesion.borrador.posiciones == [0, 1, 1, 2]
 
     # 3. Eliminar por índice numérico (posición 1, que es el anexo recién agregado)
     resp_del_idx = client.delete("/chat/recursos/1", headers={"X-Session-ID": sid})
     assert resp_del_idx.status_code == 200
-    assert resp_del_idx.json()["status"] == "ok"
+    assert [r["id"] for r in resp_del_idx.json()["recursos"]] == ["rec_2", "rec_3", "rec_1"]
 
     # Verificar que quedan 3 recursos en orden correlativo 0, 1, 2
     items_final = sesion.borrador.multimedia
@@ -732,11 +740,12 @@ def test_extraer_recursos_sanitiza_imagenes_relativas_data_uris_y_tags_locales()
     assert "<video" not in tl
     assert "<audio" not in tl
 
-    # 2. El recurso válido remoto sí se registró y dejó su marcador
+    # 2. El recurso válido remoto sí se registró con posicion de bloque y texto_limpio queda sin marcador
     assert len(recs) == 1
     assert "rec_1" in recs
     assert recs["rec_1"].referencia == "https://finneg.com/img/oficial.png"
-    assert "[[recurso:rec_1]]" in tl
+    assert recs["rec_1"].posicion == 0
+    assert "[[recurso:" not in tl
 
     # 3. El texto limpio conserva la redacción original
     assert "Texto inicial del procedimiento." in tl

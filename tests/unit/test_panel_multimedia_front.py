@@ -265,3 +265,293 @@ def test_nodos_ocultos_desacoplados_null_safe():
 
 
 
+
+
+def test_barra_herramientas_discourse_y_accesibilidad():
+    # Barra estilo Discourse sobre #campoTexto reutilizando #btnEditor y #btnPreview
+    assert 'id="editorToolbar"' in INDEX
+    assert 'role="toolbar"' in INDEX
+    for btn_id in (
+        "btnEditor",
+        "btnPreview",
+        "btnMdBold",
+        "btnMdItalic",
+        "btnMdHeading",
+        "btnMdLink",
+        "btnMdQuote",
+        "btnMdCode",
+        "btnMdList",
+        "btnEmojiToolbar",
+        "btnImagenToolbar",
+    ):
+        assert f'id="{btn_id}"' in INDEX
+
+    # Botón de imagen deshabilitado por defecto con el tooltip requerido
+    assert 'id="btnImagenToolbar"' in INDEX
+    assert 'title="Disponible al finalizar las validaciones"' in INDEX
+
+    # #editorBloquesWrapper reactivado (no oculto con display:none fijo en index.html)
+    m_wrapper = re.search(r'<div[^>]*id="editorBloquesWrapper"[^>]*>', INDEX)
+    assert m_wrapper is not None
+    assert "display: none" not in m_wrapper.group(0)
+    assert " hidden" not in m_wrapper.group(0)
+
+    # Estilos reutilizando variables CSS existentes
+    assert ".edhead.discourse-toolbar" in CSS
+    assert "var(--surface-2)" in CSS and "var(--coral-soft)" in CSS
+
+
+@pytest.mark.skipif(NODE is None, reason="Node no disponible")
+def test_actualizar_disponibilidad_recursos_funcion_unica():
+    # Ninguna otra parte del front decide etapas por su cuenta
+    assert "ESTADOS_PREVIOS_A_DEDUP" not in PANEL_JS
+    assert "function actualizarDisponibilidadRecursos(resp)" in ESTADOS_JS
+    assert "BACO.actualizarDisponibilidadRecursos" in APP_JS
+
+    script = "global.window = global;\n" + ESTADOS_JS + """
+    const btnFake = {
+      disabled: true,
+      title: '',
+      attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; }
+    };
+    global.document = {
+      getElementById(id) { return id === 'btnImagenToolbar' ? btnFake : null; }
+    };
+
+    const hab1 = BACO.actualizarDisponibilidadRecursos({ multimedia_habilitada: false });
+    const estado1 = { disabled: btnFake.disabled, title: btnFake.title, hab: hab1 };
+
+    const hab2 = BACO.actualizarDisponibilidadRecursos({ multimedia_habilitada: true });
+    const estado2 = { disabled: btnFake.disabled, title: btnFake.title, hab: hab2 };
+
+    console.log(JSON.stringify({ estado1, estado2 }));
+    """
+    r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
+    out = json.loads(r.stdout)
+    assert out["estado1"] == {
+        "disabled": True,
+        "title": "Disponible al finalizar las validaciones",
+        "hab": False,
+    }
+    assert out["estado2"] == {
+        "disabled": False,
+        "title": "Insertar imagen",
+        "hab": True,
+    }
+
+
+@pytest.mark.skipif(NODE is None, reason="Node no disponible")
+def test_vista_previa_intercalada_respeta_orden_posicion_y_orden():
+    script = "global.window = global;\n" + PANEL_JS + """
+    const bloques = ["Primer bloque de introducción.", "Segundo bloque intermedio.", "Tercer bloque de cierre."];
+    const recursos = [
+      { id: 'rec_3', tipo: 'imagen', nombre: 'Final', referencia: 'https://x/fin.png', posicion: 2, orden: 3 },
+      { id: 'rec_0', tipo: 'imagen', nombre: 'Portada', referencia: 'https://x/portada.png', posicion: -1, orden: 0 },
+      { id: 'rec_2', tipo: 'imagen', nombre: 'Medio2', referencia: 'https://x/m2.png', posicion: 0, orden: 2 },
+      { id: 'rec_1', tipo: 'imagen', nombre: 'Medio1', referencia: 'https://x/m1.png', posicion: 0, orden: 1 }
+    ];
+    const s = { borrador: { bloques_texto: bloques } };
+    const preview = BACO.panelMultimedia.renderPreview(bloques.join('\\n\\n'), recursos, s);
+    console.log(JSON.stringify({ preview }));
+    """
+    r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
+    preview = json.loads(r.stdout)["preview"]
+    partes = preview.split("\n\n")
+    assert partes == [
+        "![Portada](https://x/portada.png)",
+        "Primer bloque de introducción.",
+        "![Medio1](https://x/m1.png)",
+        "![Medio2](https://x/m2.png)",
+        "Segundo bloque intermedio.",
+        "Tercer bloque de cierre.",
+        "![Final](https://x/fin.png)",
+    ]
+
+
+def test_conteo_code_points_y_copiar_texto_alineado_discourse():
+    assert "Array.from(" in APP_JS
+    assert "b.texto_alineado_discourse" in APP_JS
+    assert "skills_motivo" in APP_JS
+
+
+@pytest.mark.skipif(NODE is None, reason="Node no disponible")
+def test_api_mock_paridad_particion_atomica_y_fusion_al_borrar():
+    script = """
+    const fs = require('fs');
+    global.window = global;
+    global.BACO = {
+      config: {
+        MIN_TITULO: 15, MAX_TITULO: 140, MIN_TEXTO: 20,
+        MAX_TEXTO_PERCENTIL_99: 16777, MIN_TAGS: 2, MAX_TAGS: 5,
+        CATEGORIA_DEFAULT: 5,
+        mock: { LATENCIA_MS: 0, LATENCIA_AGENTE_MS: 0, TASA_ERROR: 0 }
+      },
+      datos: {
+        baseConocimiento: [],
+        categorias: [{ id: 5, nombre: 'Ventas' }],
+        etiquetas: [{ tag: 'facturacion', usos: 10 }],
+        plantillas: { instructivo: 'Plantilla instructivo' }
+      }
+    };
+    eval(fs.readFileSync('frontend/js/api-mock.js', 'utf8'));
+    (async () => {
+      await BACO.apiMock.turno({});
+      await BACO.apiMock.turno({ titulo: 'Instructivo completo de facturación electrónica' });
+      const rTxt = await BACO.apiMock.turno({
+        accion: 'confirmar_texto',
+        texto: 'Paso 1 detallando la configuración inicial del módulo en el sistema.'
+      });
+      const estadoSubida = await BACO.apiMock.subirRecursoMultimedia(
+        { name: 'captura.png', type: 'image/png', size: 2048 },
+        0,
+        ['Bloque 1 con CUIT 20-12345678-9 antes de imagen.', 'Bloque 2 después de imagen.']
+      );
+
+      let errorSvg = null;
+      try {
+        await BACO.apiMock.subirRecursoMultimedia(
+          { name: 'malicioso.svg', type: 'image/svg+xml', size: 500 },
+          0,
+          ['Texto que no debe guardarse', 'Otro bloque']
+        );
+      } catch (e) {
+        errorSvg = e.message;
+      }
+      const estadoTrasError = await BACO.apiMock.obtenerRecursos();
+
+      const recId = estadoSubida.recursos[0].id;
+      const estadoTrasBorrar = await BACO.apiMock.eliminarRecurso(recId);
+
+      console.log(JSON.stringify({
+        multiHab: rTxt.multimedia_habilitada,
+        estadoSubida,
+        errorSvg,
+        estadoTrasError,
+        estadoTrasBorrar
+      }));
+    })();
+    """
+    r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
+    out = json.loads(r.stdout)
+
+    assert out["multiHab"] is True
+    subida = out["estadoSubida"]
+    assert len(subida["bloques_texto"]) == 2
+    assert "[CUIT_OCULTO]" in subida["bloques_texto"][0]
+    assert "20-12345678-9" not in subida["texto_limpio"]
+    assert len(subida["recursos"]) == 1
+    assert subida["recursos"][0]["posicion"] == 0
+    assert subida["recursos"][0]["orden"] == 0
+    assert subida["skills_habilitadas"] is False
+    assert "Quitá los recursos" in subida["skills_motivo"]
+
+    # Rollback atómico ante falla (SVG rechazado)
+    assert "SVG" in out["errorSvg"]
+    assert out["estadoTrasError"]["bloques_texto"] == subida["bloques_texto"]
+    assert len(out["estadoTrasError"]["recursos"]) == 1
+
+    # Fusión al borrar el recurso intermedio y reactivación de skills
+    borrado = out["estadoTrasBorrar"]
+    assert len(borrado["recursos"]) == 0
+    assert len(borrado["bloques_texto"]) == 1
+    assert "[CUIT_OCULTO]" in borrado["bloques_texto"][0]
+    assert "Bloque 2 después de imagen." in borrado["bloques_texto"][0]
+    assert borrado["skills_habilitadas"] is True
+
+
+@pytest.mark.skipif(NODE is None, reason="Node no disponible")
+def test_particion_cursor_markdown_y_validaciones_cliente_en_app():
+    script = """
+    const fs = require('fs');
+    global.window = global;
+    global.Event = class Event { constructor(t) { this.type = t; } };
+    const nodoDummy = () => ({
+      innerHTML: '', textContent: '', value: '', hidden: false, disabled: false,
+      className: '', style: {}, dataset: {}, children: [], scrollHeight: 0, scrollTop: 0,
+      classList: { add(){}, remove(){}, toggle(){}, contains(){ return false; } },
+      appendChild(){}, replaceChildren(){}, insertBefore(){}, remove(){},
+      setAttribute(){}, getAttribute(){ return null; }, addEventListener(){},
+      querySelectorAll(){ return []; }, querySelector(){ return nodoDummy(); }, closest(){ return null; }
+    });
+    global.document = {
+      activeElement: null,
+      body: { contains: () => true, appendChild(){}, removeChild(){} },
+      querySelector: () => nodoDummy(),
+      getElementById: () => nodoDummy(),
+      createElement: () => nodoDummy(),
+      createDocumentFragment: () => nodoDummy(),
+      addEventListener: () => {}
+    };
+    global.BACO = {
+      config: { MIN_TITULO: 15, MAX_TITULO: 140, MIN_TEXTO: 20, MAX_TEXTO_PERCENTIL_99: 16777, MIN_TAGS: 2, MAX_TAGS: 5 },
+      api: { esMock: true, turno: async () => ({ session_id: 's1', estado: 'ESPERANDO_TITULO', mensaje: 'Hola', opciones: [] }) }
+    };
+    eval(fs.readFileSync('frontend/js/estados.js', 'utf8'));
+    eval(fs.readFileSync('frontend/js/panel-multimedia.js', 'utf8'));
+    eval(fs.readFileSync('frontend/js/app.js', 'utf8'));
+
+    // 1. Partición en cursor dentro de bloque 0
+    const partConFoco = BACO.partirBloqueEnCursor(['Primera mitad. Segunda mitad.', 'Bloque final.'], 0, 15, 15);
+    // 2. Sin foco: agrega al final sin partir
+    const partSinFoco = BACO.partirBloqueEnCursor(['Bloque 1', 'Bloque 2'], null, null, null);
+
+    // 3. Validaciones de archivo cliente
+    const valSvg = BACO.validarArchivoCliente({ name: 'icono.svg', type: 'image/svg+xml', size: 100 }, [], 1);
+    const val10Mb = BACO.validarArchivoCliente({ name: 'grande.png', type: 'image/png', size: 11 * 1024 * 1024 }, [], 1);
+    const val50Mb = BACO.validarArchivoCliente(
+      { name: 'extra.png', type: 'image/png', size: 6 * 1024 * 1024 },
+      [{ id: 'r1', tamano_bytes: 45 * 1024 * 1024 }],
+      2
+    );
+    const valMaxRecs = BACO.validarArchivoCliente(
+      { name: 'ok.png', type: 'image/png', size: 1024 },
+      Array.from({ length: 20 }, (_, i) => ({ id: 'r' + i, tamano_bytes: 100 })),
+      2
+    );
+    const valMaxBloques = BACO.validarArchivoCliente({ name: 'ok.png', type: 'image/png', size: 1024 }, [], 22);
+    const valOk = BACO.validarArchivoCliente({ name: 'ok.png', type: 'image/png', size: 2048 }, [], 2);
+
+    // 4. Formato Markdown en textarea activo
+    const fakeTa = {
+      value: 'Hola mundo',
+      disabled: false,
+      selectionStart: 5,
+      selectionEnd: 10,
+      focus() {},
+      setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; },
+      dispatchEvent() {}
+    };
+    const mdBold = BACO.insertarFormatoMarkdown(fakeTa, 'bold');
+
+    // 5. Conteo de code points con emojis fuera del BMP
+    const cpEmoji = BACO.lenCodePoints('A\\u{1F680}B');
+    const utf16Len = 'A\\u{1F680}B'.length;
+
+    console.log(JSON.stringify({
+      partConFoco, partSinFoco,
+      valSvg, val10Mb, val50Mb, valMaxRecs, valMaxBloques, valOk,
+      mdBold, cpEmoji, utf16Len
+    }));
+    """
+    r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
+    out = json.loads(r.stdout)
+
+    assert out["partConFoco"] == {
+        "bloques_texto": ["Primera mitad. ", "Segunda mitad.", "Bloque final."],
+        "posicion": 0,
+        "partido": True,
+    }
+    assert out["partSinFoco"] == {
+        "bloques_texto": ["Bloque 1", "Bloque 2"],
+        "posicion": 1,
+        "partido": False,
+    }
+    assert out["valSvg"]["valido"] is False and "SVG" in out["valSvg"]["error"]
+    assert out["val10Mb"]["valido"] is False and "10 MB" in out["val10Mb"]["error"]
+    assert out["val50Mb"]["valido"] is False and "50 MB" in out["val50Mb"]["error"]
+    assert out["valMaxRecs"]["valido"] is False and "20 recursos" in out["valMaxRecs"]["error"]
+    assert out["valMaxBloques"]["valido"] is False and "21 bloques" in out["valMaxBloques"]["error"]
+    assert out["valOk"]["valido"] is True
+    assert out["mdBold"] == "Hola **mundo**"
+    assert out["cpEmoji"] == 3 and out["utf16Len"] == 4

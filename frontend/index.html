@@ -112,27 +112,69 @@
               <label class="flabel" for="fCuerpo">Contenido <span class="req">*</span>
                 <span class="cont" id="contTexto">0 / 16777</span>
               </label>
-              <div class="edhead">
-                <button class="act" id="btnSubir">
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 11V3M5 5.8L8 2.8l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.6 10v2.4a1 1 0 001 1h8.8a1 1 0 001-1V10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              <div class="edhead discourse-toolbar" id="editorToolbar" role="toolbar" aria-label="Barra de herramientas del editor">
+                <div class="ed-mode-switch" role="group" aria-label="Alternar modo de edición">
+                  <button type="button" class="act ed-mode-btn sel" id="btnEditor" aria-label="Modo Markdown" title="Modo Markdown">
+                    <span class="md-badge" aria-hidden="true">M↓</span>
+                  </button>
+                  <button type="button" class="act ed-mode-btn" id="btnPreview" aria-label="Vista previa formateada" title="Vista previa formateada">
+                    <span class="fmt-badge" aria-hidden="true">A</span>
+                  </button>
+                </div>
+
+                <span class="sep" aria-hidden="true"></span>
+
+                <button type="button" class="ed-tool-btn" id="btnMdBold" data-md="bold" aria-label="Negrita" title="Negrita">
+                  <b aria-hidden="true">B</b>
+                </button>
+                <button type="button" class="ed-tool-btn" id="btnMdItalic" data-md="italic" aria-label="Cursiva" title="Cursiva">
+                  <i aria-hidden="true" style="font-family: Georgia, serif; font-weight: 700;">I</i>
+                </button>
+                <button type="button" class="ed-tool-btn" id="btnMdHeading" data-md="heading" aria-label="Título" title="Título">
+                  <span aria-hidden="true" class="tt-icon">T<small>T</small></span>
+                </button>
+                <button type="button" class="ed-tool-btn" id="btnMdLink" data-md="link" aria-label="Enlace" title="Enlace">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.8 9.2a3 3 0 004.2 0l2-2a3 3 0 00-4.2-4.2l-1.1 1.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.2 6.8a3 3 0 00-4.2 0l-2 2a3 3 0 004.2 4.2l1.1-1.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button type="button" class="ed-tool-btn" id="btnMdQuote" data-md="quote" aria-label="Cita" title="Cita">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.6 5.2C2.7 6.1 2.2 7.2 2.2 8.6c0 1.6 1.1 2.7 2.5 2.7 1.3 0 2.2-.9 2.2-2.1 0-1.1-.8-1.9-1.8-2-.2 0-.4 0-.5.1.2-.7.8-1.4 1.6-1.9L5.4 4.2c-.7.3-1.3.6-1.8 1zm6.8 0c-.9.9-1.4 2-1.4 3.4 0 1.6 1.1 2.7 2.5 2.7 1.3 0 2.2-.9 2.2-2.1 0-1.1-.8-1.9-1.8-2-.2 0-.4 0-.5.1.2-.7.8-1.4 1.6-1.9l-.8-1.2c-.7.3-1.3.6-1.8 1z"/></svg>
+                </button>
+                <button type="button" class="ed-tool-btn" id="btnMdCode" data-md="code" aria-label="Código" title="Código">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5.2 4.8L2 8l3.2 3.2M10.8 4.8L14 8l-3.2 3.2M9.2 3.5l-2.4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button type="button" class="ed-tool-btn" id="btnMdList" data-md="list" aria-label="Lista" title="Lista">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="3" cy="4.5" r="1.1" fill="currentColor"/><circle cx="3" cy="8" r="1.1" fill="currentColor"/><circle cx="3" cy="11.5" r="1.1" fill="currentColor"/><path d="M6 4.5h7M6 8h7M6 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                </button>
+
+                <div class="ed-emoji-wrap">
+                  <button type="button" class="ed-tool-btn" id="btnEmojiToolbar" aria-label="Insertar emoji" title="Insertar emoji" aria-haspopup="true" aria-expanded="false">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.5"/><circle cx="5.8" cy="6.5" r=".9" fill="currentColor"/><circle cx="10.2" cy="6.5" r=".9" fill="currentColor"/><path d="M5.4 9.6c.6 1.1 1.5 1.6 2.6 1.6s2-.5 2.6-1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                  </button>
+                  <div class="emoji-picker-popover" id="emojiPickerPopover" role="listbox" aria-label="Selector de emojis" hidden></div>
+                </div>
+
+                <button type="button" class="ed-tool-btn" id="btnImagenToolbar" aria-label="Insertar imagen" title="Disponible al finalizar las validaciones" disabled>
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.8" width="12" height="10.4" rx="1.6" stroke="currentColor" stroke-width="1.5"/><circle cx="5.4" cy="6" r="1.1" fill="currentColor"/><path d="M2.5 11.8l3.3-3.2a.9.9 0 011.3 0l1.7 1.7 2.1-2.1a.9.9 0 011.3 0l1.5 1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+
+                <span class="grow"></span>
+                <button type="button" class="act" id="btnSubir" aria-label="Subir archivo .txt o .md" title="Subir archivo .txt o .md">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 11V3M5 5.8L8 2.8l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.6 10v2.4a1 1 0 001 1h8.8a1 1 0 001-1V10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                   Subir .txt / .md
                 </button>
                 <input type="file" id="fileInput" hidden accept=".txt,.md">
-                <span class="sep"></span>
-                <button class="act sel" id="btnEditor">Editor</button>
-                <button class="act" id="btnPreview">Vista previa</button>
               </div>
-              <div class="editor-bloques-wrapper" id="editorBloquesWrapper" hidden style="display: none;">
+              <div class="editor-bloques-wrapper" id="editorBloquesWrapper">
                 <div class="contenedor-bloques" id="contenedorBloques"></div>
                 <div class="editor-bloques-footer">
                   <button type="button" class="btn btn-primary btn-confirmar-bloques" id="btnConfirmarBloques" hidden style="display: none;">Confirmar</button>
                 </div>
-                <input type="file" id="inputSelectorBloque" hidden>
+                <input type="file" id="inputSelectorBloque" hidden accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.mp4,.webm,.mp3,.docx,.pptx,.xlsx">
               </div>
-              <textarea class="textarea" id="fCuerpo" placeholder="El cuerpo del artículo, en Markdown."></textarea>
+              <textarea class="textarea" id="fCuerpo" placeholder="El cuerpo del artículo, en Markdown." hidden></textarea>
               <div class="preview" id="preview" hidden></div>
-              <div class="panel-multimedia" id="panelMultimedia" hidden style="display: none;"></div>
-              <div class="editor-img-bar" id="editorImgBar" hidden style="display: none;"></div>
+              <div class="panel-multimedia" id="panelMultimedia" hidden></div>
+              <div class="editor-img-bar" id="editorImgBar" hidden></div>
             </div>
 
             <div class="field" id="campoTags">

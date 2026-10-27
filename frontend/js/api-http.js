@@ -170,11 +170,14 @@ BACO.apiHttp = (function () {
     agregarRecursoMultimedia(recurso) {
       return pedir('POST', '/chat/recursos/agregar', recurso);
     },
-    async subirRecursoMultimedia(file, posicion) {
+    async subirRecursoMultimedia(file, posicion, bloquesTexto) {
       const fd = new FormData();
       fd.append('file', file);
       if (typeof posicion === 'number') {
         fd.append('posicion', String(posicion));
+      }
+      if (Array.isArray(bloquesTexto)) {
+        fd.append('bloques_texto', JSON.stringify(bloquesTexto));
       }
       const headers = {};
       if (BACO.config.API_KEY) headers['X-API-Key'] = BACO.config.API_KEY;
@@ -185,13 +188,17 @@ BACO.apiHttp = (function () {
         credentials: 'include',
         body: fd
       });
+      const sid = res.headers && res.headers.get && res.headers.get('X-Session-ID');
+      if (sid) sessionId = sid;
       if (!res.ok) {
         let detalle = 'Error al subir recurso (' + res.status + ')';
         try {
           const err = await res.json();
-          if (err && err.detail) detalle = err.detail;
+          if (err && err.detail) detalle = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
         } catch (_) {}
-        throw new Error(detalle);
+        const e = new Error(detalle);
+        e.http = res.status;
+        throw e;
       }
       return await res.json();
     },

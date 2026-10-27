@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
 from fastapi import APIRouter, Cookie, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
@@ -15,10 +17,12 @@ from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorResponse,
     EstadoFlujo,
     ItemContenidoAdicional,
+    _sanitizar_y_validar_bloques,
 )
 from baco.server.schemas.recurso import (
     ConfirmarBloquesRequest,
     ConfirmarBloquesResponse,
+    EstadoRecursosResponse,
     Recurso,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
@@ -37,15 +41,19 @@ from baco.server.services.orquestador import (
 )
 from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
 from baco.server.services.orquestador.recursos_service import (
+    DIR_TEMP_SESIONES,
     RecursoDuplicadoError,
     RecursoInvalidoError,
+    RecursoNoEncontradoEnSesionError,
     SubidaRecursosDeshabilitadaError,
     _max_num_recurso,
     componer_texto_publicable,
     crear_recurso_desde_url,
+    derivar_bloques_y_recursos,
     derivar_desde_bloques,
     extraer_recursos_y_texto_limpio,
     guardar_recurso_temporal_sesion,
+    obtener_ruta_fisica_recurso,
     texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento
@@ -123,6 +131,10 @@ def resolver_sesion_con_borrador(
 
 
 class ReordenarMultimediaRequest(BaseModel):
+    id: Optional[str] = Field(default=None, description="ID del recurso a mover a un nuevo (posicion, orden)")
+    recurso_id: Optional[str] = Field(default=None, description="Alias de id del recurso a mover a un nuevo (posicion, orden)")
+    posicion: Optional[int] = Field(default=None, description="Nuevo índice del bloque de texto tras el cual va (-1 para el inicio)")
+    orden: Optional[int] = Field(default=None, description="Nuevo orden del recurso")
     from_index: Optional[int] = Field(default=None, description="Índice origen para mover elemento")
     to_index: Optional[int] = Field(default=None, description="Índice destino para mover elemento")
     orden_ids: Optional[List[str]] = Field(default=None, description="Vector de IDs en el nuevo orden")
@@ -273,12 +285,21 @@ def confirmar_bloques(
     )
 
     try:
-        texto_limpio, recursos, aviso = derivar_desde_bloques(
-            body.bloques, recursos_previos=recursos_previos, ultimo_id=ultimo_id_prev
+        bloques_derivados, recursos, aviso = derivar_bloques_y_recursos(
+            body.bloques,
+            recursos_previos=recursos_previos,
+            ultimo_id=ultimo_id_prev,
+            session_id=sid,
         )
+    except RecursoNoEncontradoEnSesionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     except RecursoInvalidoError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        msg_exc = str(exc)
+        if any(k in msg_exc.lower() for k in ("ruta", "session_id", "recurso temporal", "http", "no existe en la sesión")):
+            raise HTTPException(status_code=422, detail=msg_exc)
+        raise HTTPException(status_code=400, detail=msg_exc)
 
+    texto_limpio = "\n\n".join(bloques_derivados).strip()
     titulo_ctx = (sesion.borrador.titulo if sesion.borrador else sesion.titulo) or "Artículo"
     if (
         sesion.borrador
@@ -294,10 +315,24 @@ def confirmar_bloques(
             else extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())[0]
         )
         texto_sanitizado, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, texto_limpio)
+        bloques_sanitizados = [
+            sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+            for b in bloques_derivados
+            if b.strip()
+        ]
+        bloques_sanitizados = [b for b in bloques_sanitizados if b]
+        if texto_base_limpio and texto_base_limpio not in "\n\n".join(bloques_sanitizados) and len(texto_limpio) <= 70:
+            bloques_sanitizados = [texto_base_limpio] + bloques_sanitizados
     else:
         sanit = sanitizar_borrador(texto=texto_limpio, titulo=titulo_ctx)
         texto_sanitizado = sanit.get("texto_sanitizado", texto_limpio)
         aviso_priv = sanit.get("aviso_privacidad")
+        bloques_sanitizados = [
+            sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+            for b in bloques_derivados
+            if b.strip()
+        ]
+        bloques_sanitizados = [b for b in bloques_sanitizados if b]
 
     largo_efectivo = len(texto_efectivo_sin_marcadores(texto_sanitizado))
     if largo_efectivo < TEXTO_MIN:
@@ -318,60 +353,99 @@ def confirmar_bloques(
         sesion.borrador = BorradorSesion(
             modo="nuevo",
             titulo=titulo_ctx,
-            texto_limpio=texto_sanitizado,
+            bloques_texto=bloques_sanitizados,
             recursos=recursos,
             ultimo_id_recurso=max_id_nuevo,
             categoria_id=sesion.categoria_id,
             tags=list(sesion.tags),
         )
     else:
-        sesion.borrador.texto_limpio = texto_sanitizado
-        sesion.borrador.texto_en_edicion = texto_sanitizado
+        sesion.borrador.bloques_texto = bloques_sanitizados
+        sesion.borrador.texto_en_edicion = sesion.borrador.texto_limpio
         sesion.borrador.recursos = recursos
         sesion.borrador.ultimo_id_recurso = max_id_nuevo
-        sesion.borrador.orden_multimedia = [r.orden for r in sorted(recursos.values(), key=lambda x: x.orden)]
-        sesion.borrador.posiciones = list(sesion.borrador.orden_multimedia)
-        if sesion.borrador.conforme:
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.borrador.conformidad_invalidada = True
+        sesion.borrador._sincronizar_orden_recursos(list(recursos.values()), invalidar_conformidad=True)
 
-    sesion.texto_limpio = texto_sanitizado
-    sesion.texto_en_edicion = texto_sanitizado
-    sesion.texto = sesion.borrador.texto
-    sesion.recursos = recursos
+    sesion.bloques_texto = list(sesion.borrador.bloques_texto)
+    sesion.texto_limpio = sesion.borrador.texto_limpio
+    sesion.texto_en_edicion = sesion.borrador.texto_limpio
+    sesion.texto = sesion.borrador.texto_alineado_discourse
+    sesion.recursos = dict(sesion.borrador.recursos)
     sesion.ultimo_id_recurso = max_id_nuevo
     sesion.orden_multimedia = list(sesion.borrador.orden_multimedia)
+    sesion.posiciones = list(sesion.borrador.posiciones)
 
     return ConfirmarBloquesResponse(
         session_id=sid,
-        texto_limpio=texto_sanitizado,
-        recursos=sorted(recursos.values(), key=lambda r: r.orden),
+        bloques_texto=list(sesion.borrador.bloques_texto),
+        texto_limpio=sesion.borrador.texto_limpio,
+        recursos=sesion.borrador.multimedia,
         aviso=aviso_final,
         borrador=sesion.borrador,
     )
 
 
+def construir_estado_recursos(sid: str) -> EstadoRecursosResponse:
+    """Helper único para devolver el estado sincronizado de bloques_texto y recursos."""
+    sesion = gestor_sesiones.obtener_sesion(sid)
+    if not sesion or not sesion.borrador:
+        return EstadoRecursosResponse(
+            bloques_texto=list(sesion.bloques_texto) if sesion else [],
+            recursos=[],
+            texto_limpio=sesion.texto_limpio if sesion else "",
+            multimedia_habilitada=multimedia_habilitada(sesion) if sesion else False,
+            skills_habilitadas=True,
+            skills_motivo=None,
+        )
+    b = sesion.borrador
+    recursos_ord = sorted(b.recursos.values(), key=lambda r: (r.posicion, r.orden))
+    return EstadoRecursosResponse(
+        bloques_texto=list(b.bloques_texto),
+        recursos=recursos_ord,
+        texto_limpio=b.texto_limpio,
+        multimedia_habilitada=multimedia_habilitada(sesion),
+        skills_habilitadas=b.skills_habilitadas,
+        skills_motivo=b.skills_motivo,
+    )
+
+
+def _parsear_bloques_texto_form(bloques_raw: Optional[List[str]]) -> Optional[List[str]]:
+    if bloques_raw is None:
+        return None
+    if len(bloques_raw) == 1 and isinstance(bloques_raw[0], str):
+        s = bloques_raw[0].strip()
+        if s.startswith("["):
+            try:
+                parsed = json.loads(s)
+            except Exception as exc:
+                raise ValueError(f"Formato JSON inválido en bloques_texto: {exc}")
+            if not isinstance(parsed, list):
+                raise ValueError("bloques_texto debe ser una lista de cadenas.")
+            return [str(x) for x in parsed]
+    return [str(x) for x in bloques_raw]
+
+
 @router.get(
     "/chat/recursos",
-    response_model=List[Recurso],
-    summary="Lista los recursos multimedia y documentos asociados al borrador de la sesión activa"
+    response_model=EstadoRecursosResponse,
+    summary="Devuelve el estado unificado de bloques_texto y recursos del borrador de la sesión activa"
 )
 def listar_recursos(
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
-) -> List[Recurso]:
-    sid, borrador = sesion_valida
-    return sorted(borrador.recursos.values(), key=lambda r: r.orden)
+) -> EstadoRecursosResponse:
+    sid, _ = sesion_valida
+    return construir_estado_recursos(sid)
 
 
 @router.delete(
     "/chat/recursos/{recurso_id}",
-    summary="Elimina un recurso multimedia del borrador y remueve su marcador del texto limpio"
+    response_model=EstadoRecursosResponse,
+    summary="Elimina un recurso multimedia del borrador, aplica fusión condicional y devuelve el estado unificado"
 )
 def eliminar_recurso(
     recurso_id: str,
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
-) -> dict:
+) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     target: Union[str, int] = recurso_id
     if recurso_id.isdigit() and recurso_id not in borrador.recursos:
@@ -382,40 +456,44 @@ def eliminar_recurso(
             status_code=404,
             detail=f"No se encontró el recurso '{recurso_id}' en el borrador de la sesión.",
         )
-    return {"status": "ok", "eliminado": recurso_id}
+    return construir_estado_recursos(sid)
 
 
 @router.put(
     "/chat/recursos/reordenar",
-    response_model=List[Recurso],
+    response_model=EstadoRecursosResponse,
     summary="Reordena los recursos multimedia en el borrador mediante índices o vector explícito"
 )
 def reordenar_recursos_multimedia(
     body: ReordenarMultimediaRequest,
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
-) -> List[Recurso]:
+) -> EstadoRecursosResponse:
     sid, _ = sesion_valida
     try:
         nuevo_orden = body.orden_indices if body.orden_indices is not None else body.orden_ids
-        return gestor_sesiones.reordenar_multimedia(
+        gestor_sesiones.reordenar_multimedia(
             session_id=sid,
             from_index=body.from_index,
             to_index=body.to_index,
             nuevo_orden=nuevo_orden,
+            recurso_id=body.recurso_id or body.id,
+            posicion=body.posicion,
+            orden=body.orden,
         )
+        return construir_estado_recursos(sid)
     except (EstadoInvalidoError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post(
     "/chat/recursos/agregar",
-    response_model=Recurso,
+    response_model=EstadoRecursosResponse,
     summary="Agrega o inserta un recurso multimedia en el borrador sin restricción de flujo"
 )
 def agregar_recurso_multimedia(
     body: AgregarRecursoRequest,
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
-) -> Recurso:
+) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     try:
         recurso = crear_recurso_desde_url(
@@ -429,28 +507,69 @@ def agregar_recurso_multimedia(
         raise HTTPException(status_code=409, detail=str(exc))
     except RecursoInvalidoError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return gestor_sesiones.agregar_recurso_multimedia(sid, recurso, posicion=body.posicion)
+    gestor_sesiones.agregar_recurso_multimedia(sid, recurso, posicion=body.posicion)
+    return construir_estado_recursos(sid)
 
 
 @router.post(
     "/chat/recursos",
-    response_model=Recurso,
-    summary="Sube un archivo y lo agrega a la lista multimedia del borrador (opcionalmente en una posición)"
+    response_model=EstadoRecursosResponse,
+    summary="Sube un archivo y lo agrega a la lista multimedia del borrador (opcionalmente partiendo bloques en una posición)"
 )
 async def subir_recurso(
     file: UploadFile = File(...),
     posicion: Optional[int] = Form(default=None),
+    bloques_texto: Optional[List[str]] = Form(default=None),
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
-) -> Recurso:
+) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     if not PERMITIR_SUBIDA_RECURSOS:
         raise HTTPException(
             status_code=403,
             detail="La subida de recursos nuevos está deshabilitada en esta fase de BACO (modo validador).",
         )
-    # Se lee como máximo 1 byte más que el límite: alcanza para rechazar sin cargar archivos enormes en memoria
-    contenido = await file.read(RECURSO_MAX_BYTES + 1)
+
+    sesion = gestor_sesiones.obtener_sesion(sid)
+    borrador_backup = borrador.model_copy(deep=True)
+    archivo_creado: Optional[Path] = None
+
     try:
+        bloques_nuevos_sanitizados: Optional[List[str]] = None
+        if bloques_texto is not None:
+            bloques_parsed = _parsear_bloques_texto_form(bloques_texto)
+            base_api = borrador.texto_base_limpio if borrador.modo == "enriquecimiento" else None
+            bloques_nuevos_sanitizados = _sanitizar_y_validar_bloques(
+                bloques_parsed or [],
+                borrador.recursos,
+                texto_base_limpio=base_api,
+            )
+            if not bloques_nuevos_sanitizados:
+                raise ValueError("bloques_texto debe contener al menos un bloque de texto no vacío.")
+            texto_unido = "\n\n".join(bloques_nuevos_sanitizados).strip()
+            largo_efectivo = len(texto_efectivo_sin_marcadores(texto_unido))
+            if largo_efectivo < TEXTO_MIN:
+                raise ValueError(
+                    f"El texto efectivo sin marcadores es muy breve ({largo_efectivo} < {TEXTO_MIN})."
+                )
+            if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
+                raise ValueError(
+                    f"El texto efectivo sin marcadores excede el máximo permitido ({largo_efectivo} > {TEXTO_MAX_PERCENTIL_99})."
+                )
+
+        bloques_objetivo = (
+            bloques_nuevos_sanitizados
+            if bloques_nuevos_sanitizados is not None
+            else borrador.bloques_texto
+        )
+        if posicion is not None:
+            max_pos = len(bloques_objetivo) - 1
+            if not (-1 <= posicion <= max_pos):
+                raise ValueError(
+                    f"La posición {posicion} está fuera del rango válido [-1, {max_pos}]."
+                )
+
+        # Se lee como máximo 1 byte más que el límite: alcanza para rechazar sin cargar archivos enormes en memoria
+        contenido = await file.read(RECURSO_MAX_BYTES + 1)
         recurso = guardar_recurso_temporal_sesion(
             session_id=sid,
             filename=file.filename or "adjunto",
@@ -459,12 +578,42 @@ async def subir_recurso(
             recursos_actuales=borrador.recursos,
             ultimo_id=borrador.ultimo_id_recurso,
         )
-    except (RecursoInvalidoError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except SubidaRecursosDeshabilitadaError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        p_temp = obtener_ruta_fisica_recurso(recurso, session_id=sid)
+        if p_temp and p_temp.exists():
+            archivo_creado = p_temp
 
-    return gestor_sesiones.agregar_recurso_subido(sid, recurso, posicion=posicion)
+        if bloques_nuevos_sanitizados is not None:
+            delta_bloques = len(bloques_nuevos_sanitizados) - len(borrador.bloques_texto)
+            if delta_bloques > 0 and posicion is not None and borrador.recursos:
+                for r_exist in borrador.recursos.values():
+                    if r_exist.posicion >= posicion:
+                        r_exist.posicion += delta_bloques
+            borrador.bloques_texto = bloques_nuevos_sanitizados
+            borrador.texto_en_edicion = borrador.texto_limpio
+
+        gestor_sesiones.agregar_recurso_subido(sid, recurso, posicion=posicion)
+        return construir_estado_recursos(sid)
+    except SubidaRecursosDeshabilitadaError as exc:
+        if archivo_creado and archivo_creado.exists():
+            archivo_creado.unlink(missing_ok=True)
+        if sesion:
+            sesion.borrador = borrador_backup
+            gestor_sesiones._sincronizar_sesion_desde_borrador(sesion)
+        raise HTTPException(status_code=403, detail=str(exc))
+    except (RecursoInvalidoError, ValueError, EstadoInvalidoError) as exc:
+        if archivo_creado and archivo_creado.exists():
+            archivo_creado.unlink(missing_ok=True)
+        if sesion:
+            sesion.borrador = borrador_backup
+            gestor_sesiones._sincronizar_sesion_desde_borrador(sesion)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        if archivo_creado and archivo_creado.exists():
+            archivo_creado.unlink(missing_ok=True)
+        if sesion:
+            sesion.borrador = borrador_backup
+            gestor_sesiones._sincronizar_sesion_desde_borrador(sesion)
+        raise
 
 
 @router.get(
@@ -574,3 +723,20 @@ def modificar_contenido_adicional(
         )
     except EstadoInvalidoError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get(
+    "/api/recursos-temp/{session_id}/{archivo}",
+    summary="Previsualiza un recurso temporal de la sesión para el navegador",
+    include_in_schema=False,
+)
+def previsualizar_recurso_temporal(session_id: str, archivo: str):
+    if any(c in session_id for c in ("/", "\\", "..")) or any(c in archivo for c in ("/", "\\", "..")):
+        raise HTTPException(status_code=400, detail="Identificador o nombre de archivo inválido.")
+    dir_sesion = DIR_TEMP_SESIONES / session_id
+    ruta_archivo = dir_sesion / archivo
+    if not ruta_archivo.exists() or not ruta_archivo.is_file():
+        raise HTTPException(status_code=404, detail="Recurso temporal no encontrado.")
+    from fastapi.responses import FileResponse
+    return FileResponse(str(ruta_archivo))
+

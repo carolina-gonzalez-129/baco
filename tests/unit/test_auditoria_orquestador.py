@@ -56,8 +56,8 @@ def client(mock_buscador):
 
 def test_caso_1_marcador_canonico_unico_ids_monotonicos_y_url_repetida(client):
     """Decisiones 1 y 2:
-    - /chat/bloques y derivar_desde_bloques usan [[recurso:rec_N]] (nunca [[R1]]).
-    - Si la misma URL aparece dos veces, ambos marcadores apuntan al mismo rec_id y la validación lo permite.
+    - /chat/bloques y derivar_desde_bloques no insertan marcadores en texto_limpio y asignan posicion/orden.
+    - Si la misma URL aparece dos veces, se reutiliza el mismo rec_id.
     - El contador monotónico por borrador nunca reutiliza el ID de un recurso eliminado.
     """
     req = ConfirmarBloquesRequest(
@@ -71,9 +71,10 @@ def test_caso_1_marcador_canonico_unico_ids_monotonicos_y_url_repetida(client):
     )
     texto_limpio, recursos, _ = derivar_desde_bloques(req.bloques)
     assert "[[R1]]" not in texto_limpio
-    assert texto_limpio.count("[[recurso:rec_1]]") == 2
-    assert "[[recurso:rec_2]]" in texto_limpio
+    assert "[[recurso:" not in texto_limpio
     assert set(recursos.keys()) == {"rec_1", "rec_2"}
+    assert recursos["rec_1"].posicion == 0
+    assert recursos["rec_2"].posicion == 1
 
     # Verificar contador monotónico en sesión tras eliminar rec_2 y agregar un nuevo recurso
     sid = "ses-monotonico"
@@ -99,12 +100,12 @@ def test_caso_1_marcador_canonico_unico_ids_monotonicos_y_url_repetida(client):
         json={"referencia": "https://bc.finneg.com/uploads/img3.png", "nombre": "Img 3"},
     )
     assert resp_add.status_code == 200
-    assert resp_add.json()["id"] == "rec_3"  # Nunca reutiliza rec_2
+    assert resp_add.json()["recursos"][-1]["id"] == "rec_3"  # Nunca reutiliza rec_2
 
 
 def test_caso_2_img_html_y_sanitizacion_alt_y_url():
     """Decisiones 5 y 6 (Caso 2):
-    - <img ...> se convierte a recurso con marcador [[recurso:rec_1]].
+    - <img ...> se convierte a recurso con posicion=0 sin marcadores en texto_limpio.
     - sanitizar_url_recurso quita parámetros sensibles (token) pero conserva query no sensible (v=2).
     - sanitizar_borrador limpia PII del alt/nombre del recurso.
     """
@@ -115,10 +116,11 @@ def test_caso_2_img_html_y_sanitizacion_alt_y_url():
     )
     texto_limpio, recursos = extraer_recursos_y_texto_limpio(entrada)
     assert "<img" not in texto_limpio
-    assert "[[recurso:rec_1]]" in texto_limpio
+    assert "[[recurso:" not in texto_limpio
     assert len(recursos) == 1
     r1 = recursos["rec_1"]
     assert r1.tipo == "imagen"
+    assert r1.posicion == 0
     assert r1.referencia == "https://bc.finneg.com/uploads/default/1.png?v=2"
     assert "token=" not in r1.referencia
     assert "juan.perez@gmail.com" not in r1.nombre
@@ -127,7 +129,7 @@ def test_caso_2_img_html_y_sanitizacion_alt_y_url():
 
 def test_caso_3_video_y_audio_html():
     """Decisión 5 (Caso 3):
-    - <video> y <audio> se convierten a recursos y se reemplazan por [[recurso:rec_N]].
+    - <video> y <audio> se convierten a recursos con su posicion y texto_limpio queda sin marcadores.
     """
     entrada = (
         "Paso 1: ver video.\n\n"
@@ -139,11 +141,12 @@ def test_caso_3_video_y_audio_html():
     texto_limpio, recursos = extraer_recursos_y_texto_limpio(entrada)
     assert "<video" not in texto_limpio
     assert "<audio" not in texto_limpio
-    assert "[[recurso:rec_1]]" in texto_limpio
-    assert "[[recurso:rec_2]]" in texto_limpio
+    assert "[[recurso:" not in texto_limpio
     assert recursos["rec_1"].tipo == "video"
+    assert recursos["rec_1"].posicion == 0
     assert recursos["rec_1"].referencia == "https://bc.finneg.com/uploads/default/demo.mp4"
     assert recursos["rec_2"].tipo == "audio"
+    assert recursos["rec_2"].posicion == 1
     assert recursos["rec_2"].referencia == "https://bc.finneg.com/uploads/default/nota.mp3"
 
 
@@ -161,8 +164,9 @@ def test_caso_4_iframe_dominio_permitido_vs_no_permitido():
     )
     texto_limpio, recursos = extraer_recursos_y_texto_limpio(entrada)
     assert "youtube.com/embed/dQw4w9WgXcQ" not in texto_limpio
-    assert "[[recurso:rec_1]]" in texto_limpio
+    assert "[[recurso:" not in texto_limpio
     assert len(recursos) == 1
+    assert recursos["rec_1"].posicion == 0
     assert recursos["rec_1"].referencia == "https://www.youtube.com/embed/dQw4w9WgXcQ"
     # El iframe de dominio no permitido queda como texto
     assert "https://malicioso.example.org/embed/123" in texto_limpio
@@ -249,8 +253,7 @@ def test_caso_7_reordenar_eliminar_y_enriquecer_decision_texto(client, mock_busc
     borrador = SESIONES[sid].borrador
     assert "Texto base oficial que debe preservarse siempre íntegro." in borrador.texto_limpio
     assert "Detalle técnico nuevo agregado por el operador" in borrador.texto_limpio
-    assert "[[recurso:rec_1]]" in borrador.texto_limpio
-    assert "[[recurso:rec_2]]" in borrador.texto_limpio
+    assert "[[recurso:" not in borrador.texto_limpio
     assert borrador.recursos["rec_1"].referencia == "https://bc.finneg.com/uploads/base.png"
     assert borrador.recursos["rec_2"].referencia == "https://bc.finneg.com/uploads/aporte.png"
 
@@ -262,16 +265,18 @@ def test_caso_7_reordenar_eliminar_y_enriquecer_decision_texto(client, mock_busc
     )
     assert resp_reord.status_code == 200
     tl_reord = SESIONES[sid].borrador.texto_limpio
-    assert tl_reord.index("[[recurso:rec_2]]") < tl_reord.index("[[recurso:rec_1]]")
+    assert "[[recurso:" not in tl_reord
     assert "Texto base oficial que debe preservarse siempre íntegro." in tl_reord
-    assert SESIONES[sid].borrador.texto.index("aporte.png") < SESIONES[sid].borrador.texto.index("base.png")
+    td_reord = SESIONES[sid].borrador.texto_alineado_discourse
+    assert td_reord.index("aporte.png") < td_reord.index("base.png")
 
-    # 3. Eliminar rec_2 quita también su marcador de borrador.texto_limpio y sesion.texto_limpio
+    # 3. Eliminar rec_2 quita el recurso y lo elimina de texto_alineado_discourse
     resp_del = client.delete("/chat/recursos/rec_2", headers={"X-Session-ID": sid})
     assert resp_del.status_code == 200
-    assert "[[recurso:rec_2]]" not in SESIONES[sid].borrador.texto_limpio
-    assert "[[recurso:rec_2]]" not in SESIONES[sid].texto_limpio
-    assert "[[recurso:rec_1]]" in SESIONES[sid].borrador.texto_limpio
+    assert "rec_2" not in SESIONES[sid].borrador.recursos
+    assert "rec_1" in SESIONES[sid].borrador.recursos
+    assert "aporte.png" not in SESIONES[sid].borrador.texto_alineado_discourse
+    assert "base.png" in SESIONES[sid].borrador.texto_alineado_discourse
 
 
 def test_caso_8_solo_recursos_sin_texto_y_cotas_sin_marcadores(client):

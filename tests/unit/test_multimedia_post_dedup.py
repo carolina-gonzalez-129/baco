@@ -121,38 +121,39 @@ def test_panel_multimedia_operativo_en_todas_las_ramas(client, mock_buscador, ra
     assert [m["referencia"] for m in borrador["multimedia"]] == [URL_IMG]
     assert borrador["orden_multimedia"] == [0]
     assert URL_IMG not in borrador["texto_limpio"]
-    assert "[[recurso:rec_1]]" in borrador["texto_limpio"]
+    assert "[[recurso:" not in borrador["texto_limpio"]
 
     # 2. Listar
     r = client.get("/chat/recursos", headers=h)
-    assert r.status_code == 200 and len(r.json()) == 1
-    id_existente = r.json()[0]["id"]
+    assert r.status_code == 200 and len(r.json()["recursos"]) == 1
+    id_existente = r.json()["recursos"][0]["id"]
 
     # 3. Agregar al principio (también sobre recursos existentes en enriquecer/actualizar)
     r = client.post("/chat/recursos/agregar", headers=h, json={
         "tipo": "video", "nombre": "Tutorial", "referencia": "https://youtu.be/abc", "posicion": 0,
     })
     assert r.status_code == 200, r.text
-    id_nuevo = r.json()["id"]
+    recs_tras_agregar = r.json()["recursos"]
+    id_nuevo = next(x["id"] for x in recs_tras_agregar if x["id"] != id_existente)
     assert [x.id for x in SESIONES[sid].borrador.multimedia] == [id_nuevo, id_existente]
 
     # 4. Mover
     r = client.put("/chat/recursos/reordenar", headers=h, json={"from_index": 0, "to_index": 1})
     assert r.status_code == 200, r.text
-    assert [x["id"] for x in r.json()] == [id_existente, id_nuevo]
+    assert [x["id"] for x in r.json()["recursos"]] == [id_existente, id_nuevo]
 
     # 5. Eliminar el recurso preexistente con la "x"
     r = client.delete(f"/chat/recursos/{id_existente}", headers=h)
     assert r.status_code == 200, r.text
+    assert [x["id"] for x in r.json()["recursos"]] == [id_nuevo]
 
     b = SESIONES[sid].borrador
     assert [x.id for x in b.multimedia] == [id_nuevo]
-    assert b.orden_multimedia == [0] == b.posiciones
-    # Decisión 4: eliminar un recurso elimina también su marcador en borrador.texto_limpio y sesion.texto_limpio
-    assert f"[[recurso:{id_existente}]]" not in b.texto_limpio
-    assert f"[[recurso:{id_existente}]]" not in SESIONES[sid].texto_limpio
+    assert b.orden_multimedia == [0]
+    assert "[[recurso:" not in b.texto_limpio
+    assert "[[recurso:" not in SESIONES[sid].texto_limpio
     # La vista compuesta refleja la lista actual
-    assert "https://youtu.be/abc" in b.texto and URL_IMG not in b.texto
+    assert "https://youtu.be/abc" in b.texto_alineado_discourse and URL_IMG not in b.texto_alineado_discourse
 
 
 def test_panel_no_disponible_mientras_se_decide_la_deduplicacion(client, mock_buscador):
@@ -217,12 +218,14 @@ def test_subida_en_posicion_no_toca_texto_limpio(client, mock_buscador, rama):
         tl = SESIONES[sid].borrador.texto_limpio
         r = _subir(client, sid, posicion=0)
         assert r.status_code == 200, r.text
-        rec = r.json()
+        estado = r.json()
+        rec = estado["recursos"][0]
         assert rec["origen"] == "subido" and rec["tipo"] == "imagen" and rec["mime_type"] == "image/png"
 
         b = SESIONES[sid].borrador
         assert b.multimedia[0].id == rec["id"]
-        assert b.orden_multimedia == list(range(len(b.recursos))) == b.posiciones
+        assert b.orden_multimedia == list(range(len(b.recursos)))
+        assert all(-1 <= p < len(b.bloques_texto) for p in b.posiciones)
         assert b.texto_limpio == tl
     finally:
         limpiar_archivos_temporales_sesion(sid)
@@ -251,9 +254,11 @@ def test_cupo_maximo_aplica_a_subidas_y_urls(client, sesion_nueva):
 def test_id_de_subida_no_pisa_recursos_existentes(client, sesion_nueva):
     """Antes el ID era rec_{len+1}: después de borrar uno, podía pisar a otro existente."""
     h = {"X-Session-ID": sesion_nueva}
-    r1 = _subir(client, sesion_nueva, nombre="a.png").json()  # rec_2 (rec_1 es la imagen del texto)
+    r1_estado = _subir(client, sesion_nueva, nombre="a.png").json()  # rec_2 (rec_1 es la imagen del texto)
+    r1 = r1_estado["recursos"][-1]
     client.delete("/chat/recursos/rec_1", headers=h)            # queda 1 recurso: rec_2
-    r2 = _subir(client, sesion_nueva, nombre="b.png").json()
+    r2_estado = _subir(client, sesion_nueva, nombre="b.png").json()
+    r2 = r2_estado["recursos"][-1]
     assert r2["id"] != r1["id"]
     assert {x.id for x in SESIONES[sesion_nueva].borrador.multimedia} == {r1["id"], r2["id"]}
 
@@ -270,8 +275,9 @@ def test_alta_por_url_detecta_tipo(client, sesion_nueva, url, tipo):
     tl = SESIONES[sesion_nueva].borrador.texto_limpio
     r = client.post("/chat/recursos/agregar", headers={"X-Session-ID": sesion_nueva}, json={"referencia": url})
     assert r.status_code == 200, r.text
-    assert r.json()["tipo"] == tipo
-    assert r.json()["nombre"]  # derivado de la URL si no se envía
+    rec = r.json()["recursos"][-1]
+    assert rec["tipo"] == tipo
+    assert rec["nombre"]  # derivado de la URL si no se envía
     assert SESIONES[sesion_nueva].borrador.texto_limpio == tl
 
 
@@ -285,6 +291,8 @@ def test_alta_por_url_validaciones(client, sesion_nueva):
     # Enlace no reconocible: pide el tipo; con tipo explícito se acepta
     assert post({"referencia": "https://finneg.com/pagina"}).status_code == 400
     r = post({"referencia": "https://finneg.com/pagina", "tipo": "documento", "nombre": "Ficha"})
-    assert r.status_code == 200 and r.json()["tipo"] == "documento" and r.json()["nombre"] == "Ficha"
+    assert r.status_code == 200
+    rec_ficha = r.json()["recursos"][-1]
+    assert rec_ficha["tipo"] == "documento" and rec_ficha["nombre"] == "Ficha"
     # Duplicado (la imagen que ya venía en el texto)
     assert post({"referencia": URL_IMG}).status_code == 409

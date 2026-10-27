@@ -34,8 +34,8 @@ def client(mock_buscador):
 
 
 def test_eliminar_imagen_en_enriquecimiento_persiste_y_no_resucita(client, mock_buscador):
-    """Verifica que al enriquecer un artículo con imagen, si el usuario borra la imagen
-    y confirma el texto, la imagen eliminada no reaparece ni en recursos ni en el texto."""
+    """Verifica que al enriquecer un artículo con imagen, un recurso solo se elimina por acción
+    explícita (DELETE /chat/recursos/{id}) y al editar y confirmar el texto no reaparece."""
     mock_buscador.evaluar_titulo.return_value = {
         "mensaje": "Coincidencia de título",
         "link": "https://bc.finneg.com/t/9991",
@@ -54,9 +54,13 @@ def test_eliminar_imagen_en_enriquecimiento_persiste_y_no_resucita(client, mock_
 
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
     assert len(r2["borrador"]["multimedia"]) == 1
-    assert "https://bc.finneg.com/uploads/diagrama.png" in r2["borrador"]["texto"]
+    assert "https://bc.finneg.com/uploads/diagrama.png" in r2["borrador"]["texto_alineado_discourse"]
 
-    # 3. El usuario edita el texto y BORRA la imagen
+    # 3. El usuario elimina explícitamente el recurso vía endpoint y edita el texto
+    rec_id = r2["borrador"]["multimedia"][0]["id"]
+    resp_del = client.delete(f"/chat/recursos/{rec_id}", headers={"X-Session-ID": sid})
+    assert resp_del.status_code == 200
+
     texto_sin_imagen = (
         "Este es el texto original del artículo que contiene suficientes caracteres para superar las validaciones mínimas.\n\n"
         "Y aquí continúa el texto explicativo con los pasos correspondientes editados por el usuario."
@@ -64,14 +68,14 @@ def test_eliminar_imagen_en_enriquecimiento_persiste_y_no_resucita(client, mock_
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_sin_imagen}).json()
 
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "diagrama.png" not in r3["borrador"]["texto"]
-    assert "https://bc.finneg.com/uploads/diagrama.png" not in r3["borrador"]["texto"]
+    assert "diagrama.png" not in r3["borrador"]["texto_alineado_discourse"]
+    assert "https://bc.finneg.com/uploads/diagrama.png" not in r3["borrador"]["texto_alineado_discourse"]
     assert len(r3["borrador"]["multimedia"]) == 0
     assert len(r3["borrador"]["recursos"]) == 0
 
 
 def test_eliminar_imagen_en_articulo_nuevo(client, mock_buscador):
-    """En artículo nuevo, si el usuario agrega imagen y luego la elimina, no persiste."""
+    """En artículo nuevo, editar el texto preserva los recursos existentes y solo se eliminan por acción explícita."""
     mock_buscador.evaluar_titulo.return_value = None
     mock_buscador.evaluar_texto.return_value = None
 
@@ -95,15 +99,22 @@ def test_eliminar_imagen_en_articulo_nuevo(client, mock_buscador):
     r4 = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "general"], "categoria_id": 1}).json()
     assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
 
-    # Ahora en revisión, el usuario edita y borra foto1, conservando solo foto2
-    texto_solo_foto2 = (
+    # Editar el texto sin llamar a DELETE conserva ambos recursos (_sincronizar_borrador_con_edicion no borra recursos)
+    texto_editado = (
         "Contenido de longitud adecuada para cumplir con el mínimo exigido por el sistema sin problemas.\n\n"
-        "Paso intermedio con más información requerida.\n\n"
-        "![foto2.png](https://bc.finneg.com/foto2.png)"
+        "Paso intermedio con más información requerida."
     )
-    r5 = client.post("/chat", json={"session_id": sid, "accion": "editar", "texto": texto_solo_foto2}).json()
+    r_preserva = client.post("/chat", json={"session_id": sid, "accion": "editar", "texto": texto_editado}).json()
+    assert len(r_preserva["borrador"]["multimedia"]) == 2
+
+    # Ahora elimina foto1 explícitamente por el endpoint de recursos
+    id_foto1 = next(m["id"] for m in r_preserva["borrador"]["multimedia"] if m["nombre"] == "foto1.png")
+    resp_del = client.delete(f"/chat/recursos/{id_foto1}", headers={"X-Session-ID": sid})
+    assert resp_del.status_code == 200
+
+    r5 = client.post("/chat", json={"session_id": sid, "accion": "editar", "texto": texto_editado}).json()
     assert r5["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "foto1.png" not in r5["borrador"]["texto"]
-    assert "foto2.png" in r5["borrador"]["texto"]
+    assert "foto1.png" not in r5["borrador"]["texto_alineado_discourse"]
+    assert "foto2.png" in r5["borrador"]["texto_alineado_discourse"]
     assert len(r5["borrador"]["multimedia"]) == 1
     assert r5["borrador"]["multimedia"][0]["nombre"] == "foto2.png"

@@ -19,13 +19,12 @@ from baco.server.services.orquestador.excepciones import (
 )
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
-    eliminar_marcador_recurso_de_texto,
+    _normalizar_invariantes_recursos,
     eliminar_recurso_borrador as servicio_eliminar_recurso,
     componer_texto_publicable,
-    extraer_recursos_y_texto_limpio,
-    fusionar_texto_y_recursos_sin_colision,
+    extraer_recursos_y_bloques_texto,
+    fusionar_bloques_y_recursos_sin_colision,
     limpiar_archivos_temporales_sesion,
-    permutar_marcadores_en_texto,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
 
@@ -38,6 +37,7 @@ class SesionChat:
     titulo: str = ""
     texto: str = ""
     texto_limpio: str = ""
+    bloques_texto: List[str] = field(default_factory=list)
     texto_en_edicion: str = ""
     recursos: Dict[str, Recurso] = field(default_factory=dict)
     ultimo_id_recurso: int = 0
@@ -72,6 +72,7 @@ class SesionChat:
     def actualizar_contenido_borrador(
         self,
         *,
+        bloques_texto: Optional[List[str]] = None,
         texto_limpio: Optional[str] = None,
         recursos: Optional[Dict[str, Recurso]] = None,
         ultimo_id_recurso: Optional[int] = None,
@@ -83,30 +84,49 @@ class SesionChat:
         tags: Optional[List[str]] = None,
         tipo_plantilla: Optional[str] = None,
     ) -> None:
-        """Sincroniza atómicamente el contenido textual, recursos y metadatos entre la sesión y su borrador."""
+        """Sincroniza atómicamente los bloques de texto, recursos y metadatos entre la sesión y su borrador."""
         if titulo is not None:
             self.titulo = titulo.strip()
             if self.borrador is not None:
                 self.borrador.titulo = self.titulo
 
+        if bloques_texto is not None:
+            if self.borrador is not None:
+                self.borrador.bloques_texto = list(bloques_texto)
+                self.bloques_texto = list(self.borrador.bloques_texto)
+                self.texto_limpio = self.borrador.texto_limpio
+            else:
+                self.bloques_texto = [b.strip() for b in bloques_texto if b and b.strip()]
+                self.texto_limpio = "\n\n".join(self.bloques_texto).strip()
+        elif texto_limpio is not None:
+            if self.borrador is not None:
+                self.borrador.texto_limpio = texto_limpio
+                self.bloques_texto = list(self.borrador.bloques_texto)
+                self.texto_limpio = self.borrador.texto_limpio
+            else:
+                self.texto_limpio = texto_limpio
+                self.bloques_texto = [texto_limpio.strip()] if texto_limpio.strip() else []
+
         if recursos is not None:
-            self.recursos = recursos
             max_rec = _max_num_recurso(recursos)
             self.ultimo_id_recurso = max(self.ultimo_id_recurso, max_rec, ultimo_id_recurso or 0)
-            self.orden_multimedia = list(range(len(recursos)))
-            self.posiciones = list(range(len(recursos)))
             if self.borrador is not None:
-                self.borrador.recursos = self.recursos
-                self.borrador.ultimo_id_recurso = self.ultimo_id_recurso
+                self.borrador.ultimo_id_recurso = max(self.borrador.ultimo_id_recurso, self.ultimo_id_recurso)
+                self.borrador._sincronizar_orden_recursos(
+                    list(recursos.values()), invalidar_conformidad=False
+                )
+                self.recursos = dict(self.borrador.recursos)
+                self.orden_multimedia = list(self.borrador.orden_multimedia)
+                self.posiciones = list(self.borrador.posiciones)
+            else:
+                recs_norm = _normalizar_invariantes_recursos(recursos, len(self.bloques_texto) if self.bloques_texto else None)
+                self.recursos = recs_norm
+                self.orden_multimedia = list(range(len(recs_norm)))
+                self.posiciones = [r.posicion for r in recs_norm.values()]
         elif ultimo_id_recurso is not None:
             self.ultimo_id_recurso = max(self.ultimo_id_recurso, ultimo_id_recurso)
             if self.borrador is not None:
                 self.borrador.ultimo_id_recurso = self.ultimo_id_recurso
-
-        if texto_limpio is not None:
-            self.texto_limpio = texto_limpio
-            if self.borrador is not None:
-                self.borrador.texto_limpio = texto_limpio
 
         if texto_base_limpio is not None:
             if self.borrador is not None:
@@ -119,8 +139,13 @@ class SesionChat:
 
         if texto is not None:
             self.texto = texto
-        elif texto_limpio is not None:
-            self.texto = componer_texto_publicable(self.texto_limpio, self.recursos)
+        elif self.borrador is not None:
+            self.texto = self.borrador.texto_alineado_discourse
+        elif bloques_texto is not None or texto_limpio is not None:
+            self.texto = componer_texto_publicable(
+                self.bloques_texto if self.bloques_texto else self.texto_limpio,
+                self.recursos,
+            )
 
         if categoria_id is not None:
             self.categoria_id = categoria_id
@@ -164,37 +189,25 @@ def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: Optional[Sesi
         _max_num_recurso(borrador.recursos),
         sesion.ultimo_id_recurso if sesion else 0,
     )
-    if borrador.texto_limpio:
-        tl, recs_extra = extraer_recursos_y_texto_limpio(
-            borrador.texto_limpio,
-            recursos_previos=borrador.recursos,
-            ultimo_id=ultimo_id,
-        )
-        if recs_extra:
-            tl, recs_merged = fusionar_texto_y_recursos_sin_colision(
-                tl, borrador.recursos, recs_extra, ultimo_id=ultimo_id
-            )
-            borrador.recursos = recs_merged
-            borrador.ultimo_id_recurso = max(ultimo_id, _max_num_recurso(recs_merged))
-            if sesion:
-                sesion.recursos = dict(recs_merged)
-                sesion.ultimo_id_recurso = max(sesion.ultimo_id_recurso, borrador.ultimo_id_recurso)
+    if borrador.bloques_texto:
+        bloques_actuales = list(borrador.bloques_texto)
         if borrador.modo == "enriquecimiento" and borrador.texto_base_limpio:
             base_limpio = borrador.texto_base_limpio.strip()
-            if base_limpio and base_limpio not in tl:
-                tl = f"{base_limpio}\n\n{tl.strip()}" if tl.strip() else base_limpio
-        limpio_tl = sanitizar_borrador(texto=tl, titulo=borrador.titulo)
-        borrador.titulo = limpio_tl["titulo_sanitizado"]
-        borrador.texto_limpio = limpio_tl["texto_sanitizado"]
+            unido = "\n\n".join(bloques_actuales)
+            if base_limpio and base_limpio not in unido:
+                bloques_actuales = [base_limpio] + bloques_actuales
+        limpio_tit = sanitizar_borrador(texto="", titulo=borrador.titulo)
+        borrador.titulo = limpio_tit["titulo_sanitizado"] or borrador.titulo
+        borrador.bloques_texto = bloques_actuales
     else:
-        tl, recs = extraer_recursos_y_texto_limpio(
-            borrador.texto,
+        bloques_ext, recs = extraer_recursos_y_bloques_texto(
+            borrador.texto_alineado_discourse,
             recursos_previos=borrador.recursos,
             ultimo_id=ultimo_id,
         )
-        limpio_tl = sanitizar_borrador(texto=tl, titulo=borrador.titulo)
-        borrador.titulo = limpio_tl["titulo_sanitizado"]
-        borrador.texto_limpio = limpio_tl["texto_sanitizado"]
+        limpio_tit = sanitizar_borrador(texto="", titulo=borrador.titulo)
+        borrador.titulo = limpio_tit["titulo_sanitizado"] or borrador.titulo
+        borrador.bloques_texto = bloques_ext
         if recs and not borrador.recursos:
             borrador.recursos = recs
             borrador.ultimo_id_recurso = max(ultimo_id, _max_num_recurso(recs))
@@ -202,7 +215,7 @@ def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: Optional[Sesi
 
 
 class GestorSesiones:
-    def __init__(self, ttl_minutos: int = 30) -> None:
+    def __init__(self, ttl_minutos: int = 340) -> None:
         self.ttl = timedelta(minutes=ttl_minutos)
         self._sesiones: Dict[str, SesionChat] = {}
 
@@ -266,7 +279,7 @@ class GestorSesiones:
         # Invariante: no se puede quedar en CONFORMIDAD_USUARIO con texto distinto al confirmado
         if (
             sesion.borrador.texto_original_conforme is not None
-            and sesion.borrador.texto != sesion.borrador.texto_original_conforme
+            and sesion.borrador.texto_alineado_discourse != sesion.borrador.texto_original_conforme
         ):
             sesion.borrador.conforme = False
             sesion.borrador.conforme_en = None
@@ -290,7 +303,7 @@ class GestorSesiones:
         if (
             sesion.borrador is not None
             and sesion.borrador.texto_original_conforme is not None
-            and sesion.borrador.texto != sesion.borrador.texto_original_conforme
+            and sesion.borrador.texto_alineado_discourse != sesion.borrador.texto_original_conforme
         ):
             sesion.borrador.conforme = False
             sesion.borrador.conforme_en = None
@@ -307,6 +320,9 @@ class GestorSesiones:
         return _sanitizar_y_clonar_borrador(sesion.borrador, sesion)
 
     def actualizar_borrador_texto(self, session_id: str, nuevo_texto: str) -> bool:
+        """Actualiza el texto del borrador (p. ej. cuando una skill devuelve resultado).
+        Regla 6: cuando una skill devuelve texto, bloques_texto = [resultado].
+        """
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
 
@@ -316,15 +332,17 @@ class GestorSesiones:
         sesion = self._sesiones[session_id]
         if sesion.borrador is not None:
             if not sesion.borrador.texto_original_conforme:
-                sesion.borrador.texto_original_conforme = sesion.borrador.texto
-            if sesion.borrador.texto_limpio != nuevo_texto:
+                sesion.borrador.texto_original_conforme = sesion.borrador.texto_alineado_discourse
+            texto_strip = (nuevo_texto or "").strip()
+            if sesion.borrador.texto_limpio != texto_strip:
                 sesion.borrador.conforme = False
                 sesion.borrador.conforme_en = None
                 sesion.borrador.conformidad_invalidada = True
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
-            sesion.borrador.texto_limpio = nuevo_texto
-            sesion.texto = sesion.borrador.texto
-            sesion.texto_limpio = nuevo_texto
+            sesion.borrador.bloques_texto = [texto_strip] if texto_strip else []
+            sesion.bloques_texto = list(sesion.borrador.bloques_texto)
+            sesion.texto_limpio = sesion.borrador.texto_limpio
+            sesion.texto = sesion.borrador.texto_alineado_discourse
             sesion.updated_at = ahora
             return True
         return False
@@ -337,36 +355,48 @@ class GestorSesiones:
         sesion = self._sesiones[session_id]
         sesion.updated_at = ahora
         recursos_dict = (sesion.borrador.recursos if sesion.borrador else sesion.recursos) or {}
-        return sorted(recursos_dict.values(), key=lambda r: r.orden)
+        return sorted(recursos_dict.values(), key=lambda r: (r.posicion, r.orden))
+
+    def _sincronizar_sesion_desde_borrador(self, sesion: SesionChat) -> List[Recurso]:
+        b = sesion.borrador
+        if b is None:
+            items = sorted(sesion.recursos.values(), key=lambda r: (r.posicion, r.orden))
+            for i, r in enumerate(items):
+                r.orden = i
+            sesion.recursos = {r.id: r for r in items}
+            sesion.orden_multimedia = list(range(len(items)))
+            sesion.posiciones = [r.posicion for r in items]
+            return items
+
+        sesion.bloques_texto = list(b.bloques_texto)
+        sesion.texto_limpio = b.texto_limpio
+        sesion.recursos = dict(b.recursos)
+        sesion.ultimo_id_recurso = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso)
+        b.ultimo_id_recurso = sesion.ultimo_id_recurso
+        sesion.orden_multimedia = list(b.orden_multimedia)
+        sesion.posiciones = list(b.posiciones)
+        sesion.texto = b.texto_alineado_discourse
+        if b.conformidad_invalidada and sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
+            sesion.estado = EstadoFlujo.REVISION_BORRADOR
+        return b.multimedia
 
     def _aplicar_cambio_multimedia(self, sesion: SesionChat, items_ordenados: List[Recurso]) -> List[Recurso]:
         """Persiste un nuevo estado de la lista multimedia en sesión y borrador."""
-        for i, r in enumerate(items_ordenados):
-            r.orden = i
-        recs_dict = {r.id: r for r in items_ordenados}
-        vec_orden = list(range(len(items_ordenados)))
-        max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(recs_dict))
-
-        sesion.recursos = recs_dict
-        sesion.ultimo_id_recurso = max_id
-        sesion.orden_multimedia = list(vec_orden)
-        sesion.posiciones = list(vec_orden)
-
         b = sesion.borrador
         if b:
-            b.recursos = recs_dict
-            b.ultimo_id_recurso = max(b.ultimo_id_recurso, max_id)
-            b.orden_multimedia = list(vec_orden)
-            b.posiciones = list(vec_orden)
-            sesion.texto = b.texto
-            # texto_original_conforme NO se actualiza: el cambio debe quedar visible como modificación
-            if b.conforme:
-                b.conforme = False
-                b.conforme_en = None
-                b.conformidad_invalidada = True
-                if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
-                    sesion.estado = EstadoFlujo.REVISION_BORRADOR
-        return items_ordenados
+            b._sincronizar_orden_recursos(items_ordenados, invalidar_conformidad=True)
+            return self._sincronizar_sesion_desde_borrador(sesion)
+
+        recs_norm = _normalizar_invariantes_recursos(
+            {r.id: r for r in items_ordenados},
+            len(sesion.bloques_texto) if sesion.bloques_texto else None,
+        )
+        max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(recs_norm))
+        sesion.recursos = recs_norm
+        sesion.ultimo_id_recurso = max_id
+        sesion.orden_multimedia = list(range(len(recs_norm)))
+        sesion.posiciones = [r.posicion for r in recs_norm.values()]
+        return list(recs_norm.values())
 
     def _obtener_sesion_activa(self, session_id: str) -> SesionChat:
         ahora = datetime.now(timezone.utc)
@@ -384,7 +414,7 @@ class GestorSesiones:
     def eliminar_recurso_multimedia(
         self, session_id: str, recurso_id_or_index: Union[str, int]
     ) -> bool:
-        """Elimina un recurso por ID o por índice y remueve su marcador en texto_limpio."""
+        """Elimina un recurso por ID o por índice y aplica la fusión condicional de bloques."""
         sesion = self._obtener_sesion_activa(session_id)
         recursos = dict(self._recursos_actuales(sesion))
 
@@ -394,12 +424,15 @@ class GestorSesiones:
             and recurso_id_or_index not in recursos
         ):
             idx = int(recurso_id_or_index)
-            items_ord = sorted(recursos.values(), key=lambda r: r.orden)
+            items_ord = sorted(recursos.values(), key=lambda r: (r.posicion, r.orden))
             if not (0 <= idx < len(items_ord)):
                 return False
             recurso_id = items_ord[idx].id
         else:
             recurso_id = str(recurso_id_or_index)
+
+        if recurso_id not in recursos:
+            return False
 
         # Conservar el máximo ID histórico antes de eliminar (contador monotónico)
         max_antes = max(
@@ -411,47 +444,56 @@ class GestorSesiones:
         if sesion.borrador:
             sesion.borrador.ultimo_id_recurso = max_antes
 
-        nuevos_recursos, eliminado = servicio_eliminar_recurso(recursos, recurso_id)
-        if not eliminado:
-            return False
+        # Limpiar archivo temporal físico si corresponde
+        servicio_eliminar_recurso(dict(recursos), recurso_id)
 
-        if sesion.texto_limpio:
-            sesion.texto_limpio = eliminar_marcador_recurso_de_texto(sesion.texto_limpio, recurso_id)
-        if sesion.texto_en_edicion:
-            sesion.texto_en_edicion = eliminar_marcador_recurso_de_texto(sesion.texto_en_edicion, recurso_id)
-        if sesion.borrador:
-            if sesion.borrador.texto_limpio:
-                sesion.borrador.texto_limpio = eliminar_marcador_recurso_de_texto(
-                    sesion.borrador.texto_limpio, recurso_id
-                )
-            if sesion.borrador.texto_en_edicion:
-                sesion.borrador.texto_en_edicion = eliminar_marcador_recurso_de_texto(
-                    sesion.borrador.texto_en_edicion, recurso_id
-                )
+        if sesion.borrador is not None:
+            eliminado = sesion.borrador.eliminar_multimedia(recurso_id)
+            if eliminado is None:
+                return False
+            self._sincronizar_sesion_desde_borrador(sesion)
+            return True
 
-        self._aplicar_cambio_multimedia(sesion, sorted(nuevos_recursos.values(), key=lambda r: r.orden))
+        recursos.pop(recurso_id, None)
+        self._aplicar_cambio_multimedia(sesion, sorted(recursos.values(), key=lambda r: (r.posicion, r.orden)))
         return True
 
     eliminar_recurso_borrador = eliminar_recurso_multimedia
 
     def agregar_recurso_multimedia(
-        self, session_id: str, recurso: Recurso, posicion: Optional[int] = None
+        self,
+        session_id: str,
+        recurso: Recurso,
+        posicion: Optional[int] = None,
+        orden: Optional[int] = None,
     ) -> Recurso:
-        """Agrega o inserta un recurso en cualquier flujo. No toca texto_limpio."""
+        """Agrega o inserta un recurso en cualquier flujo respetando (posicion, orden)."""
         sesion = self._obtener_sesion_activa(session_id)
+        if sesion.borrador is not None:
+            rec_agregado = sesion.borrador.agregar_multimedia(
+                recurso, posicion=posicion, orden=orden
+            )
+            self._sincronizar_sesion_desde_borrador(sesion)
+            return rec_agregado
+
         items = sorted(
             (r for r in self._recursos_actuales(sesion).values() if r.id != recurso.id),
-            key=lambda r: r.orden,
+            key=lambda r: (r.posicion, r.orden),
         )
-        if posicion is None or posicion < 0 or posicion >= len(items):
-            items.append(recurso)
-        else:
-            items.insert(posicion, recurso)
+        if posicion is not None:
+            recurso.posicion = max(-1, posicion)
+        items.append(recurso)
         self._aplicar_cambio_multimedia(sesion, items)
-        return recurso
+        return sesion.recursos[recurso.id]
 
-    def agregar_recurso_subido(self, session_id: str, recurso: Recurso, posicion: Optional[int] = None) -> Recurso:
-        return self.agregar_recurso_multimedia(session_id, recurso, posicion)
+    def agregar_recurso_subido(
+        self,
+        session_id: str,
+        recurso: Recurso,
+        posicion: Optional[int] = None,
+        orden: Optional[int] = None,
+    ) -> Recurso:
+        return self.agregar_recurso_multimedia(session_id, recurso, posicion=posicion, orden=orden)
 
     def reordenar_multimedia(
         self,
@@ -459,14 +501,41 @@ class GestorSesiones:
         from_index: Optional[int] = None,
         to_index: Optional[int] = None,
         nuevo_orden: Optional[Union[List[int], List[str]]] = None,
+        recurso_id: Optional[str] = None,
+        posicion: Optional[int] = None,
+        orden: Optional[int] = None,
     ) -> List[Recurso]:
-        """Reordena recursos y permuta qué recurso ocupa cada slot de marcador en texto_limpio."""
+        """Reordena recursos manteniendo los invariantes de (posicion, orden)."""
         sesion = self._obtener_sesion_activa(session_id)
-        items = sorted(self._recursos_actuales(sesion).values(), key=lambda r: r.orden)
+        items = sorted(self._recursos_actuales(sesion).values(), key=lambda r: (r.posicion, r.orden))
         if not items and not sesion.borrador:
             raise EstadoInvalidoError("No existen contenidos multimedia para reordenar en la sesión.")
 
-        ids_antes = [r.id for r in items]
+        if sesion.borrador is not None:
+            if recurso_id is not None:
+                sesion.borrador.reordenar_recurso(
+                    recurso_id,
+                    nueva_posicion=posicion,
+                    nuevo_orden=orden if orden is not None else to_index,
+                )
+            elif from_index is not None and (posicion is not None or orden is not None):
+                sesion.borrador.reordenar_recurso(
+                    from_index,
+                    nueva_posicion=posicion,
+                    nuevo_orden=orden if orden is not None else to_index,
+                )
+            elif from_index is not None and to_index is not None:
+                sesion.borrador.reorder(from_index, to_index, nueva_posicion=posicion)
+            elif nuevo_orden is not None:
+                if nuevo_orden and isinstance(nuevo_orden[0], int):
+                    sesion.borrador.reordenar_por_indices(nuevo_orden)  # type: ignore[arg-type]
+                else:
+                    sesion.borrador.reordenar_por_ids(nuevo_orden)  # type: ignore[arg-type]
+            else:
+                raise EstadoInvalidoError(
+                    "Debe proveer recurso_id/from_index con posicion/orden/to_index, o un vector nuevo_orden."
+                )
+            return self._sincronizar_sesion_desde_borrador(sesion)
 
         if from_index is not None and to_index is not None:
             if not (0 <= from_index < len(items) and 0 <= to_index < len(items)):
@@ -474,9 +543,13 @@ class GestorSesiones:
                     f"Índices de reordenamiento fuera de rango: from_index={from_index}, "
                     f"to_index={to_index} (total: {len(items)})"
                 )
+            posiciones_slots = [r.posicion for r in items]
             it = items.pop(from_index)
             items.insert(to_index, it)
+            for i, r in enumerate(items):
+                r.posicion = posiciones_slots[i] if posicion is None else posicion
         elif nuevo_orden is not None:
+            posiciones_slots = [r.posicion for r in items]
             if nuevo_orden and isinstance(nuevo_orden[0], int):
                 elegidos = []
                 vistos = set()
@@ -489,19 +562,10 @@ class GestorSesiones:
                 elegidos = [imap.pop(rid) for rid in nuevo_orden if rid in imap]  # type: ignore[misc]
             ids_elegidos = {r.id for r in elegidos}
             items = elegidos + [r for r in items if r.id not in ids_elegidos]
+            for i, r in enumerate(items):
+                r.posicion = posiciones_slots[i]
         else:
             raise EstadoInvalidoError("Debe proveer from_index y to_index, o un vector nuevo_orden de IDs o índices.")
-
-        ids_despues = [r.id for r in items]
-        if ids_antes != ids_despues:
-            if sesion.texto_limpio:
-                sesion.texto_limpio = permutar_marcadores_en_texto(
-                    sesion.texto_limpio, ids_antes, ids_despues
-                )
-            if sesion.borrador and sesion.borrador.texto_limpio:
-                sesion.borrador.texto_limpio = permutar_marcadores_en_texto(
-                    sesion.borrador.texto_limpio, ids_antes, ids_despues
-                )
 
         return self._aplicar_cambio_multimedia(sesion, items)
 

@@ -115,25 +115,26 @@ def test_derivar_desde_bloques_funcion_pura_y_marcadores():
     # Inmutabilidad
     assert len(bloques) == bloques_len_original
 
-    # Marcadores correlativos en texto_limpio
+    # Sin marcadores en texto_limpio
     esperado = (
         "Primer párrafo explicativo.\n\n"
-        "[[recurso:rec_1]]\n\n"
-        "Segundo párrafo con instrucciones intermedias.\n\n"
-        "[[recurso:rec_2]]"
+        "Segundo párrafo con instrucciones intermedias."
     )
     assert texto_limpio == esperado
+    assert "[[recurso:" not in texto_limpio
 
-    # Recursos en diccionario aislado con orden y metadatos
+    # Recursos en diccionario aislado con posicion, orden y metadatos
     assert len(recursos) == 2
     r1 = recursos["rec_1"]
     r2 = recursos["rec_2"]
     assert r1.id == "rec_1"
+    assert r1.posicion == 0
     assert r1.orden == 0
     assert r1.referencia == "https://finneg.com/captura1.png"
     assert r1.tipo == "imagen"
 
     assert r2.id == "rec_2"
+    assert r2.posicion == 1
     assert r2.orden == 1
     assert r2.referencia == "https://finneg.com/manual.pdf"
     assert r2.tipo == "documento"
@@ -167,7 +168,8 @@ def test_derivar_desde_bloques_idempotencia_e_ids_estables():
     # Pasada 1
     t1, recs1, _ = derivar_desde_bloques(bloques)
     assert "rec_1" in recs1
-    assert t1 == "Paso 1\n\n[[recurso:rec_1]]"
+    assert t1 == "Paso 1"
+    assert recs1["rec_1"].posicion == 0
 
     # Pasada 2 (idempotencia pasando recs1 como recursos_previos)
     t2, recs2, _ = derivar_desde_bloques(bloques, recursos_previos=recs1)
@@ -175,6 +177,7 @@ def test_derivar_desde_bloques_idempotencia_e_ids_estables():
     assert len(recs2) == 1
     assert "rec_1" in recs2
     assert recs2["rec_1"].referencia == "https://finneg.com/diagrama.png"
+    assert recs2["rec_1"].posicion == 0
     assert recs2["rec_1"].orden == 0
 
 
@@ -198,7 +201,10 @@ def test_agregar_recurso_no_altera_texto_limpio():
         BloqueItem(tipo="texto", contenido="Párrafo B"),
     ]
     t_nuevo, recs, _ = derivar_desde_bloques(bloques_nuevos)
-    assert t_nuevo == "Párrafo A\n\n[[recurso:rec_1]]\n\nPárrafo B"
+    assert t_nuevo == "Párrafo A\n\nPárrafo B"
+    assert "[[recurso:" not in t_nuevo
+    assert recs["rec_1"].posicion == 0
+    assert recs["rec_1"].orden == 0
     # Los párrafos A y B no sufrieron alteraciones
     assert "Párrafo A" in t_nuevo
     assert "Párrafo B" in t_nuevo
@@ -315,7 +321,9 @@ def test_rechazo_url_duplicada_y_limites_tamano_en_request():
     )
     tl_rep, recs_rep, _ = derivar_desde_bloques(req_rep.bloques)
     assert len(recs_rep) == 1
-    assert tl_rep.count("[[recurso:rec_1]]") == 2
+    assert "[[recurso:" not in tl_rep
+    assert recs_rep["rec_1"].posicion == 0
+    assert recs_rep["rec_1"].orden == 0
 
     # 2. Supera tamaño individual (>10 MB)
     with pytest.raises(ValidationError, match="tamaño máximo"):
@@ -464,10 +472,17 @@ def test_endpoint_post_chat_bloques(client):
     data = resp.json()
 
     assert data["session_id"] == sid
-    assert data["texto_limpio"] == "Sección inicial del artículo.\n\n[[recurso:rec_1]]\n\nSección secundaria posterior al diagrama."
+    assert data["texto_limpio"] == "Sección inicial del artículo.\n\nSección secundaria posterior al diagrama."
+    assert data["bloques_texto"] == [
+        "Sección inicial del artículo.",
+        "Sección secundaria posterior al diagrama.",
+    ]
+    assert "[[recurso:" not in data["texto_limpio"]
     assert len(data["recursos"]) == 1
     rec = data["recursos"][0]
     assert rec["id"] == "rec_1"
+    assert rec["posicion"] == 0
+    assert rec["orden"] == 0
     assert rec["referencia"] == "https://finneg.com/imagen.png"
     assert "token=secret123" not in rec["referencia"]
     assert "1 imagen" in data["aviso"]
@@ -522,7 +537,8 @@ def test_endpoint_post_chat_bloques_autosanitiza_pii_y_avisa(client):
     assert "juan@empresa.com" not in data["texto_limpio"]
     assert "[CUIT_OCULTO]" in data["texto_limpio"]
     assert "usuario@ejemplo.com" in data["texto_limpio"]
-    assert "[[recurso:rec_1]]" in data["texto_limpio"]
+    assert "[[recurso:" not in data["texto_limpio"]
+    assert data["recursos"][0]["posicion"] == 0
 
     # Aviso debe contener advertencia de privacidad y conteo de recursos
     assert "preservarte" in data["aviso"]

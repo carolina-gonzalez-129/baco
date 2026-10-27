@@ -52,7 +52,7 @@ class ChatRequest(BaseModel):
             borrador_conforme = obtener_borrador_conforme(self.session_id)
             if borrador_conforme is not None:
                 if not self.borrador:
-                    self.borrador = borrador_conforme.texto
+                    self.borrador = borrador_conforme.texto_limpio
                 if not self.titulo:
                     self.titulo = borrador_conforme.titulo
                 if not self.tags:

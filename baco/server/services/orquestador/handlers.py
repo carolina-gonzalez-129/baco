@@ -68,11 +68,13 @@ from baco.server.services.orquestador.mensajes import (
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
     componer_texto_publicable,
+    extraer_recursos_y_bloques_texto,
     extraer_recursos_y_texto_limpio,
+    fusionar_bloques_y_recursos_sin_colision,
     fusionar_recursos,
     fusionar_texto_y_recursos_sin_colision,
+    procesar_recursos_y_bloques,
     procesar_recursos_y_marcadores,
-    sincronizar_recursos_con_marcadores,
     texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.sesion import SesionChat
@@ -136,6 +138,104 @@ async def handle_esperando_titulo(
     return construir_respuesta(sesion, MSG_SIN_COINCIDENCIAS_TITULO, ["confirmar_texto", "volver"])
 
 
+def _consolidar_bloques_y_recursos_enriquecimiento(
+    bloques_base: list[str],
+    recs_base: Dict[str, object],
+    texto_aporte_raw: str,
+    ultimo_id: int = 0,
+    validar_marcadores_existentes: bool = True,
+    forzar_preservar_base: bool = False,
+) -> Tuple[list[str], Dict[str, object], Optional[str], Optional[str]]:
+    """Consolida bloques_base y recs_base con un texto de aporte o edición en modo enriquecimiento."""
+    texto_base_limpio = "\n\n".join(bloques_base).strip()
+    raw = (texto_aporte_raw or "").strip()
+    if not raw:
+        return list(bloques_base), dict(recs_base), None, None
+
+    if validar_marcadores_existentes:
+        marcadores_encontrados = re.findall(r"\[\[(?:recurso:([a-zA-Z0-9_\-]+)|(R\d+))\]\]", raw)
+        invalidos = []
+        for m_rec, m_r in marcadores_encontrados:
+            if m_r:
+                invalidos.append(f"[[{m_r}]]")
+            elif m_rec and m_rec not in (recs_base or {}):
+                invalidos.append(f"[[recurso:{m_rec}]]")
+        if invalidos:
+            msg_err = (
+                f"El texto contiene marcadores no válidos ({', '.join(invalidos)}). "
+                "Los recursos multimedia deben adjuntarse mediante enlaces o subida de archivos, no escribiendo marcadores manualmente."
+            )
+            return list(bloques_base), dict(recs_base), None, msg_err
+
+    bloques_aporte, recs_nuevos = extraer_recursos_y_bloques_texto(
+        raw,
+        recursos_previos=recs_base,  # type: ignore[arg-type]
+        ultimo_id=max(ultimo_id, _max_num_recurso(recs_base)),  # type: ignore[arg-type]
+    )
+    tl_aporte = "\n\n".join(bloques_aporte).strip()
+
+    es_adicion_separada = bool(
+        texto_base_limpio
+        and tl_aporte
+        and texto_base_limpio not in tl_aporte
+        and (forzar_preservar_base or len(tl_aporte) <= 70)
+    )
+
+    if es_adicion_separada:
+        sanit = sanitizar_borrador(texto=tl_aporte)
+        aviso_priv = sanit.get("aviso_privacidad")
+        bloques_aporte_san = [
+            sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+            for b in bloques_aporte
+            if b.strip()
+        ]
+        bloques_aporte_san = [b for b in bloques_aporte_san if b]
+
+        hay_recurso_al_final_base = any(
+            getattr(r, "posicion", 0) == len(bloques_base) - 1
+            for r in (recs_base or {}).values()
+        )
+        if not bloques_base:
+            bloques_finales = bloques_aporte_san
+            offset_pos = 0
+        elif hay_recurso_al_final_base or not bloques_aporte_san:
+            bloques_finales = list(bloques_base) + bloques_aporte_san
+            offset_pos = len(bloques_base)
+        else:
+            # Regla 6: adiciones con bloques existentes se agregan al final del último bloque de texto
+            fusion_ultimo = f"{bloques_base[-1]}\n\n{bloques_aporte_san[0]}".strip()
+            bloques_finales = list(bloques_base[:-1]) + [fusion_ultimo] + bloques_aporte_san[1:]
+            offset_pos = len(bloques_base) - 1
+
+        recs_nuevos_desplazados = {}
+        for k, r in recs_nuevos.items():
+            pos_orig = getattr(r, "posicion", 0)
+            nueva_pos = (pos_orig + offset_pos) if pos_orig >= 0 else max(0, offset_pos - 1)
+            recs_nuevos_desplazados[k] = r.model_copy(update={"posicion": nueva_pos})
+
+        bloques_fused, recs_fused = fusionar_bloques_y_recursos_sin_colision(
+            bloques_finales,
+            recs_base,  # type: ignore[arg-type]
+            recs_nuevos_desplazados,
+            ultimo_id=max(ultimo_id, _max_num_recurso(recs_base)),  # type: ignore[arg-type]
+        )
+        return bloques_fused, recs_fused, aviso_priv, None
+
+    texto_consolidado, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, tl_aporte)
+    bloques_consolidados = (
+        [b.strip() for b in re.split(r"\n\s*\n", texto_consolidado) if b.strip()]
+        if texto_consolidado.strip()
+        else []
+    )
+    bloques_fused, recs_fused = fusionar_bloques_y_recursos_sin_colision(
+        bloques_consolidados,
+        recs_base,  # type: ignore[arg-type]
+        recs_nuevos,
+        ultimo_id=max(ultimo_id, _max_num_recurso(recs_base)),  # type: ignore[arg-type]
+    )
+    return bloques_fused, recs_fused, aviso_priv, None
+
+
 async def handle_decision_titulo(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
@@ -154,25 +254,25 @@ async def handle_decision_titulo(
         texto_base = (texto_db or "").strip()
         elegido.texto_original = texto_base
 
-        texto_base_limpio, recs_base = extraer_recursos_y_texto_limpio(
+        bloques_base, recs_base = extraer_recursos_y_bloques_texto(
             texto_base, ultimo_id=sesion.ultimo_id_recurso
         )
+        texto_base_limpio = "\n\n".join(bloques_base).strip()
         if validar_longitud_maxima(texto_base_limpio, TEXTO_MAX_PERCENTIL_99, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX_PERCENTIL_99), ["descartar", "reiniciar"])
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_enviado = (req.texto or "").strip()
         if texto_enviado:
-            tl_env_remap, recursos, _ = procesar_recursos_y_marcadores(
+            bloques_finales, recursos, aviso_priv, _ = _consolidar_bloques_y_recursos_enriquecimiento(
+                bloques_base,
+                recs_base,
                 texto_enviado,
-                recursos_previos=recs_base,
                 ultimo_id=max(sesion.ultimo_id_recurso, _max_num_recurso(recs_base)),
                 validar_marcadores_existentes=False,
             )
-            texto_limpio, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, tl_env_remap)
-            recursos = sincronizar_recursos_con_marcadores(texto_limpio, recursos)
         else:
-            texto_limpio = texto_base_limpio
+            bloques_finales = list(bloques_base)
             recursos = recs_base
             aviso_priv = None
 
@@ -188,14 +288,12 @@ async def handle_decision_titulo(
             "tags": list(tags_db or []),
         } if (cat_db or tags_db) else None
 
-        texto_completo = componer_texto_publicable(texto_limpio, recursos)
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
             articulo_original_id=elegido.id,
             articulo_original_url=elegido.url,
             titulo=titulo_borrador,
-            texto=texto_completo,
-            texto_limpio=texto_limpio,
+            bloques_texto=bloques_finales,
             texto_base_limpio=texto_base_limpio,
             recursos=recursos,
             ultimo_id_recurso=max_id,
@@ -209,22 +307,17 @@ async def handle_decision_titulo(
         sesion.metadatos_anteriores = meta_ant
         sesion.metadatos_heredados_revisados = False
         sesion.actualizar_contenido_borrador(
-            texto_limpio=texto_limpio,
+            bloques_texto=list(sesion.borrador.bloques_texto),
             texto_base_limpio=texto_base_limpio,
-            recursos=recursos,
+            recursos=dict(sesion.borrador.recursos),
             ultimo_id_recurso=max_id,
         )
+        texto_limpio = sesion.borrador.texto_limpio
 
         err = validar_longitud(texto_limpio, TEXTO_MIN, TEXTO_MAX_PERCENTIL_99, "texto")
         if err:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
             return construir_respuesta(sesion, err, ["confirmar_texto", "descartar", "volver"])
-
-        prefijo = (
-            (msg_actualizar_serie_cargado(elegido.id, elegido.titulo) + "\n\n")
-            if es_serie
-            else (msg_enriquecer_cargado(elegido.id, elegido.titulo) + "\n\n")
-        )
 
         if not texto_enviado:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
@@ -255,29 +348,32 @@ async def handle_decision_titulo(
         sesion.coincidencias = []
         texto_disponible = (req.texto or sesion.texto_limpio or sesion.texto or "").strip()
         if texto_disponible:
-            txt_disp_limpio, recs_disp, _ = procesar_recursos_y_marcadores(
+            bloques_disp, recs_disp, _ = procesar_recursos_y_bloques(
                 texto_disponible,
                 recursos_previos=sesion.recursos,
                 ultimo_id=sesion.ultimo_id_recurso,
                 validar_marcadores_existentes=False,
             )
-            recs_disp = sincronizar_recursos_con_marcadores(txt_disp_limpio, recs_disp)
+            txt_disp_limpio = "\n\n".join(bloques_disp).strip()
         else:
-            txt_disp_limpio, recs_disp = "", sesion.recursos
+            bloques_disp, txt_disp_limpio, recs_disp = [], "", sesion.recursos
 
         if txt_disp_limpio and len(texto_efectivo_sin_marcadores(txt_disp_limpio)) >= TEXTO_MIN:
-            # Condición sine qua non: habiendo recibido título y texto, al descartar
-            # la coincidencia de título la búsqueda por duplicados continúa sobre el texto.
             sanit_txt = sanitizar_borrador(texto=txt_disp_limpio, titulo=sesion.titulo)
-            texto_sanitizado = sanit_txt["texto_sanitizado"]
             aviso_privacidad = sanit_txt.get("aviso_privacidad")
+            bloques_san = [
+                sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+                for b in bloques_disp
+                if b.strip()
+            ]
+            bloques_san = [b for b in bloques_san if b]
             max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(recs_disp))
             sesion.actualizar_contenido_borrador(
-                texto_limpio=texto_sanitizado,
+                bloques_texto=bloques_san,
                 recursos=recs_disp,
                 ultimo_id_recurso=max_id,
             )
-            texto_busqueda = texto_efectivo_sin_marcadores(texto_sanitizado)
+            texto_busqueda = texto_efectivo_sin_marcadores(sesion.texto_limpio)
 
             res_txt = await run_in_threadpool(
                 buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1, sesion.descarto_serie
@@ -298,14 +394,11 @@ async def handle_decision_titulo(
                         aviso_privacidad=aviso_privacidad,
                     )
 
-            # Si evaluar_texto no arrojó coincidencias, se crea el borrador nuevo y avanza
-            txt_rec = componer_texto_publicable(sesion.texto_limpio, sesion.recursos)
             sesion.contenido_adicional = []
             sesion.borrador = BorradorSesion(
                 modo="nuevo",
                 titulo=sesion.titulo,
-                texto=txt_rec,
-                texto_limpio=sesion.texto_limpio,
+                bloques_texto=sesion.bloques_texto,
                 recursos=sesion.recursos,
                 ultimo_id_recurso=max_id,
                 contenido_adicional=[],
@@ -313,7 +406,7 @@ async def handle_decision_titulo(
                 categoria_id=req.categoria_id or sesion.categoria_id,
                 tags=list(req.tags or sesion.tags),
             )
-            sesion.texto = txt_rec
+            sesion.texto = sesion.borrador.texto_alineado_discourse
             return avanzar_a_metadatos_o_revision(
                 sesion, PREFIJO_SIN_DUPLICADOS, aviso_privacidad=aviso_privacidad
             )
@@ -427,22 +520,55 @@ async def handle_esperando_texto(
             sesion.borrador.ultimo_id_recurso if sesion.borrador else 0,
             _max_num_recurso(recursos_prev),
         )
-        frag_tl, recs_combinados, _ = procesar_recursos_y_marcadores(
+        bloques_frag, recs_nuevos_frag = extraer_recursos_y_bloques_texto(
             fragmento,
             recursos_previos=recursos_prev,
             ultimo_id=ultimo_id_prev,
-            validar_marcadores_existentes=False,
         )
+        frag_tl = "\n\n".join(bloques_frag).strip()
         sanit_frag = sanitizar_borrador(texto=frag_tl, titulo=sesion.titulo)
         fragmento_limpio = sanit_frag["texto_sanitizado"]
         aviso_priv_frag = sanit_frag.get("aviso_privacidad")
 
+        bloques_existentes = (
+            list(sesion.borrador.bloques_texto)
+            if (sesion.borrador is not None and sesion.borrador.bloques_texto)
+            else list(sesion.bloques_texto)
+        )
         if req.texto is not None:
-            nuevo_borrador_txt = fragmento_limpio
+            nuevos_bloques = [b.strip() for b in bloques_frag if b.strip()]
+            nuevos_bloques = [sanitizar_borrador(texto=b)["texto_sanitizado"].strip() for b in nuevos_bloques]
+            nuevos_bloques = [b for b in nuevos_bloques if b]
+            nuevo_borrador_txt = "\n\n".join(nuevos_bloques).strip()
+            _, recs_combinados = fusionar_bloques_y_recursos_sin_colision(
+                nuevos_bloques, recursos_prev, recs_nuevos_frag, ultimo_id=ultimo_id_prev
+            )
+        elif bloques_existentes:
+            # Regla 6: adiciones por chat con bloques existentes se agregan al final del último bloque de texto
+            ultimo_bloque = f"{bloques_existentes[-1]}\n\n{fragmento_limpio}".strip() if fragmento_limpio else bloques_existentes[-1]
+            nuevos_bloques = list(bloques_existentes[:-1]) + ([ultimo_bloque] if ultimo_bloque else [])
+            nuevo_borrador_txt = "\n\n".join(nuevos_bloques).strip()
+            offset_pos = max(0, len(nuevos_bloques) - 1)
+            recs_frag_offset = {
+                k: r.model_copy(update={"posicion": offset_pos}) for k, r in recs_nuevos_frag.items()
+            }
+            _, recs_combinados = fusionar_bloques_y_recursos_sin_colision(
+                nuevos_bloques, recursos_prev, recs_frag_offset, ultimo_id=ultimo_id_prev
+            )
         elif sesion.texto_en_edicion:
             nuevo_borrador_txt = f"{sesion.texto_en_edicion}\n\n{fragmento_limpio}".strip()
+            nuevos_bloques = [nuevo_borrador_txt] if nuevo_borrador_txt else []
+            _, recs_combinados = fusionar_bloques_y_recursos_sin_colision(
+                nuevos_bloques, recursos_prev, recs_nuevos_frag, ultimo_id=ultimo_id_prev
+            )
         else:
             nuevo_borrador_txt = fragmento_limpio
+            nuevos_bloques = [b.strip() for b in bloques_frag if b.strip()]
+            nuevos_bloques = [sanitizar_borrador(texto=b)["texto_sanitizado"].strip() for b in nuevos_bloques]
+            nuevos_bloques = [b for b in nuevos_bloques if b]
+            _, recs_combinados = fusionar_bloques_y_recursos_sin_colision(
+                nuevos_bloques, recursos_prev, recs_nuevos_frag, ultimo_id=ultimo_id_prev
+            )
 
         largo_efectivo = len(texto_efectivo_sin_marcadores(nuevo_borrador_txt))
         if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
@@ -451,8 +577,8 @@ async def handle_esperando_texto(
 
         max_id_frag = max(ultimo_id_prev, _max_num_recurso(recs_combinados))
         sesion.actualizar_contenido_borrador(
+            bloques_texto=nuevos_bloques,
             texto_en_edicion=nuevo_borrador_txt,
-            texto_limpio=nuevo_borrador_txt,
             recursos=recs_combinados,
             ultimo_id_recurso=max_id_frag,
             categoria_id=req.categoria_id,
@@ -497,28 +623,29 @@ async def handle_esperando_texto(
     actualizar_metadatos_sesion(sesion, req)
 
     if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
-        texto_base = ""
-        if sesion.borrador.texto_base_limpio:
-            texto_base = sesion.borrador.texto_base_limpio.strip()
-        elif sesion.coincidencias and sesion.coincidencias[0].texto_original:
-            texto_base, _ = extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())
-        elif sesion.borrador.texto_limpio:
-            texto_base = sesion.borrador.texto_limpio.strip()
+        bloques_base_enriq = list(sesion.borrador.bloques_texto)
+        if not bloques_base_enriq:
+            if sesion.borrador.texto_base_limpio:
+                bloques_base_enriq = [b.strip() for b in re.split(r"\n\s*\n", sesion.borrador.texto_base_limpio) if b.strip()]
+            elif sesion.coincidencias and sesion.coincidencias[0].texto_original:
+                bloques_base_enriq, _ = extraer_recursos_y_bloques_texto(sesion.coincidencias[0].texto_original.strip())
 
         ultimo_id_enriq = max(
             sesion.ultimo_id_recurso,
             sesion.borrador.ultimo_id_recurso,
             _max_num_recurso(sesion.borrador.recursos),
         )
-        tl_aporte_remap, recursos, err_marcadores = procesar_recursos_y_marcadores(
+        bloques_enriq, recursos_finales, aviso_priv, err_marcadores = _consolidar_bloques_y_recursos_enriquecimiento(
+            bloques_base_enriq,
+            sesion.borrador.recursos,
             texto_raw,
-            recursos_previos=sesion.borrador.recursos,
             ultimo_id=ultimo_id_enriq,
+            validar_marcadores_existentes=True,
         )
         if err_marcadores:
             return construir_respuesta(sesion, err_marcadores, ["volver"])
 
-        texto_limpio, aviso_priv = consolidar_texto_enriquecimiento(texto_base, tl_aporte_remap)
+        texto_limpio = "\n\n".join(bloques_enriq).strip()
         largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
 
         if largo_efectivo < TEXTO_MIN:
@@ -529,16 +656,15 @@ async def handle_esperando_texto(
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
             return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
 
-        recursos_finales = sincronizar_recursos_con_marcadores(texto_limpio, recursos)
         max_id_enriq = max(
             ultimo_id_enriq,
-            _max_num_recurso(recursos),
+            _max_num_recurso(recursos_finales),  # type: ignore[arg-type]
             _max_num_recurso(sesion.borrador.recursos),
         )
         sesion.actualizar_contenido_borrador(
-            texto_limpio=texto_limpio,
+            bloques_texto=bloques_enriq,
             texto_base_limpio=texto_limpio,
-            recursos=recursos_finales,
+            recursos=recursos_finales,  # type: ignore[arg-type]
             ultimo_id_recurso=max_id_enriq,
             categoria_id=req.categoria_id,
             tags=req.tags,
@@ -548,7 +674,7 @@ async def handle_esperando_texto(
             sesion, pref_enriq, aviso_privacidad=aviso_priv
         )
 
-    texto_limpio, recursos, err_marcadores = procesar_recursos_y_marcadores(
+    bloques_proc, recursos_finales, err_marcadores = procesar_recursos_y_bloques(
         texto_raw,
         recursos_previos=sesion.recursos,
         ultimo_id=sesion.ultimo_id_recurso,
@@ -558,6 +684,7 @@ async def handle_esperando_texto(
         sesion.registrar_fallo("MARCADORES_MANUALES")
         return construir_respuesta(sesion, err_marcadores, ["volver"])
 
+    texto_limpio = "\n\n".join(bloques_proc).strip()
     largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
     if largo_efectivo < TEXTO_MIN:
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
@@ -568,17 +695,21 @@ async def handle_esperando_texto(
         return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
 
     sanit_txt = sanitizar_borrador(texto=texto_limpio, titulo=sesion.titulo)
-    texto_sanitizado = sanit_txt["texto_sanitizado"]
     aviso_privacidad = sanit_txt.get("aviso_privacidad")
+    bloques_san = [
+        sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+        for b in bloques_proc
+        if b.strip()
+    ]
+    bloques_san = [b for b in bloques_san if b]
 
-    recursos_finales = sincronizar_recursos_con_marcadores(texto_sanitizado, recursos)
-    max_id_nuevo = max(sesion.ultimo_id_recurso, _max_num_recurso(recursos))
+    max_id_nuevo = max(sesion.ultimo_id_recurso, _max_num_recurso(recursos_finales))
     sesion.actualizar_contenido_borrador(
-        texto_limpio=texto_sanitizado,
+        bloques_texto=bloques_san,
         recursos=recursos_finales,
         ultimo_id_recurso=max_id_nuevo,
     )
-    texto_busqueda = texto_efectivo_sin_marcadores(texto_sanitizado)
+    texto_busqueda = texto_efectivo_sin_marcadores(sesion.texto_limpio)
 
     res_txt = await run_in_threadpool(
         buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1, sesion.descarto_serie
@@ -599,13 +730,11 @@ async def handle_esperando_texto(
                 aviso_privacidad=aviso_privacidad,
             )
 
-    txt_rec = componer_texto_publicable(sesion.texto_limpio, sesion.recursos)
     sesion.contenido_adicional = []
     sesion.borrador = BorradorSesion(
         modo="nuevo",
         titulo=sesion.titulo,
-        texto=txt_rec,
-        texto_limpio=sesion.texto_limpio,
+        bloques_texto=sesion.bloques_texto,
         recursos=sesion.recursos,
         ultimo_id_recurso=max_id_nuevo,
         contenido_adicional=[],
@@ -613,7 +742,7 @@ async def handle_esperando_texto(
         categoria_id=sesion.categoria_id,
         tags=list(sesion.tags),
     )
-    sesion.texto = txt_rec
+    sesion.texto = sesion.borrador.texto_alineado_discourse
     pref_final = f"{prefijo_resultado_recursos}{PREFIJO_SIN_DUPLICADOS}"
     return avanzar_a_metadatos_o_revision(
         sesion, pref_final, aviso_privacidad=aviso_privacidad
@@ -638,21 +767,22 @@ async def handle_decision_texto(
         texto_base = (texto_db or "").strip()
         elegido.texto_original = texto_base
 
-        texto_base_limpio, recs_base = extraer_recursos_y_texto_limpio(texto_base)
+        bloques_base, recs_base = extraer_recursos_y_bloques_texto(texto_base)
+        texto_base_limpio = "\n\n".join(bloques_base).strip()
         if validar_longitud_maxima(texto_base_limpio, TEXTO_MAX_PERCENTIL_99, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX_PERCENTIL_99), ["descartar", "reiniciar"])
 
         tags_ini = req.tags if req.tags is not None else (tags_db or sesion.tags)
         texto_aporte = (req.texto or "").strip() or (sesion.texto or "").strip() or (sesion.texto_limpio or "").strip()
-        tl_aporte_remap, recursos, _ = procesar_recursos_y_marcadores(
+        bloques_finales, recursos_finales, aviso_priv, _ = _consolidar_bloques_y_recursos_enriquecimiento(
+            bloques_base,
+            recs_base,
             texto_aporte,
-            recursos_previos=recs_base,
             ultimo_id=max(sesion.ultimo_id_recurso, _max_num_recurso(recs_base)),
             validar_marcadores_existentes=False,
+            forzar_preservar_base=True,
         )
-        if texto_base_limpio and tl_aporte_remap and texto_base_limpio not in tl_aporte_remap:
-            tl_aporte_remap = f"{texto_base_limpio}\n\n{tl_aporte_remap}".strip()
-        texto_limpio, aviso_priv = consolidar_texto_enriquecimiento(texto_base_limpio, tl_aporte_remap)
+        texto_limpio = "\n\n".join(bloques_finales).strip()
 
         if validar_longitud_maxima(texto_limpio, TEXTO_MAX_PERCENTIL_99, "texto"):
             return construir_respuesta(sesion, msg_articulo_muy_largo(TEXTO_MAX_PERCENTIL_99), ["descartar", "reiniciar"])
@@ -667,18 +797,19 @@ async def handle_decision_texto(
             "tags": list(tags_db or []),
         } if (cat_db or tags_db) else None
 
-        recursos_finales = sincronizar_recursos_con_marcadores(texto_limpio, recursos)
-        max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(recursos), _max_num_recurso(recs_base))
-        texto_completo = componer_texto_publicable(texto_limpio, recursos_finales)
+        max_id = max(
+            sesion.ultimo_id_recurso,
+            _max_num_recurso(recursos_finales),  # type: ignore[arg-type]
+            _max_num_recurso(recs_base),
+        )
         sesion.borrador = BorradorSesion(
             modo="enriquecimiento",
             articulo_original_id=elegido.id,
             articulo_original_url=elegido.url,
             titulo=titulo_borrador,
-            texto=texto_completo,
-            texto_limpio=texto_limpio,
+            bloques_texto=bloques_finales,
             texto_base_limpio=texto_base_limpio,
-            recursos=recursos_finales,
+            recursos=recursos_finales,  # type: ignore[arg-type]
             ultimo_id_recurso=max_id,
             contenido_adicional=list(sesion.contenido_adicional),
             tipo_plantilla=extraer_tipo_plantilla(tags_ini),
@@ -690,9 +821,9 @@ async def handle_decision_texto(
         sesion.metadatos_anteriores = meta_ant
         sesion.metadatos_heredados_revisados = False
         sesion.actualizar_contenido_borrador(
-            texto_limpio=texto_limpio,
+            bloques_texto=list(sesion.borrador.bloques_texto),
             texto_base_limpio=texto_base_limpio,
-            recursos=recursos_finales,
+            recursos=dict(sesion.borrador.recursos),
             ultimo_id_recurso=max_id,
         )
         return avanzar_a_metadatos_o_revision(
@@ -705,15 +836,15 @@ async def handle_decision_texto(
             if c.id and c.id not in sesion.articulos_descartados_ids:
                 sesion.articulos_descartados_ids.append(c.id)
         sesion.coincidencias = []
-        txt_limp = sesion.texto_limpio or sesion.texto
-        txt_rec = componer_texto_publicable(txt_limp, sesion.recursos)
+        bloques_propios = list(sesion.bloques_texto) if sesion.bloques_texto else (
+            [sesion.texto_limpio.strip()] if (sesion.texto_limpio or "").strip() else []
+        )
         max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(sesion.recursos))
         sesion.contenido_adicional = []
         sesion.borrador = BorradorSesion(
             modo="nuevo",
             titulo=sesion.titulo,
-            texto=txt_rec,
-            texto_limpio=txt_limp,
+            bloques_texto=bloques_propios,
             recursos=sesion.recursos,
             ultimo_id_recurso=max_id,
             contenido_adicional=[],
@@ -721,7 +852,7 @@ async def handle_decision_texto(
             categoria_id=sesion.categoria_id,
             tags=list(sesion.tags),
         )
-        sesion.texto = txt_rec
+        sesion.texto = sesion.borrador.texto_alineado_discourse
         return avanzar_a_metadatos_o_revision(sesion, PREFIJO_CONTINUAR_PROPIO)
 
     if opcion == "volver":
@@ -766,18 +897,18 @@ async def handle_esperando_plantilla(
 
     if b and req.texto is not None and req.texto.strip():
         ultimo_id_p = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
-        tl_plant, recs_plant, _ = procesar_recursos_y_marcadores(
+        bloques_plant, recs_plant, _ = procesar_recursos_y_bloques(
             req.texto.strip(),
             recursos_previos=b.recursos,
             ultimo_id=ultimo_id_p,
             validar_marcadores_existentes=False,
         )
-        recs_finales_plant = sincronizar_recursos_con_marcadores(tl_plant, recs_plant)
+        tl_plant = "\n\n".join(bloques_plant).strip()
         sesion.actualizar_contenido_borrador(
-            texto_limpio=tl_plant,
+            bloques_texto=bloques_plant,
             texto_base_limpio=tl_plant if b.modo == "enriquecimiento" else None,
-            recursos=recs_finales_plant,
-            ultimo_id_recurso=max(ultimo_id_p, _max_num_recurso(recs_finales_plant)),
+            recursos=recs_plant,
+            ultimo_id_recurso=max(ultimo_id_p, _max_num_recurso(recs_plant)),
         )
 
     opcion_plantilla = opcion or req.texto or req.mensaje or ""
@@ -922,14 +1053,15 @@ def _ejecutar_sanitizacion_borrador(
     if b is None:
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
-    txt_a_sanit = req.texto or b.texto_limpio or b.texto
+    txt_a_sanit = req.texto or b.texto_limpio or b.texto_alineado_discourse
     ultimo_id_sanit = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
-    tl_sanit_in, recs_sanit_comb, _ = procesar_recursos_y_marcadores(
+    bloques_sanit_in, recs_sanit_comb, _ = procesar_recursos_y_bloques(
         txt_a_sanit,
         recursos_previos=b.recursos,
         ultimo_id=ultimo_id_sanit,
         validar_marcadores_existentes=False,
     )
+    tl_sanit_in = "\n\n".join(bloques_sanit_in).strip()
 
     if b.modo == "enriquecimiento" and (
         b.texto_base_limpio or (sesion.coincidencias and sesion.coincidencias[0].texto_original)
@@ -940,6 +1072,9 @@ def _ejecutar_sanitizacion_borrador(
             else extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())[0]
         )
         txt_sanitizado, aviso_sanit = consolidar_texto_enriquecimiento(texto_base_limpio, tl_sanit_in)
+        bloques_sanitizados = [
+            bl.strip() for bl in re.split(r"\n\s*\n", txt_sanitizado) if bl.strip()
+        ]
         limpio_tit = sanitizar_borrador(texto="", titulo=req.titulo or b.titulo)
         titulo_sanitizado = limpio_tit["titulo_sanitizado"]
     else:
@@ -947,14 +1082,19 @@ def _ejecutar_sanitizacion_borrador(
         titulo_sanitizado = limpio["titulo_sanitizado"]
         txt_sanitizado = limpio["texto_sanitizado"]
         aviso_sanit = limpio.get("aviso_privacidad")
+        bloques_sanitizados = [
+            sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
+            for bl in bloques_sanit_in
+            if bl.strip()
+        ]
+        bloques_sanitizados = [bl for bl in bloques_sanitizados if bl]
 
-    recs_sanit_finales = sincronizar_recursos_con_marcadores(txt_sanitizado, recs_sanit_comb)
     max_id = max(ultimo_id_sanit, _max_num_recurso(recs_sanit_comb))
     sesion.actualizar_contenido_borrador(
         titulo=titulo_sanitizado,
-        texto_limpio=txt_sanitizado,
+        bloques_texto=bloques_sanitizados,
         texto_base_limpio=txt_sanitizado if b.modo == "enriquecimiento" else None,
-        recursos=recs_sanit_finales,
+        recursos=recs_sanit_comb,
         ultimo_id_recurso=max_id,
     )
     b.conforme = False
@@ -1001,13 +1141,14 @@ def _aplicar_mutaciones_borrador(
             aviso_priv_edicion = sanit_tit.get("aviso_privacidad")
 
     recursos_nuevos = None
+    bloques_nuevos = None
     txt_nuevo_limpio = None
     ultimo_id_nuevo = None
 
     if texto_edicion is not None:
         txt_nuevo = texto_edicion.strip()
         ultimo_id_edit = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
-        txt_proc, recs_comb, err_marcadores = procesar_recursos_y_marcadores(
+        bloques_proc, recs_comb, err_marcadores = procesar_recursos_y_bloques(
             txt_nuevo,
             recursos_previos=b.recursos,
             ultimo_id=ultimo_id_edit,
@@ -1015,6 +1156,7 @@ def _aplicar_mutaciones_borrador(
         if err_marcadores:
             return construir_respuesta(sesion, err_marcadores, ops_actuales)
 
+        txt_proc = "\n\n".join(bloques_proc).strip()
         if b.modo == "enriquecimiento" and (
             b.texto_base_limpio or (sesion.coincidencias and sesion.coincidencias[0].texto_original)
         ):
@@ -1024,10 +1166,19 @@ def _aplicar_mutaciones_borrador(
                 else extraer_recursos_y_texto_limpio(sesion.coincidencias[0].texto_original.strip())[0]
             )
             txt_verif, aviso_txt = consolidar_texto_enriquecimiento(texto_base_limpio, txt_proc)
+            bloques_nuevos = [
+                bl.strip() for bl in re.split(r"\n\s*\n", txt_verif) if bl.strip()
+            ]
         else:
             sanit_edit = sanitizar_borrador(texto=txt_proc, titulo=titulo_nuevo or b.titulo)
             txt_verif = sanit_edit["texto_sanitizado"]
             aviso_txt = sanit_edit.get("aviso_privacidad")
+            bloques_nuevos = [
+                sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
+                for bl in bloques_proc
+                if bl.strip()
+            ]
+            bloques_nuevos = [bl for bl in bloques_nuevos if bl]
 
         if aviso_txt:
             aviso_priv_edicion = f"{aviso_priv_edicion}\n{aviso_txt}" if aviso_priv_edicion else aviso_txt
@@ -1037,7 +1188,8 @@ def _aplicar_mutaciones_borrador(
             return construir_respuesta(sesion, err_txt, ops_actuales)
 
         txt_nuevo_limpio = txt_verif
-        recursos_nuevos = sincronizar_recursos_con_marcadores(txt_verif, recs_comb)
+        # Los recursos existentes se conservan al editar texto (solo se eliminan explícitamente)
+        recursos_nuevos = recs_comb
         ultimo_id_nuevo = max(ultimo_id_edit, _max_num_recurso(recs_comb))
 
     tags_nuevos = None
@@ -1048,7 +1200,7 @@ def _aplicar_mutaciones_borrador(
 
     sesion.actualizar_contenido_borrador(
         titulo=titulo_nuevo,
-        texto_limpio=txt_nuevo_limpio,
+        bloques_texto=bloques_nuevos,
         texto_base_limpio=txt_nuevo_limpio if b.modo == "enriquecimiento" else None,
         recursos=recursos_nuevos,
         ultimo_id_recurso=ultimo_id_nuevo,
@@ -1097,18 +1249,25 @@ def _registrar_conformidad(sesion: SesionChat) -> ChatOrquestadorResponse:
         txt_conf, aviso_priv_conf = consolidar_texto_enriquecimiento(texto_base_limpio, b.texto_limpio)
         limpio_tit = sanitizar_borrador(texto="", titulo=b.titulo)
         titulo_conf = limpio_tit["titulo_sanitizado"]
-        texto_limpio_conf = txt_conf
+        bloques_conf = list(b.bloques_texto)
+        if texto_base_limpio and texto_base_limpio not in b.texto_limpio:
+            bloques_conf = [texto_base_limpio] + bloques_conf
         aviso_privacidad_final = aviso_priv_conf or limpio_tit.get("aviso_privacidad")
     else:
         limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
         titulo_conf = limpio["titulo_sanitizado"]
-        texto_limpio_conf = limpio["texto_sanitizado"]
+        bloques_conf = [
+            sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
+            for bl in b.bloques_texto
+            if bl.strip()
+        ]
+        bloques_conf = [bl for bl in bloques_conf if bl]
         aviso_privacidad_final = limpio.get("aviso_privacidad")
 
-    sesion.actualizar_contenido_borrador(titulo=titulo_conf, texto_limpio=texto_limpio_conf)
+    sesion.actualizar_contenido_borrador(titulo=titulo_conf, bloques_texto=bloques_conf)
     b.conforme = True
     b.conforme_en = datetime.now(timezone.utc).isoformat()
-    b.texto_original_conforme = b.texto
+    b.texto_original_conforme = b.texto_alineado_discourse
     b.conformidad_invalidada = False
     sesion.estado = EstadoFlujo.CONFORMIDAD_USUARIO
 
@@ -1136,7 +1295,7 @@ async def handle_revision_borrador(
         (b and b.conforme)
         or (b and getattr(b, "conformidad_invalidada", False))
         or (sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO)
-        or (b and b.texto_original_conforme is not None and b.texto != b.texto_original_conforme)
+        or (b and b.texto_original_conforme is not None and b.texto_alineado_discourse != b.texto_original_conforme)
     )
     texto_edicion = req.texto
     if texto_edicion is None and opcion == "editar" and req.mensaje and req.mensaje.strip().lower() != "editar":

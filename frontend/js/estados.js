@@ -97,6 +97,7 @@ BACO.store = (function () {
   'use strict';
   const oyentes = [];
   const ETAPAS_DEFAULT = ['Título y duplicados', 'Contenido', 'Plantilla y etiquetas', 'Revisión', 'Conformidad'];
+  const TOOLTIP_IMAGEN_DESHABILITADA = 'Disponible al finalizar las validaciones';
 
   const estado = {
     session_id: null,
@@ -114,6 +115,7 @@ BACO.store = (function () {
     coincidencias: [],
     borrador: null,
     validacion: null,
+    multimedia_habilitada: false,
 
     /* lo que el usuario está escribiendo, antes de enviarlo */
     form: { titulo: '', texto: '', tags: [], categoria_id: null },
@@ -124,15 +126,63 @@ BACO.store = (function () {
 
   const notificar = () => oyentes.forEach((fn) => fn(estado));
 
+  function ordenarRecursos(lista) {
+    return (lista || []).slice().sort((a, b) => {
+      const pa = typeof a.posicion === 'number' ? a.posicion : 0;
+      const pb = typeof b.posicion === 'number' ? b.posicion : 0;
+      if (pa !== pb) return pa - pb;
+      return (a.orden || 0) - (b.orden || 0);
+    });
+  }
+
+  /* Función única que lee multimedia_habilitada de la respuesta del servidor
+     y actualiza tanto el store como el botón de imagen de la barra. */
+  function actualizarDisponibilidadRecursos(resp) {
+    if (resp && typeof resp.multimedia_habilitada === 'boolean') {
+      estado.multimedia_habilitada = resp.multimedia_habilitada;
+    } else if (!resp) {
+      estado.multimedia_habilitada = false;
+    }
+    const habilitado = Boolean(estado.multimedia_habilitada === true);
+    if (typeof document !== 'undefined' && document.getElementById) {
+      const btnImg = document.getElementById('btnImagenToolbar');
+      if (btnImg) {
+        const deshab = !habilitado || Boolean(estado.enviando);
+        btnImg.disabled = deshab;
+        btnImg.setAttribute('aria-disabled', String(deshab));
+        btnImg.title = habilitado ? 'Insertar imagen' : TOOLTIP_IMAGEN_DESHABILITADA;
+      }
+    }
+    return habilitado;
+  }
+
+  function sincronizarEstructuraBorrador(b) {
+    if (!b) return;
+    const recsRaw = Array.isArray(b.multimedia)
+      ? b.multimedia
+      : (Array.isArray(b.recursos) ? b.recursos : Object.values(b.recursos || {}));
+    const ordenados = ordenarRecursos(recsRaw);
+    b.multimedia = ordenados;
+    const mapa = {};
+    ordenados.forEach((r, idx) => {
+      const id = r.id || ('rec_' + (idx + 1));
+      mapa[id] = r;
+    });
+    b.recursos = mapa;
+    if (!Array.isArray(b.bloques_texto) || !b.bloques_texto.length) {
+      b.bloques_texto = [b.texto_limpio || ''];
+    }
+  }
+
   return {
     get: () => estado,
     suscribir(fn) { oyentes.push(fn); fn(estado); },
     set(cambios) { Object.assign(estado, cambios); notificar(); },
     setForm(campos) { Object.assign(estado.form, campos); notificar(); },
+    actualizarDisponibilidadRecursos,
 
     /* Aplica la respuesta de un turno del backend */
     aplicarTurno(r) {
-      const flujoPrevio = estado.flujo;
       estado.session_id = r.session_id;
       estado.flujo = r.estado;
       if (r.etapa) {
@@ -167,14 +217,21 @@ BACO.store = (function () {
       estado.borrador = r.borrador || null;
       estado.validacion = r.validacion || null;
       estado.aviso_metadatos_heredados = r.aviso_metadatos_heredados || null;
-      /* Criterio único del backend: mini panel multimedia operativo tras buscar_duplicados.
-         undefined = respuesta sin el campo (p. ej. mock viejo): el panel decide con su fallback. */
-      estado.multimedia_habilitada = (typeof r.multimedia_habilitada === 'boolean') ? r.multimedia_habilitada : undefined;
+
+      /* Única función autorizada para decidir disponibilidad de recursos */
+      actualizarDisponibilidadRecursos(r);
 
       /* El borrador del backend es la fuente de verdad del formulario.
          Al enriquecer o actualizar, el texto se vuelca inmediatamente en el panel izquierdo.
          El editor trabaja SOLO sobre texto_limpio: los recursos multimedia viven aparte (mini panel). */
       if (r.borrador) {
+        if (typeof r.skills_habilitadas === 'boolean' && r.borrador.skills_habilitadas === undefined) {
+          r.borrador.skills_habilitadas = r.skills_habilitadas;
+        }
+        if (r.skills_motivo !== undefined && r.borrador.skills_motivo === undefined) {
+          r.borrador.skills_motivo = r.skills_motivo;
+        }
+        sincronizarEstructuraBorrador(r.borrador);
         estado.form.titulo = r.borrador.titulo || '';
         estado.form.texto = r.borrador.texto_limpio || '';
         estado.form.tags = (r.borrador.tags || []).slice();
@@ -190,13 +247,54 @@ BACO.store = (function () {
       notificar();
     },
 
-    actualizarRecursos(recursos) {
+    /* Aplica el EstadoRecursosResponse unificado (o una lista directa por compatibilidad) */
+    actualizarRecursos(res) {
       if (!estado.borrador) return;
-      estado.borrador.recursos = recursos;
-      if (Array.isArray(recursos)) {
-        estado.borrador.multimedia = recursos.slice();
-        estado.borrador.orden_multimedia = recursos.map((_, i) => i);
-        estado.borrador.posiciones = recursos.map((_, i) => i);
+      const esObjetoEstado = res && !Array.isArray(res) && typeof res === 'object' &&
+        (Array.isArray(res.recursos) || Array.isArray(res.bloques_texto));
+
+      if (esObjetoEstado) {
+        const recsOrdenados = ordenarRecursos(res.recursos || []);
+        const mapa = {};
+        recsOrdenados.forEach((r, i) => {
+          const id = r.id || ('rec_' + (i + 1));
+          mapa[id] = r;
+        });
+        estado.borrador.recursos = mapa;
+        estado.borrador.multimedia = recsOrdenados;
+        estado.borrador.orden_multimedia = recsOrdenados.map((_, i) => i);
+        estado.borrador.posiciones = recsOrdenados.map((r) => (typeof r.posicion === 'number' ? r.posicion : 0));
+        if (Array.isArray(res.bloques_texto) && res.bloques_texto.length) {
+          estado.borrador.bloques_texto = res.bloques_texto.slice();
+        }
+        if (typeof res.texto_limpio === 'string') {
+          estado.borrador.texto_limpio = res.texto_limpio;
+          estado.form.texto = res.texto_limpio;
+        } else if (Array.isArray(estado.borrador.bloques_texto)) {
+          const derivado = estado.borrador.bloques_texto.map((b) => String(b || '').trim()).filter(Boolean).join('\n\n');
+          estado.borrador.texto_limpio = derivado;
+          estado.form.texto = derivado;
+        }
+        if (typeof res.skills_habilitadas === 'boolean') {
+          estado.borrador.skills_habilitadas = res.skills_habilitadas;
+        }
+        if (res.skills_motivo !== undefined) {
+          estado.borrador.skills_motivo = res.skills_motivo;
+        }
+        if (typeof res.multimedia_habilitada === 'boolean') {
+          actualizarDisponibilidadRecursos(res);
+        }
+      } else {
+        const lista = Array.isArray(res) ? ordenarRecursos(res) : ordenarRecursos(Object.values(res || {}));
+        const mapa = {};
+        lista.forEach((r, i) => {
+          const id = r.id || ('rec_' + (i + 1));
+          mapa[id] = r;
+        });
+        estado.borrador.recursos = mapa;
+        estado.borrador.multimedia = lista.slice();
+        estado.borrador.orden_multimedia = lista.map((_, i) => i);
+        estado.borrador.posiciones = lista.map((r, i) => (typeof r.posicion === 'number' ? r.posicion : i));
       }
       notificar();
     },
@@ -212,12 +310,14 @@ BACO.store = (function () {
       estado.opciones = []; estado.tags_acumulados = [];
       estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;
-      estado.multimedia_habilitada = false;
+      actualizarDisponibilidadRecursos({ multimedia_habilitada: false });
       estado.form = { titulo: '', texto: '', tags: [], categoria_id: null };
       notificar();
     }
   };
 })();
+
+BACO.actualizarDisponibilidadRecursos = BACO.store.actualizarDisponibilidadRecursos;
 
 /* Porcentaje de avance del flujo, dictado por etapa del servidor */
 BACO.avance = function (s) {
