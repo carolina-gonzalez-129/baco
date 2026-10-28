@@ -211,6 +211,135 @@ def test_front_editar_cambiar_a_preview_modificar_y_volver_editor_texto_intacto(
     assert out["skillsHabilitadas"] is False
 
 
+@pytest.mark.skipif(NODE is None, reason="Node.js no disponible para test frontend")
+def test_front_modificar_preview_y_tocar_enriquecer_sincroniza_cambios():
+    """Valida que al modificar la vista previa a mano y tocar 'enriquecer',
+    los cambios no se pierdan y se sincronicen hacia el payload y el store.
+    """
+    script = """
+    const fs = require('fs');
+    global.window = global;
+    global.Event = class Event { constructor(t) { this.type = t; } };
+
+    const elementosCreados = [];
+    const nodoDummy = (tag) => {
+      const n = {
+        tagName: (tag || 'DIV').toUpperCase(),
+        innerHTML: '', textContent: '', value: '', hidden: false, disabled: false,
+        className: '', style: {}, dataset: {}, children: [], childNodes: [], scrollHeight: 0, scrollTop: 0,
+        focus() {},
+        classList: {
+          _set: new Set(),
+          add(c){ this._set.add(c); },
+          remove(c){ this._set.delete(c); },
+          toggle(c, v){ if (v) this._set.add(c); else this._set.delete(c); },
+          contains(c){ return this._set.has(c); }
+        },
+        appendChild(child){ this.children.push(child); return child; },
+        replaceChildren(...args){ this.children = args; },
+        insertBefore(n, ref){ this.children.push(n); },
+        remove(){},
+        setAttribute(k, v){ this.dataset[k] = v; },
+        getAttribute(k){ return this.dataset[k] || null; },
+        addEventListener(e, fn){ this['_on_' + e] = fn; },
+        querySelectorAll(sel){
+          return this.children.filter(c => sel.includes(c.className) || (c.dataset && sel.includes(c.dataset.bloqueIdx)));
+        },
+        querySelector(sel){ return this.children[0] || nodoDummy(); },
+        closest(sel){ return this; }
+      };
+      elementosCreados.push(n);
+      return n;
+    };
+
+    const domMap = {
+      '#editorBloquesWrapper': nodoDummy('div'),
+      '#contenedorBloques': nodoDummy('div'),
+      '#fCuerpo': nodoDummy('textarea'),
+      '#preview': nodoDummy('div'),
+      '#btnEditor': nodoDummy('button'),
+      '#btnPreview': nodoDummy('button'),
+      '#campoTexto': nodoDummy('div'),
+      '#panelMultimedia': nodoDummy('div'),
+      '#editorImgBar': nodoDummy('div'),
+      '#modo': nodoDummy('div'),
+      '#toast': nodoDummy('div'),
+      '#opcionesBarra': nodoDummy('div'),
+      '#thread': nodoDummy('div')
+    };
+
+    global.document = {
+      activeElement: null,
+      body: { contains: () => true, appendChild(){}, removeChild(){} },
+      querySelector: (sel) => domMap[sel] || nodoDummy(),
+      getElementById: (id) => domMap['#' + id] || nodoDummy(),
+      createElement: (tag) => nodoDummy(tag),
+      createDocumentFragment: () => nodoDummy('fragment'),
+      addEventListener: () => {}
+    };
+
+    let payloadEnviado = null;
+    global.BACO = {
+      config: { MIN_TITULO: 15, MAX_TITULO: 140, MIN_TEXTO: 20, MAX_TEXTO_PERCENTIL_99: 16777, MIN_TAGS: 2, MAX_TAGS: 5 },
+      api: {
+        esMock: true,
+        turno: async (cuerpo) => {
+          payloadEnviado = cuerpo;
+          return {
+            session_id: 's_test',
+            estado: 'ESPERANDO_TEXTO',
+            borrador: {
+              modo: 'enriquecimiento',
+              titulo: 'Guía de Apertura',
+              bloques_texto: ['Bloque enriquecido'],
+              texto_editor: cuerpo.texto || ''
+            }
+          };
+        }
+      }
+    };
+
+    eval(fs.readFileSync('frontend/js/estados.js', 'utf8'));
+    eval(fs.readFileSync('frontend/js/panel-multimedia.js', 'utf8'));
+    eval(fs.readFileSync('frontend/js/app.js', 'utf8'));
+
+    // Estado inicial en DECISION_TEXTO con opciones
+    BACO.store.aplicarTurno({
+      session_id: 's_enriq_preview_test',
+      estado: 'DECISION_TEXTO',
+      opciones: ['enriquecer', 'continuar', 'volver'],
+      borrador: {
+        modo: 'nuevo',
+        titulo: 'Guía de Apertura',
+        bloques_texto: ['Mi aporte inicial escrito en el editor']
+      }
+    });
+
+    const preview = domMap['#preview'];
+    preview.hidden = false;
+    // Simular que el usuario editó a mano en la vista previa
+    const b0 = nodoDummy('div');
+    b0.className = 'preview-bloque-editable';
+    b0.dataset = { 'data-bloque-idx': '0', bloqueIdx: '0' };
+    b0.childNodes = [{ nodeType: 3, nodeValue: 'Texto modificado a mano en la vista previa antes de enriquecer' }];
+    preview.children = [b0];
+
+    // Simular clic en botón enriquecer
+    BACO.accionar('enriquecer', 'Enriquecer el existente');
+
+    console.log(JSON.stringify({
+      payloadEnviado,
+      textoEnStore: BACO.store.get().form.texto
+    }));
+    """
+    res = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
+    out = json.loads(res.stdout)
+    assert out["payloadEnviado"] is not None
+    assert out["payloadEnviado"]["accion"] == "enriquecer"
+    assert "modificado a mano en la vista previa" in out["payloadEnviado"].get("texto", "")
+    assert "modificado a mano en la vista previa" in out["textoEnStore"]
+
+
 # ==============================================================================
 # (b) Test Servidor / Handlers: coincidencia por título vs. coincidencia por texto
 # ==============================================================================

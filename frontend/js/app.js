@@ -1577,22 +1577,48 @@
     const bloquesEditables = pr.querySelectorAll('.preview-bloque-editable');
     if (!bloquesEditables.length) return;
 
-    bloquesEditables.forEach((bDiv) => {
-      const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
-      if (isNaN(idx) || idx < 0) return;
-      const nuevoMd = extraerMarkdownDeBloque(bDiv);
-      if (idx < estadoEditor.bloques_texto.length) {
-        estadoEditor.bloques_texto[idx] = nuevoMd;
+    const st = store.get();
+    const esEnriquecer = Boolean(st && st.borrador && st.borrador.modo === 'enriquecimiento');
+
+    if (esEnriquecer) {
+      if (!Array.isArray(estadoVistaPrevia.bloques_texto) || !estadoVistaPrevia.bloques_texto.length) {
+        estadoVistaPrevia.bloques_texto = (st.borrador && Array.isArray(st.borrador.bloques_texto))
+          ? st.borrador.bloques_texto.slice()
+          : [''];
       }
-      const b = estadoEditor.bloques.find((x) => x.tipo === 'texto' && x.bloqueIdx === idx);
-      if (b) b.contenido = nuevoMd;
-      const ta = textareasMap.get('txt_block_' + idx);
-      if (ta && ta.value !== nuevoMd) {
-        ta.value = nuevoMd;
+      bloquesEditables.forEach((bDiv) => {
+        const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
+        if (isNaN(idx) || idx < 0) return;
+        const nuevoMd = extraerMarkdownDeBloque(bDiv);
+        if (idx < estadoVistaPrevia.bloques_texto.length) {
+          estadoVistaPrevia.bloques_texto[idx] = nuevoMd;
+        }
+      });
+      if (st && st.borrador) {
+        st.borrador.bloques_texto = estadoVistaPrevia.bloques_texto.slice();
+        st.borrador.texto_limpio = estadoVistaPrevia.bloques_texto.join('\n\n').trim();
       }
-    });
-    sincronizarTextoConStore();
+      store.setForm({ texto: st.borrador ? st.borrador.texto_limpio : '' });
+    } else {
+      bloquesEditables.forEach((bDiv) => {
+        const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
+        if (isNaN(idx) || idx < 0) return;
+        const nuevoMd = extraerMarkdownDeBloque(bDiv);
+        if (idx < estadoEditor.bloques_texto.length) {
+          estadoEditor.bloques_texto[idx] = nuevoMd;
+        }
+        const b = estadoEditor.bloques.find((x) => x.tipo === 'texto' && x.bloqueIdx === idx);
+        if (b) b.contenido = nuevoMd;
+        const ta = textareasMap.get('txt_block_' + idx);
+        if (ta && ta.value !== nuevoMd) {
+          ta.value = nuevoMd;
+        }
+      });
+      sincronizarTextoConStore();
+    }
   }
+
+  BACO.sincronizarTextoDesdePreview = sincronizarTextoDesdePreview;
 
   function pintarStepper(s, etapaActual) {
     const cont = $('#pasos');
@@ -2048,13 +2074,27 @@
       renderBloques();
       return enviarTurno({ accion: 'reiniciar' });
     }
+    if (op === 'enriquecer' || op === 'actualizar') {
+      sincronizarTextoDesdePreview();
+      sincronizarTextoConStore();
+      const sAct = store.get();
+      const payload = { accion: op };
+      const txt = (sAct.form && typeof sAct.form.texto === 'string' ? sAct.form.texto : '').trim() ||
+                  componerTextoDesdeBloques().trim();
+      if (txt) {
+        payload.texto = txt;
+      }
+      return enviarTurno(payload, label);
+    }
     enviarTurno({ accion: op }, label);
   }
 
+  BACO.accionar = accionar;
+
   async function confirmarTexto() {
     const s = store.get();
+    sincronizarTextoDesdePreview();
     const esEnriquecer = Boolean(s && s.borrador && s.borrador.modo === 'enriquecimiento');
-    if (!esEnriquecer) sincronizarTextoDesdePreview();
     let textoFinal = '';
     const textoEditor = componerTextoDesdeBloques().trim();
     if (esEnriquecer) {
@@ -3273,11 +3313,7 @@
     /* Alternar Markdown / Vista previa reutilizando #btnEditor y #btnPreview */
     if ($('#btnEditor')) {
       $('#btnEditor').onclick = () => {
-        const st = store.get();
-        const esEnriq = Boolean(st && st.borrador && st.borrador.modo === 'enriquecimiento');
-        if (!esEnriq) {
-          sincronizarTextoDesdePreview();
-        }
+        sincronizarTextoDesdePreview();
         const wrapper = $('#editorBloquesWrapper');
         if (wrapper) wrapper.hidden = false;
         const fc = $('#fCuerpo');
