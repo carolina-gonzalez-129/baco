@@ -178,6 +178,10 @@
   let consultandoDocExistentePorTitulo = false;
   let tituloOriginalIngresado = '';
   let descartoDocExistentePorTitulo = false;
+  let consultandoDocExistentePorTexto = false;
+  let textoOriginalIngresado = '';
+  let bloquesOriginalesIngresados = [''];
+  let descartoDocExistentePorTexto = false;
 
   /* Función única que lee multimedia_habilitada de la respuesta del servidor */
   function actualizarDisponibilidadRecursos(resp) {
@@ -2100,6 +2104,10 @@
       consultandoDocExistentePorTitulo = false;
       descartoDocExistentePorTitulo = false;
       tituloOriginalIngresado = '';
+      consultandoDocExistentePorTexto = false;
+      descartoDocExistentePorTexto = false;
+      textoOriginalIngresado = '';
+      bloquesOriginalesIngresados = [''];
       store.reiniciarLocal();
       if (api.olvidarSesion) api.olvidarSesion();
       $('#thread').innerHTML = '';
@@ -2120,6 +2128,20 @@
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
       const sAct = store.get();
+      if (s.flujo === 'DECISION_TEXTO') {
+        consultandoDocExistentePorTexto = true;
+        const textoCapturado = (sAct.form && typeof sAct.form.texto === 'string' && sAct.form.texto.trim())
+          ? sAct.form.texto
+          : (componerTextoDesdeBloques().trim() || textoOriginalIngresado || '');
+        if (textoCapturado) {
+          textoOriginalIngresado = textoCapturado;
+        }
+        if (estadoEditor.bloques_texto && estadoEditor.bloques_texto.length) {
+          bloquesOriginalesIngresados = estadoEditor.bloques_texto.slice();
+        } else if (textoCapturado) {
+          bloquesOriginalesIngresados = [textoCapturado];
+        }
+      }
       const payload = { accion: op };
       const txt = (sAct.form && typeof sAct.form.texto === 'string' ? sAct.form.texto : '').trim() ||
                   componerTextoDesdeBloques().trim();
@@ -2128,18 +2150,30 @@
       }
       return enviarTurno(payload, label);
     }
-    if (op === 'descartar' && consultandoDocExistentePorTitulo && s.flujo === 'ESPERANDO_TEXTO') {
+    if (op === 'descartar' && (consultandoDocExistentePorTitulo || consultandoDocExistentePorTexto) && s.flujo === 'ESPERANDO_TEXTO') {
+      const eraPorTexto = consultandoDocExistentePorTexto;
       consultandoDocExistentePorTitulo = false;
-      descartoDocExistentePorTitulo = true;
+      consultandoDocExistentePorTexto = false;
+      if (eraPorTexto) {
+        descartoDocExistentePorTexto = true;
+      } else {
+        descartoDocExistentePorTitulo = true;
+      }
 
       const titConservado = tituloOriginalIngresado || (s.form && s.form.titulo) || '';
+      const txtConservado = eraPorTexto
+        ? (textoOriginalIngresado || (s.borrador && typeof s.borrador.texto_editor === 'string' ? s.borrador.texto_editor : '') || (s.form && s.form.texto) || '')
+        : '';
+      const bloquesAUsar = eraPorTexto
+        ? ((bloquesOriginalesIngresados && bloquesOriginalesIngresados.length) ? bloquesOriginalesIngresados.slice() : [txtConservado])
+        : [''];
 
       estadoVistaPrevia.bloques_texto = [''];
       estadoVistaPrevia.recursos = [];
-      estadoEditor.bloques_texto = [''];
+      estadoEditor.bloques_texto = bloquesAUsar.slice();
       estadoEditor.recursos = [];
       textareasMap.clear();
-      reconstruirBloques([''], [], null);
+      reconstruirBloques(bloquesAUsar, [], null);
       estadoEditor.modo = 'edicion';
 
       const btnEd = $('#btnEditor');
@@ -2157,7 +2191,7 @@
       const ebwEl = $('#editorBloquesWrapper');
       if (ebwEl) ebwEl.hidden = false;
       const fcEl = $('#fCuerpo');
-      if (fcEl) fcEl.value = '';
+      if (fcEl) fcEl.value = txtConservado;
       const slotEl = $('#slotBorrador');
       if (slotEl) slotEl.innerHTML = '';
       const barEl = $('#editorImgBar');
@@ -2182,8 +2216,8 @@
       });
       store.setForm({
         titulo: titConservado,
-        texto: '',
-        texto_editor: '',
+        texto: txtConservado,
+        texto_editor: txtConservado,
         tags: [],
         categoria_id: null
       });
@@ -2193,7 +2227,11 @@
       pintar(store.get());
 
       burbuja('me', esc(label || 'Es un tema distinto'));
-      decir('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['confirmar_texto', 'volver']);
+      if (eraPorTexto) {
+        decir('Listo, lo tomamos como un tema distinto. Podés continuar con tu texto.', ['confirmar_texto', 'volver']);
+      } else {
+        decir('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['confirmar_texto', 'volver']);
+      }
       return;
     }
     enviarTurno({ accion: op }, label);
@@ -2263,8 +2301,9 @@
     if (textoFinal) {
       const lenCp = Array.from(textoFinal).length;
       if (lenCp > cfg.MAX_TEXTO_PERCENTIL_99) return;
-      if (descartoDocExistentePorTitulo) {
+      if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
         descartoDocExistentePorTitulo = false;
+        descartoDocExistentePorTexto = false;
         return enviarTurno({
           accion: 'descartar',
           texto: textoFinal,
@@ -2284,8 +2323,9 @@
       if (lenPend > cfg.MAX_TEXTO_PERCENTIL_99) return;
       chatIn.value = '';
       chatIn.style.height = 'auto';
-      if (descartoDocExistentePorTitulo) {
+      if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
         descartoDocExistentePorTitulo = false;
+        descartoDocExistentePorTexto = false;
         return enviarTurno({
           accion: 'descartar',
           texto: pendiente,
@@ -2294,8 +2334,9 @@
       }
       return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + lenPend + ' caracteres)');
     }
-    if (descartoDocExistentePorTitulo) {
+    if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
       descartoDocExistentePorTitulo = false;
+      descartoDocExistentePorTexto = false;
       return enviarTurno({ accion: 'descartar' }, 'Confirmar texto');
     }
     return enviarTurno({ accion: 'confirmar_texto' }, 'Confirmar texto');
@@ -2531,7 +2572,7 @@
     if (s.flujo === 'ESPERANDO_TITULO')  return enviarTurno({ titulo: v }, v);
     if (s.flujo === 'ESPERANDO_TEXTO') {
       const cmd = v.toLowerCase();
-      if (['es un tema distinto', 'tema distinto', 'descartar'].includes(cmd) && consultandoDocExistentePorTitulo) {
+      if (['es un tema distinto', 'tema distinto', 'descartar'].includes(cmd) && (consultandoDocExistentePorTitulo || consultandoDocExistentePorTexto)) {
         return accionar('descartar', 'Es un tema distinto');
       }
       if (['volver', 'atras', 'atrás', 'regresar', 'reiniciar', 'ayuda', '?', 'descartar', 'continuar'].includes(cmd)) {
@@ -2547,8 +2588,9 @@
       sincronizarTextoConStore();
       renderBloques();
       const acumulado = componerTextoDesdeBloques();
-      if (descartoDocExistentePorTitulo) {
+      if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
         descartoDocExistentePorTitulo = false;
+        descartoDocExistentePorTexto = false;
         return enviarTurno({ accion: 'descartar', mensaje: v, texto: acumulado, titulo: (s.form && s.form.titulo) || tituloOriginalIngresado }, v);
       }
       return enviarTurno({ mensaje: v, texto: acumulado }, v);
