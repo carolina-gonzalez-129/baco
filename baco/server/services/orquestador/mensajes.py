@@ -5,9 +5,10 @@ from baco.server.schemas.chat_orquestado import EstadoFlujo
 
 MENSAJE_BIENVENIDA = (
     "Hola, soy Baco. Te acompaño en todo el proceso para que tu artículo quede impecable "
-    "en la base de conocimiento de Finnegans. ¿Sobre qué tema tenés ganas de escribir hoy? "
-    "(Si todavía estás pensando el título, no te preocupes: una buena guía es indicar la acción y el circuito, "
-    "como por ejemplo: Configurar facturación electrónica en Ventas)."
+    "en la base de conocimiento de Finnegans.\n\n"
+    "¿Sobre qué tema tenés ganas de escribir hoy? "
+    "Si todavía no tenés el título, no te preocupes: una buena guía es indicar la acción y el circuito, "
+    'por ejemplo "Configurar facturación electrónica en Ventas".'
 )
 
 OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
@@ -179,8 +180,8 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f"Cargué el texto del artículo #{articulo_id} ('{titulo}').\n\n"
-        "En la sección Vista Previa del panel izquierdo"
-        "Podés revisarlo, modificar explicaciones, eliminar secciones  o adicionar nuevos pasos. "
+        "Lo encontrás en la sección Vista Previa del panel izquierdo. "
+        "Podés revisarlo, modificar explicaciones, eliminar secciones o adicionar nuevos pasos.\n\n"
         "Cuando termines tus cambios, enviame la versión completa para avanzar."
     )
 
@@ -188,9 +189,9 @@ def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f"Cargué el contenido de la última entrega de la serie (#{articulo_id} - '{titulo}').\n\n"
-        "En la sección Vista Previa del panel izquierdo"
+        "Lo encontrás en la sección Vista Previa del panel izquierdo. "
         "Tenés total libertad para trabajar sobre él: podés modificar lo que haya cambiado, "
-        "eliminar los datos que ya no apliquen o adicionar las novedades. "
+        "eliminar los datos que ya no apliquen o adicionar las novedades.\n\n"
         "Cuando esté listo, enviame el texto completo actualizado."
     )
 

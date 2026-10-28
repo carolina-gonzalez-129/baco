@@ -234,5 +234,7 @@ class EstadoRecursosResponse(BaseModel):
     multimedia_habilitada: bool = False
     skills_habilitadas: bool = True
     skills_motivo: Optional[str] = None
+    estado: Optional[str] = None
+    borrador: Optional[Any] = None
 
 

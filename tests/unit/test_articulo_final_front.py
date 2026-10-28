@@ -167,3 +167,14 @@ def test_parsear_secciones_orden_e_imagenes_sin_seccion_con_numero():
     assert len(sec2) == 2
     for s in sec2:
         assert not re.match(r"^Secci[oó]n\s*\d*$", s.get("encabezado", ""), re.IGNORECASE)
+
+def test_reutilizacion_vista_post_skill_y_boton_en_chat():
+    """Tras ejecutar una skill, el botón 'Ver artículo' debe ofrecerse en el chat y
+    articulo.js debe ser capaz de leer el borrador existente de sesión."""
+    # Verificar que invocarAgente emite 'ver_articulo_final' en las opciones del turno/mensaje
+    assert "decir(msgHtml, ['ver_articulo_final'], true)" in APP_JS
+    # Verificar que el borrador preserva texto_alineado_discourse resultante
+    assert "s.borrador.texto_alineado_discourse = texto;" in APP_JS
+    # Verificar que articulo.js tiene la capacidad de leer la sesin existente (vía opener / store)
+    assert "obtenerBorradorSesionExistente" in ARTICULO_JS
+

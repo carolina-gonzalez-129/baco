@@ -148,10 +148,22 @@ BACO.store = (function () {
     if (typeof document !== 'undefined' && document.getElementById) {
       const btnImg = document.getElementById('btnImagenToolbar');
       if (btnImg) {
-        const deshab = !habilitado || Boolean(estado.enviando);
+        const esEnriq = Boolean(estado.borrador && estado.borrador.modo === 'enriquecimiento');
+        const pr = document.getElementById('preview');
+        const btnPr = document.getElementById('btnPreview');
+        const previewActiva = Boolean((pr && !pr.hidden) || (btnPr && btnPr.classList.contains('sel')));
+        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_BORRADOR', 'SUBSANANDO_BORRADOR', 'CONFORMIDAD_USUARIO'];
+
+        let deshab;
+        if (esEnriq && previewActiva) {
+          deshab = !estadosPermitidos.includes(estado.flujo) || Boolean(estado.enviando);
+          btnImg.title = !deshab ? 'Agregar imagen al borrador' : TOOLTIP_IMAGEN_DESHABILITADA;
+        } else {
+          deshab = !habilitado || Boolean(estado.enviando);
+          btnImg.title = habilitado ? 'Insertar imagen' : TOOLTIP_IMAGEN_DESHABILITADA;
+        }
         btnImg.disabled = deshab;
         btnImg.setAttribute('aria-disabled', String(deshab));
-        btnImg.title = habilitado ? 'Insertar imagen' : TOOLTIP_IMAGEN_DESHABILITADA;
       }
     }
     return habilitado;
@@ -196,7 +208,10 @@ BACO.store = (function () {
             : ETAPAS_DEFAULT.slice()
         };
       } else {
-        const pasoFallback = (BACO.ESTADOS[r.estado] || {}).paso || 1;
+        let pasoFallback = (BACO.ESTADOS[r.estado] || {}).paso || 1;
+        if (r.borrador && r.borrador.metadatos_anteriores && !r.borrador.metadatos_heredados_revisados && pasoFallback > 3) {
+          pasoFallback = 3;
+        }
         estado.etapa = {
           actual: pasoFallback,
           total: 5,
@@ -245,7 +260,11 @@ BACO.store = (function () {
         estado.form.tags = (r.borrador.tags || []).slice();
         estado.form.categoria_id = (r.borrador.categoria_id && Number(r.borrador.categoria_id) > 1) ? Number(r.borrador.categoria_id) : null;
       } else {
+        if (typeof r.titulo === 'string' && r.titulo) {
+          estado.form.titulo = r.titulo;
+        }
         if (typeof r.texto_limpio === 'string' && r.texto_limpio) {
+          estado.form.texto_editor = r.texto_limpio;
           estado.form.texto = r.texto_limpio;
         }
         if (estado.tags_acumulados.length) {
@@ -288,6 +307,12 @@ BACO.store = (function () {
         }
         if (res.skills_motivo !== undefined) {
           estado.borrador.skills_motivo = res.skills_motivo;
+        }
+        if (res.estado) {
+          estado.flujo = res.estado;
+        }
+        if (res.borrador && typeof res.borrador.conforme === 'boolean') {
+          estado.borrador.conforme = res.borrador.conforme;
         }
         if (typeof res.multimedia_habilitada === 'boolean') {
           actualizarDisponibilidadRecursos(res);

@@ -666,6 +666,67 @@ class ChatOrquestadorRequest(BaseModel):
         default=None,
         description="Lista de tags del borrador."
     )
+    aviso_privacidad_detectado: Optional[str] = Field(
+        default=None,
+        exclude=True,
+        description="Aviso de privacidad detectado en las entradas del request.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def sanitizar_entradas_sensibles(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        from baco.server.services.validar_articulo import sanitizar_borrador
+
+        sid = data.get("session_id")
+        base_api = None
+        if sid:
+            from baco.server.services.orquestador.sesion import gestor_sesiones
+            ses = gestor_sesiones.obtener_sesion(sid)
+            if ses and ses.borrador and ses.borrador.modo == "enriquecimiento" and ses.borrador.texto_base_limpio:
+                base_api = ses.borrador.texto_base_limpio
+
+        avisos = []
+        for campo in ("mensaje", "texto", "texto_editor"):
+            val = data.get(campo)
+            if isinstance(val, str) and val.strip():
+                if base_api and base_api in val:
+                    from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento
+                    val_cons, av = consolidar_texto_enriquecimiento(base_api, val)
+                    data[campo] = val_cons
+                    if av:
+                        avisos.append(av)
+                else:
+                    res = sanitizar_borrador(texto=val, sanitizar_redundancia_titulo=False)
+                    data[campo] = res["texto_sanitizado"]
+                    if res.get("aviso_privacidad"):
+                        avisos.append(res["aviso_privacidad"])
+
+        val_tit = data.get("titulo")
+        if isinstance(val_tit, str) and val_tit.strip():
+            res_tit = sanitizar_borrador(texto="", titulo=val_tit, sanitizar_redundancia_titulo=False)
+            data["titulo"] = res_tit["titulo_sanitizado"] or val_tit
+            if res_tit.get("aviso_privacidad"):
+                avisos.append(res_tit["aviso_privacidad"])
+
+        tags_raw = data.get("tags")
+        if isinstance(tags_raw, list):
+            tags_sanitizados = []
+            for t in tags_raw:
+                if isinstance(t, str) and t.strip():
+                    res_t = sanitizar_borrador(texto=t, sanitizar_redundancia_titulo=False)
+                    tags_sanitizados.append(res_t["texto_sanitizado"])
+                    if res_t.get("aviso_privacidad"):
+                        avisos.append(res_t["aviso_privacidad"])
+                else:
+                    tags_sanitizados.append(t)
+            data["tags"] = tags_sanitizados
+
+        if avisos:
+            data["aviso_privacidad_detectado"] = "\n".join(dict.fromkeys(avisos))
+
+        return data
 
     @field_validator("texto", "mensaje", "texto_editor", mode="before")
     @classmethod
@@ -714,6 +775,7 @@ class ChatOrquestadorResponse(BaseModel):
     )
     coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list)
     borrador: Optional[BorradorSesion] = None
+    titulo: Optional[str] = Field(default=None, description="Título limpio y sanitizado actual de la sesión o borrador.")
     texto_limpio: Optional[str] = Field(
         default=None,
         description="Texto limpio y sanitizado actual de la sesión o borrador."

@@ -102,17 +102,36 @@ async def handle_esperando_titulo(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     titulo = (req.titulo or req.mensaje or "").strip()
+    sanit_tit = sanitizar_borrador(texto="", titulo=titulo, sanitizar_redundancia_titulo=False)
+    titulo = (sanit_tit["titulo_sanitizado"] or titulo).strip()
+    aviso_priv = sanit_tit.get("aviso_privacidad") or getattr(req, "aviso_privacidad_detectado", None)
+
     if not titulo:
         intento = sesion.registrar_fallo("ESPERANDO_TITULO")
-        return construir_respuesta(sesion, msg_error_longitud_minima("título", TITULO_MIN, intento), [])
+        return construir_respuesta(
+            sesion,
+            msg_error_longitud_minima("título", TITULO_MIN, intento),
+            [],
+            aviso_privacidad=aviso_priv,
+        )
 
     if len(titulo) < TITULO_MIN:
         intento = sesion.registrar_fallo("ESPERANDO_TITULO")
-        return construir_respuesta(sesion, msg_error_longitud_minima("título", TITULO_MIN, intento), [])
+        return construir_respuesta(
+            sesion,
+            msg_error_longitud_minima("título", TITULO_MIN, intento),
+            [],
+            aviso_privacidad=aviso_priv,
+        )
 
     if len(titulo) > TITULO_MAX:
         intento = sesion.registrar_fallo("ESPERANDO_TITULO")
-        return construir_respuesta(sesion, msg_error_longitud_maxima("título", TITULO_MAX, intento), [])
+        return construir_respuesta(
+            sesion,
+            msg_error_longitud_maxima("título", TITULO_MAX, intento),
+            [],
+            aviso_privacidad=aviso_priv,
+        )
 
     sesion.limpiar_fallos("ESPERANDO_TITULO")
     sesion.titulo = titulo
@@ -135,10 +154,16 @@ async def handle_esperando_titulo(
                 sesion,
                 msg_coincidencia(res_tit["mensaje"], primero.titulo, primero.url),
                 ops,
+                aviso_privacidad=aviso_priv,
             )
 
     sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-    return construir_respuesta(sesion, MSG_SIN_COINCIDENCIAS_TITULO, ["confirmar_texto", "volver"])
+    return construir_respuesta(
+        sesion,
+        MSG_SIN_COINCIDENCIAS_TITULO,
+        ["confirmar_texto", "volver"],
+        aviso_privacidad=aviso_priv,
+    )
 
 
 def _consolidar_bloques_y_recursos_enriquecimiento(
@@ -253,6 +278,34 @@ async def handle_decision_titulo(
                 [],
             )
         elegido = sesion.coincidencias[0]
+        if (
+            sesion.borrador is not None
+            and sesion.borrador.modo == 'enriquecimiento'
+            and sesion.borrador.articulo_original_id == elegido.id
+        ):
+            if req.texto is not None and req.texto.strip():
+                texto_enviado = sanitizar_borrador(texto=req.texto.strip())["texto_sanitizado"].strip()
+                sesion.borrador.texto_editor = texto_enviado
+                sesion.texto_editor = texto_enviado
+                sesion.texto_en_edicion = texto_enviado
+            if req.tags is not None:
+                sesion.borrador.tags = list(req.tags)
+                sesion.tags = list(req.tags)
+            if req.categoria_id is not None:
+                sesion.borrador.categoria_id = req.categoria_id
+                sesion.categoria_id = req.categoria_id
+            sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
+            es_serie = elegido.tipo_coincidencia == 'serie' or opcion == 'actualizar'
+            msg_carga = (
+                msg_actualizar_serie_cargado(elegido.id, elegido.titulo)
+                if es_serie
+                else msg_enriquecer_cargado(elegido.id, elegido.titulo)
+            )
+            return construir_respuesta(
+                sesion,
+                msg_carga,
+                ['confirmar_texto', 'descartar', 'volver'],
+            )
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
         texto_base = (texto_db or "").strip()
         elegido.texto_original = texto_base
@@ -583,6 +636,7 @@ async def handle_esperando_texto(
         sesion.actualizar_contenido_borrador(
             bloques_texto=nuevos_bloques,
             texto_en_edicion=nuevo_borrador_txt,
+            texto_editor=fragmento_limpio if req.texto is not None else None,
             recursos=recs_combinados,
             ultimo_id_recurso=max_id_frag,
             categoria_id=req.categoria_id,
@@ -644,6 +698,7 @@ async def handle_esperando_texto(
                 validar_marcadores_existentes=True,
                 forzar_preservar_base=True,
             )
+            aviso_priv = aviso_priv or getattr(req, "aviso_privacidad_detectado", None)
         else:
             # Edición manual del editor: tiene prioridad sobre la concatenación cruda y respeta borrados
             bloques_raw, recs_nuevos = extraer_recursos_y_bloques_texto(
@@ -674,7 +729,7 @@ async def handle_esperando_texto(
                     bloques_san.append(s_b["texto_sanitizado"].strip())
                     if s_b.get("aviso_privacidad"):
                         avisos_priv.append(s_b["aviso_privacidad"])
-            aviso_priv = avisos_priv[0] if avisos_priv else None
+            aviso_priv = (avisos_priv[0] if avisos_priv else None) or getattr(req, "aviso_privacidad_detectado", None)
             bloques_enriq, recursos_finales = fusionar_bloques_y_recursos_sin_colision(
                 bloques_san,
                 sesion.borrador.recursos,
@@ -684,13 +739,26 @@ async def handle_esperando_texto(
         texto_limpio = "\n\n".join(bloques_enriq).strip()
         largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
 
+        sesion.texto_limpio = texto_limpio
+        sesion.texto_en_edicion = texto_limpio
+
         if largo_efectivo < TEXTO_MIN:
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
-            return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
+            return construir_respuesta(
+                sesion,
+                msg_error_longitud_minima("texto", TEXTO_MIN, intento),
+                [],
+                aviso_privacidad=aviso_priv,
+            )
 
         if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
             intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
-            return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
+            return construir_respuesta(
+                sesion,
+                msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento),
+                [],
+                aviso_privacidad=aviso_priv,
+            )
 
         max_id_enriq = max(
             ultimo_id_enriq,
@@ -704,6 +772,7 @@ async def handle_esperando_texto(
             ultimo_id_recurso=max_id_enriq,
             categoria_id=req.categoria_id,
             tags=req.tags,
+            texto_editor=sanitizar_borrador(texto=req.texto)["texto_sanitizado"].strip() if req.texto is not None else None,
         )
         pref_enriq = f"{prefijo_resultado_recursos}{prefijo_borrador_creado(sesion.borrador.articulo_original_id)}"
         return avanzar_a_metadatos_o_revision(
@@ -721,17 +790,11 @@ async def handle_esperando_texto(
         return construir_respuesta(sesion, err_marcadores, ["volver"])
 
     texto_limpio = "\n\n".join(bloques_proc).strip()
-    largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
-    if largo_efectivo < TEXTO_MIN:
-        intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
-        return construir_respuesta(sesion, msg_error_longitud_minima("texto", TEXTO_MIN, intento), [])
-
-    if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
-        intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
-        return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), [])
-
-    sanit_txt = sanitizar_borrador(texto=texto_limpio, titulo=sesion.titulo)
-    aviso_privacidad = sanit_txt.get("aviso_privacidad")
+    sanit_txt = sanitizar_borrador(texto=texto_limpio, titulo=sesion.titulo, sanitizar_redundancia_titulo=False)
+    texto_limpio = sanit_txt["texto_sanitizado"]
+    if sanit_txt.get("titulo_sanitizado"):
+        sesion.titulo = sanit_txt["titulo_sanitizado"]
+    aviso_privacidad = sanit_txt.get("aviso_privacidad") or getattr(req, "aviso_privacidad_detectado", None)
     bloques_san = [
         sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
         for b in bloques_proc
@@ -739,11 +802,37 @@ async def handle_esperando_texto(
     ]
     bloques_san = [b for b in bloques_san if b]
 
+    largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
+    if largo_efectivo < TEXTO_MIN:
+        sesion.texto_limpio = texto_limpio
+        sesion.texto_en_edicion = texto_limpio
+        intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MIN")
+        return construir_respuesta(
+            sesion,
+            msg_error_longitud_minima("texto", TEXTO_MIN, intento),
+            [],
+            aviso_privacidad=aviso_privacidad,
+        )
+
+    if largo_efectivo > TEXTO_MAX_PERCENTIL_99:
+        sesion.texto_limpio = texto_limpio
+        sesion.texto_en_edicion = texto_limpio
+        intento = sesion.registrar_fallo("ESPERANDO_TEXTO_MAX")
+        return construir_respuesta(
+            sesion,
+            msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento),
+            [],
+            aviso_privacidad=aviso_privacidad,
+        )
+
+    sesion.texto_limpio = texto_limpio
+    sesion.texto_en_edicion = ""
     max_id_nuevo = max(sesion.ultimo_id_recurso, _max_num_recurso(recursos_finales))
     sesion.actualizar_contenido_borrador(
         bloques_texto=bloques_san,
         recursos=recursos_finales,
         ultimo_id_recurso=max_id_nuevo,
+        texto_editor=sanitizar_borrador(texto=req.texto)["texto_sanitizado"].strip() if req.texto is not None else None,
     )
     texto_busqueda = texto_efectivo_sin_marcadores(sesion.texto_limpio)
 
@@ -799,6 +888,34 @@ async def handle_decision_texto(
                 ["continuar", "reiniciar"],
             )
         elegido = sesion.coincidencias[0]
+        if (
+            sesion.borrador is not None
+            and sesion.borrador.modo == 'enriquecimiento'
+            and sesion.borrador.articulo_original_id == elegido.id
+        ):
+            if req.texto is not None and req.texto.strip():
+                texto_enviado = sanitizar_borrador(texto=req.texto.strip())["texto_sanitizado"].strip()
+                sesion.borrador.texto_editor = texto_enviado
+                sesion.texto_editor = texto_enviado
+                sesion.texto_en_edicion = texto_enviado
+            if req.tags is not None:
+                sesion.borrador.tags = list(req.tags)
+                sesion.tags = list(req.tags)
+            if req.categoria_id is not None:
+                sesion.borrador.categoria_id = req.categoria_id
+                sesion.categoria_id = req.categoria_id
+            sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
+            es_serie = elegido.tipo_coincidencia == 'serie' or opcion == 'actualizar'
+            msg_carga = (
+                msg_actualizar_serie_cargado(elegido.id, elegido.titulo)
+                if es_serie
+                else msg_enriquecer_cargado(elegido.id, elegido.titulo)
+            )
+            return construir_respuesta(
+                sesion,
+                msg_carga,
+                ['confirmar_texto', 'descartar', 'volver'],
+            )
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
         texto_base = (texto_db or "").strip()
         elegido.texto_original = texto_base
@@ -1265,8 +1382,10 @@ def _aplicar_mutaciones_borrador(
         ]
         bloques_nuevos = [bl for bl in bloques_nuevos if bl]
 
-        if aviso_txt:
-            aviso_priv_edicion = f"{aviso_priv_edicion}\n{aviso_txt}" if aviso_priv_edicion else aviso_txt
+        det_req = getattr(req, "aviso_privacidad_detectado", None)
+        aviso_efectivo = aviso_txt or det_req
+        if aviso_efectivo:
+            aviso_priv_edicion = f"{aviso_priv_edicion}\n{aviso_efectivo}" if aviso_priv_edicion else aviso_efectivo
 
         err_txt = validar_longitud_maxima(txt_verif, TEXTO_MAX_PERCENTIL_99, "texto")
         if err_txt:

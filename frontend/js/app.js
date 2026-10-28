@@ -964,10 +964,34 @@
   /* =========================================================
      Un turno contra el backend
      ========================================================= */
+    function anonimizarTextoFront(str) {
+    if (!str || typeof str !== 'string') return str;
+    let t = str;
+    t = t.replace(/\b\d{22}\b/g, '[CBU_OCULTO]');
+    t = t.replace(/\b(?:\d[ -]*?){13,19}\b/g, (m) => {
+      const d = m.replace(/[\s-]/g, '');
+      return (d.length >= 13 && d.length <= 19) ? '[TARJETA_CREDITO]' : m;
+    });
+    t = t.replace(/\b(?:20|23|24|27)-?\d{8}-?\d\b/g, '[CUIT]');
+    t = t.replace(/(?:DNI|documento|doc\.?)\s*(?:N[°ºo]\s*)?[:\s]*([0-9]{1,2}(?:\.[0-9]{3}){2}|[0-9]{7,8})\b/gi, (m) => {
+      const idx = m.search(/([0-9]{1,2}(?:\.[0-9]{3}){2}|[0-9]{7,8})/);
+      return (idx !== -1 ? m.slice(0, idx) : '') + '[DOCUMENTO_OCULTO]';
+    });
+    t = t.replace(/(?:cvv|cvc|código\s+de\s+seguridad)\s*[:=]?\s*\d{3,4}\b/gi, '[CVV_OCULTO]');
+    t = t.replace(/(?:token|api[_-]?key|secret|password|contrase[ñn]a)\s*[:=]?\s*['"]?[^\s'",;]{8,}['"]?/gi, '[TOKEN_OCULTO]');
+    t = t.replace(/\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g, (m, loc, dom) => {
+      const d = dom.toLowerCase();
+      if (d === 'ejemplo.com' || d.endsWith('.ejemplo.com') || d === 'example.com') return m;
+      return 'usuario@ejemplo.com';
+    });
+    return t;
+  }
+
   async function enviarTurno(payload, etiquetaUsuario) {
     const cuerpo = Object.assign({}, payload);
 
-    if (etiquetaUsuario) burbuja('me', esc(etiquetaUsuario));
+    let msgNodoUsuario = null;
+    if (etiquetaUsuario) msgNodoUsuario = burbuja('me', esc(anonimizarTextoFront(etiquetaUsuario)));
     const htmlEspera = (cuerpo && cuerpo.accion === 'confirmar_texto')
       ? '<div class="typing-wrap"><div class="typing"><i></i><i></i><i></i></div><span class="typing-lbl">Baco está buscando…</span></div>'
       : '<div class="typing"><i></i><i></i><i></i></div>';
@@ -998,8 +1022,22 @@
             : [];
           reconstruirBloques(bloquesAutorizados, recsAutorizados, b);
         }
+        renderBloques();
       }
       store.aplicarTurno(r);
+      if (msgNodoUsuario && (r.aviso_privacidad || r.titulo || (r.borrador && r.borrador.titulo))) {
+        const bubbleEl = msgNodoUsuario.querySelector('.bubble');
+        if (bubbleEl) {
+          const titSanit = (r.borrador && r.borrador.titulo) || r.titulo;
+          const txtSanit = (r.borrador && r.borrador.texto_limpio) || r.texto_limpio;
+          let textoOficial = null;
+          if (cuerpo.titulo && titSanit) textoOficial = titSanit;
+          else if (cuerpo.texto && txtSanit) textoOficial = txtSanit;
+          if (textoOficial) {
+            bubbleEl.innerHTML = esc(textoOficial) + '<div class="stamp">' + hora() + '</div>';
+          }
+        }
+      }
       store.set({ enviando: false });
 
       if (r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
@@ -1105,10 +1143,10 @@
     }
     if ($('#tagBox')) $('#tagBox').classList.toggle('off', !act.tags);
 
-    if (fTit && fTit.value !== s.form.titulo && document.activeElement !== fTit) {
+    if (fTit && fTit.value !== s.form.titulo) {
       fTit.value = s.form.titulo;
     }
-    if (fCue && fCue.value !== s.form.texto && document.activeElement !== fCue) {
+    if (fCue && fCue.value !== s.form.texto) {
       fCue.value = s.form.texto;
     }
 
@@ -1386,12 +1424,31 @@
 
     const frag = document.createDocumentFragment();
 
-    recsOrd.filter((r) => r.posicion === -1).forEach((r) => {
+    function crearMediaElement(r) {
       const mediaEl = document.createElement('div');
       mediaEl.className = 'preview-media-container';
       mediaEl.setAttribute('contenteditable', 'false');
-      mediaEl.innerHTML = renderMd(fnMd(r));
-      frag.appendChild(mediaEl);
+
+      const btnQuitar = document.createElement('button');
+      btnQuitar.type = 'button';
+      btnQuitar.className = 'preview-media-quitar';
+      btnQuitar.setAttribute('data-id', r.id);
+      btnQuitar.setAttribute('data-accion', 'quitar-recurso-preview');
+      btnQuitar.setAttribute('aria-label', 'Eliminar ' + (r.nombre || r.referencia || r.id));
+      btnQuitar.title = 'Eliminar recurso';
+      btnQuitar.textContent = '×';
+      mediaEl.appendChild(btnQuitar);
+
+      const contentEl = document.createElement('div');
+      contentEl.className = 'preview-media-content';
+      contentEl.innerHTML = renderMd(fnMd(r));
+      mediaEl.appendChild(contentEl);
+
+      return mediaEl;
+    }
+
+    recsOrd.filter((r) => r.posicion === -1).forEach((r) => {
+      frag.appendChild(crearMediaElement(r));
     });
 
     for (let i = 0; i < bloquesTxt.length; i++) {
@@ -1413,31 +1470,59 @@
       recsOrd
         .filter((r) => (typeof r.posicion === 'number' ? r.posicion : 0) === i)
         .forEach((r) => {
-          const mediaEl = document.createElement('div');
-          mediaEl.className = 'preview-media-container';
-          mediaEl.setAttribute('contenteditable', 'false');
-          mediaEl.innerHTML = renderMd(fnMd(r));
-          frag.appendChild(mediaEl);
+          frag.appendChild(crearMediaElement(r));
         });
     }
 
     recsOrd
       .filter((r) => typeof r.posicion === 'number' && r.posicion >= bloquesTxt.length)
       .forEach((r) => {
-        const mediaEl = document.createElement('div');
-        mediaEl.className = 'preview-media-container';
-        mediaEl.setAttribute('contenteditable', 'false');
-        mediaEl.innerHTML = renderMd(fnMd(r));
-        frag.appendChild(mediaEl);
+        frag.appendChild(crearMediaElement(r));
       });
 
     pr.replaceChildren(frag);
   }
 
+  function esVistaPreviaActiva() {
+    const pr = $('#preview');
+    if (pr && !pr.hidden) return true;
+    if (estadoEditor && estadoEditor.modo === 'preview') return true;
+    const btnPr = $('#btnPreview');
+    return Boolean(btnPr && btnPr.classList.contains('sel'));
+  }
+  BACO.esVistaPreviaActiva = esVistaPreviaActiva;
+
   function conectarEventosVistaPrevia() {
     const pr = $('#preview');
     if (!pr || pr._eventosConectados) return;
     pr._eventosConectados = true;
+
+    pr.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('.preview-media-quitar');
+      if (btn) {
+        e.preventDefault(); // no perder la selección dentro del contenteditable
+      }
+    });
+
+    pr.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.preview-media-quitar');
+      if (!btn || btn.disabled) return;
+      const recId = btn.getAttribute('data-id');
+      if (!recId) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      btn.disabled = true;
+      try {
+        const res = await api.eliminarRecurso(recId);
+        aplicarEstadoRecursosServidor(res);
+        toast('Recurso eliminado');
+      } catch (err) {
+        btn.disabled = false;
+        toast('Error al eliminar recurso: ' + (err.message || 'Error'));
+      }
+    });
 
     pr.addEventListener('input', (e) => {
       const bDiv = e.target.closest('.preview-bloque-editable');
@@ -2078,9 +2163,10 @@
 
     store.setForm({ texto: textoLimpio });
     if (s.borrador) {
-      s.borrador.bloques_texto = [textoLimpio];
+      s.borrador.bloques_texto = [texto];
       s.borrador.texto_limpio = textoLimpio;
-      if (s.borrador.texto != null) s.borrador.texto = textoLimpio;
+      s.borrador.texto_alineado_discourse = texto;
+      if (s.borrador.texto != null) s.borrador.texto = texto;
     }
 
     const fc = $('#fCuerpo');
@@ -2139,7 +2225,7 @@
 
       const msgHtml = '<div class="respuesta-agente">' + nl2br(r.response) + '</div>' +
         '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">↖ Transferido al panel de carga (clic para volver a transferir)</button></div>';
-      const bubbleEl = decir(msgHtml, [], true);
+      const bubbleEl = decir(msgHtml, ['ver_articulo_final'], true);
       if (bubbleEl) {
         const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
         if (btnTransf) {
@@ -3006,9 +3092,35 @@
       btnImgToolbar.addEventListener('mousedown', () => {
         ultimoCursorCapturado = capturarCursorActualParaImagen();
       });
-      btnImgToolbar.addEventListener('click', (e) => {
+      btnImgToolbar.addEventListener('click', async (e) => {
         e.preventDefault();
         if (btnImgToolbar.disabled) return;
+
+        const st = store.get();
+        const esEnriq = Boolean(st && st.borrador && st.borrador.modo === 'enriquecimiento');
+        const previewActiva = esVistaPreviaActiva();
+
+        if (esEnriq && previewActiva) {
+          const url = window.prompt('Ingresá la URL de la imagen (http/https):');
+          if (!url || !url.trim()) return;
+          const urlLimpia = url.trim();
+
+          btnImgToolbar.disabled = true;
+          try {
+            const res = await api.agregarRecursoMultimedia({
+              referencia: urlLimpia,
+              tipo: 'imagen'
+            });
+            btnImgToolbar.disabled = false;
+            aplicarEstadoRecursosServidor(res);
+            toast('Imagen agregada al borrador');
+          } catch (err) {
+            btnImgToolbar.disabled = false;
+            toast('Error al agregar imagen: ' + (err.message || 'Error'));
+          }
+          return;
+        }
+
         if (!ultimoCursorCapturado) {
           ultimoCursorCapturado = capturarCursorActualParaImagen();
         }
