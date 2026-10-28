@@ -521,9 +521,11 @@ async def handle_esperando_texto(
             sesion.borrador = None
             sesion.contenido_adicional = []
             sesion.coincidencias = []
+            sesion.texto = ""
+            sesion.texto_limpio = ""
             sesion.texto_en_edicion = ""
             sesion.limpiar_fallos("ESPERANDO_TEXTO")
-            texto_directo = (req.texto or sesion.texto or "").strip()
+            texto_directo = (req.texto or "").strip()
             if not texto_directo:
                 return construir_respuesta(
                     sesion,
@@ -557,8 +559,10 @@ async def handle_esperando_texto(
         prefijo_resultado_recursos = "Continuamos conservando los recursos multimedia en el borrador (las skills de asistencia quedan deshabilitadas).\n\n"
         es_confirmacion = True
     else:
-        es_confirmacion = opcion == "confirmar_texto" or (
-            req.accion and req.accion.strip().lower() in ("confirmar_texto", "confirmar texto", "confirmar")
+        es_confirmacion = (
+            opcion == "confirmar_texto"
+            or (req.accion and req.accion.strip().lower() in ("confirmar_texto", "confirmar texto", "confirmar"))
+            or (opcion in ("descartar", "continuar") and bool(req.texto and req.texto.strip()))
         )
 
     if not es_confirmacion:
