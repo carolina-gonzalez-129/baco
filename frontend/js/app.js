@@ -135,6 +135,9 @@
       const rec = clasificarRecurso(url, title, false, false);
       return '<a class="chat-link" href="' + url + '" target="_blank" rel="noopener">' + rec.icono + ' ' + title + ' ↗</a>';
     });
+    txt = txt.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
+    txt = txt.replace(/(^|[^\*])\*([^\*]+)\*([^\*]|$)/g, '$1<em>$2</em>$3');
+    txt = txt.replace(/`([^`]+)`/g, '<code>$1</code>');
     return txt.replace(/\n/g, '<br>');
   };
   let tToast = null;

@@ -816,7 +816,7 @@ BACO.apiMock = (function () {
             if (cpLen(sesion.texto_en_edicion) > L.MAX_TEXTO_PERCENTIL_99) {
               return resp('El artículo supera los ' + L.MAX_TEXTO_PERCENTIL_99 + ' caracteres. Dividilo o resumilo.', opsTexto, avisoFrag);
             }
-            return resp('Guardé tu texto en edición (' + cpLen(sesion.texto_en_edicion) + ' / ' + L.MAX_TEXTO_PERCENTIL_99 + ' caracteres). Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá "Confirmar texto".', opsTexto, avisoFrag);
+            return resp('📝 Guardé tu texto en el editor.\n\nPodés seguir escribiendo o pegando más contenido, y cuando esté listo tocá **Confirmar texto**.', opsTexto, avisoFrag);
           }
 
           const textoIn = String(req.texto != null ? req.texto : (sesion.texto_en_edicion || req.mensaje || '')).trim();

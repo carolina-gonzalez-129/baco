@@ -4,11 +4,9 @@ from baco.server.schemas.chat_orquestado import EstadoFlujo
 
 
 MENSAJE_BIENVENIDA = (
-    "Hola, soy Baco. Te acompaño en todo el proceso para que tu artículo quede impecable "
-    "en la base de conocimiento de Finnegans.\n\n"
-    "¿Sobre qué tema tenés ganas de escribir hoy? "
-    "Si todavía no tenés el título, no te preocupes: una buena guía es indicar la acción y el circuito, "
-    'por ejemplo "Configurar facturación electrónica en Ventas".'
+    "🤖 ¡Hola! Soy BACO, tu asistente para crear y actualizar artículos en la base de conocimiento.\n\n"
+    "Para comenzar, **escribí el título** de lo que te gustaría publicar. "
+    "Una buena fórmula es incluir la acción y el módulo (por ejemplo: *Configurar punto de venta en Ventas*).\n\n"
 )
 
 OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
@@ -22,11 +20,8 @@ OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
 OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
 
 MSG_OPCIONES_RECURSOS_SKILLS = (
-    "El texto ingresado contiene recursos multimedia (imágenes o enlaces a archivos). "
+    " El texto ingresado contiene recursos multimedia (imágenes o enlaces a archivos). "
     "Las skills de asistencia de IA (aplicación de plantilla y auditoría semántica) solo admiten texto plano sin recursos.\n\n"
-    "Podés elegir cómo querés continuar:\n"
-    "- **Quitar recursos**: se retirarán las referencias multimedia para habilitar las skills de IA.\n"
-    "- **Seguir con recursos**: conservarás las imágenes y adjuntos en el borrador, pero las skills quedarán deshabilitadas."
 )
 
 MSG_VOLVER_TITULO = (
@@ -55,36 +50,33 @@ MSG_SIN_COINCIDENCIAS_TITULO = (
     "No encontré nada similar. Por favor, enviame el texto o desarrollo del artículo."
 )
 MSG_DESCARTAR_COINCIDENCIA_TITULO = (
-    "Descartamos la sugerencia para continuar con tu propuesta "
-    "Por favor escribí o pegá el texto completo del artículo para continuar. Podes ir de a poco escribiendo desde aca"
-    "y apretar 'Confirmar texto' cuando estes conforme, vas a ver el texto en el panel izquierdo"
+    "✨ Seguimos con tu propuesta de artículo.\n\n"
+    "Escribí o pegá el contenido acá abajo y tocá **Confirmar texto** cuando esté listo."
 )
 MSG_ELEGIR_ENRIQUECER_O_DESCARTAR = (
-    "Encontré un artículo existente sobre este tema. "
-    "Tocá 'enriquecer' para trabajar sobre él y sumar tu aporte, "
-    "o 'descartar' si tu caso es diferente y querés ingresar tu texto desde cero."
+    "📄 Ya existe un artículo que habla sobre este tema.\n\n"
+    "¿Querés enriquecer el existente o es un tema distinto?"
 )
 MSG_ELEGIR_SERIE_O_DESCARTAR = (
-    "Este título pertenece a una serie periódica. "
-    "Tocá 'actualizar' si querés renovar el contenido de la última entrega, "
-    "o 'descartar' si se trata de una nueva edición que querés publicar por separado."
+    "📚 Encontré una serie periódica sobre este tema.\n\n"
+    "¿Querés actualizar la última entrega o es un tema distinto?"
 )
 MSG_TEXTO_VACIO = (
     "Por favor, necesito que me pases el texto o los pasos del artículo "
     "para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes."
 )
 MSG_TEXTO_EN_EDICION = (
-    "Guardé tu texto en edición. Podés seguir escribiendo o pegando más contenido, "
-    "y cuando esté listo tocá 'Confirmar texto' "
+    "📝 Guardé tu texto en el editor.\n\n"
+    "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá **Confirmar texto**."
 )
 MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
-    "Detecté contenido muy parecido al que redactaste. "
-    "Elegí 'enriquecer' si querés sumar tus cambios al documento actual, "
-    "o 'continuar' si tu artículo trata un caso distinto."
+    "🔍 Encontré un artículo con contenido muy similar.\n\n"
+    "Podés **Enriquecer el existente** para sumar tu aporte, "
+    "o elegir **Continuar con mi texto** si tu caso es diferente."
 )
 MSG_ELEGIR_PLANTILLA = (
-    "Definamos el formato: tocá 'instructivo' si es un paso a paso de configuración o uso, "
-    "o 'soluciones' si describe la causa y resolución de un problema."
+    "📋 Elegí el formato para tu artículo:\n\n"
+    "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta."
 )
 MSG_PEDIR_EDICION = (
     "Escribí el campo que querés ajustar junto con su nuevo valor "
@@ -99,7 +91,7 @@ MSG_SESION_EXPIRADA = (
     "Para retomar, ingresá el título de tu artículo o tocá 'reiniciar'."
 )
 
-PREFIJO_SIN_DUPLICADOS = "Sin duplicados en el contenido. "
+PREFIJO_SIN_DUPLICADOS = " ¡Perfecto! Ya registré tu contenido "
 PREFIJO_CONTINUAR_PROPIO = "Continuamos con tu propio texto. "
 PREFIJO_METADATOS_REGISTRADOS = "Metadatos registrados. "
 PREFIJO_DATOS_SANITIZADOS = "Datos sensibles sanitizados. "
@@ -111,9 +103,8 @@ MSG_ANTES_DE_CONFORME = (
     "Esto registra tu conformidad; no lo publica."
 )
 MSG_CONFORMIDAD_REGISTRADA = (
-    "✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedó listo. "
-    "Todavía no está publicado: la aprobación y publicación final las hace un administrador. "
-    "Podés copiar el borrador y cargarlo en la Base de Conocimiento."
+    "✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedo listo. "
+    "Todavía no está publicado: la aprobación y publicación final las hace un moderador. "
 )
 MSG_CONFORMIDAD_INVALIDADA = (
     "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad."
@@ -133,7 +124,7 @@ def msg_coincidencia(res_msg: str, titulo: str, url: str) -> str:
 
 
 VARIANTES_TEXTO_VACIO = [
-    "Perfecto, ahora necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes.",
+    "Necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes.",
     "El mensaje me llegó en blanco, probá pegando de nuevo el contenido acá.",
     "Aún no recibí el mensaje. Si necesitás prepararlo antes en tu editor, acá te espero; o podés tocar 'reiniciar' si preferís comenzar en otro momento.",
 ]
@@ -172,27 +163,21 @@ def msg_error_longitud_maxima(campo: str, max_c: int, intento: int = 0) -> str:
 def msg_articulo_muy_largo(max_c: int) -> str:
     return (
         f"Este artículo es muy largo para editarlo desde el chat (supera los {max_c} caracteres). "
-        "Podés modificarlo directamente en la plataforma. "
         "Tocá 'descartar' para escribir un texto nuevo o 'reiniciar' para volver al inicio."
     )
 
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"Cargué el texto del artículo #{articulo_id} ('{titulo}').\n\n"
-        "Lo encontrás en la sección Vista Previa del panel izquierdo. "
-        "Podés revisarlo, modificar explicaciones, eliminar secciones o adicionar nuevos pasos.\n\n"
-        "Cuando termines tus cambios, enviame la versión completa para avanzar."
+        f"📄 Cargué el artículo ('{titulo}') en la Vista previa del panel izquierdo.\n\n"
+        "Hace los cambios que necesites y tocá **Confirmar texto**."
     )
 
 
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"Cargué el contenido de la última entrega de la serie (#{articulo_id} - '{titulo}').\n\n"
-        "Lo encontrás en la sección Vista Previa del panel izquierdo. "
-        "Tenés total libertad para trabajar sobre él: podés modificar lo que haya cambiado, "
-        "eliminar los datos que ya no apliquen o adicionar las novedades.\n\n"
-        "Cuando esté listo, enviame el texto completo actualizado."
+        f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la Vista previa del panel izquierdo.\n\n'
+        "Hace los cambios que necesites y tocá **Confirmar texto**."
     )
 
 
@@ -213,7 +198,7 @@ VARIANTES_TAGS_FALTANTES = [
 
 
 VARIANTES_CATEGORIA_FALTANTE = [
-    "¡Perfecto! Ya asignamos las etiquetas temáticas. Ahora por favor decime la categoría por acá si ya sabés cuál es (por ejemplo: Ventas, Compras). Si no sabés cuál es, podés buscarla y seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
+    "¡Perfecto! Ya asignamos las etiquetas  Ahora por favor decime la categoría por acá si ya sabés cuál es (por ejemplo: Ventas, Compras). Si no sabés cuál es, podés buscarla y seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
     "Falta definir la categoría: podés escribirla por acá si ya la sabés (ej. Ventas, Compras) o seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
 ]
 
@@ -251,8 +236,8 @@ def msg_categoria_ambigua(termino: str, candidatos: List[str]) -> str:
 def msg_pedir_tags_y_categoria(plantilla: str = "", intento: int = 0) -> str:
     art = f"el {plantilla}" if plantilla else "el artículo"
     return (
-        f"Necesitamos al menos dos etiquetas temáticas para clasificar {art} "
-        "y que selecciones la categoría desde el menú desplegable en el formulario de la izquierda."
+        f"Necesitamos al menos dos etiquetas para clasificar {art} "
+        "y que selecciones la categoría ."
     )
 
 
@@ -266,9 +251,11 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
-        f"{prefijo}Asignamos el formato '{plantilla}'. "
-        "Para clasificar el artículo, por favor ingresá 2 etiquetas temáticas por acá si ya sabés cuáles son. "
-        "Si no sabés cuáles son, podés buscarlas e ingresarlas desde la sección inferior del panel izquierdo."
+        f"{prefijo}🏷️ Asignamos el formato **{plantilla.capitalize()}**.\n\n"
+        "Para continuar, completá la clasificación:\n"
+        "• Sumá **al menos una etiqueta más** (o las que creas necesarias).\n"
+        "• Seleccioná la **categoría**.\n\n"
+        "Podés indicármelas por acá o cargarlas en  la sección inferior del panel izquierdo y tocar **Enviar datos**."
     )
 
 
@@ -282,67 +269,87 @@ def msg_sesion_finalizada(estado_valor: str) -> str:
 
 def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
     est = sesion.estado
+
+
     if est == EstadoFlujo.ESPERANDO_TITULO:
         return (
-            "Estás en el inicio de la redacción. Por favor, ingresá el título de tu artículo (por ejemplo: la acción y el circuito).",
+            "📝 Escribí el título de tu artículo para comenzar (mínimo 15 caracteres, por ejemplo la acción y el módulo).",
             [],
         )
+
     if est == EstadoFlujo.DECISION_TITULO:
         es_serie = bool(sesion.coincidencias and sesion.coincidencias[0].tipo_coincidencia == "serie")
-        ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
-        return (
-            " Encontré un artículo similar en la base. Podés enriquecerlo/actualizarlo, descartarlo para escribir uno nuevo con este título, o tocar 'volver' para ingresar otro título.",
-            list(ops),
-        )
+        if es_serie:
+            msg = (
+                "📚 Encontré una serie periódica con este título.\n\n"
+                "Podés **Actualizar el existente** para sumar una nueva entrega, "
+                "elegir **Es un tema distinto** o **Volver**."
+            )
+            return msg, list(OPCIONES_SERIE_DECISION)
+        else:
+            msg = (
+                "📄 Encontré un artículo similar sobre este tema.\n\n"
+                "Podés **Actualizar el existente** para sumar tu aporte, "
+                "elegir **Es un tema distinto** o **Volver**."
+            )
+            return msg, list(OPCIONES_ENRIQUECER_DESCARTAR)
+
     if est == EstadoFlujo.ESPERANDO_TEXTO:
         if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
             return (
-                "  Cargamos el artículo existente. Podés editarlo o sumar contenido nuevo desde el panel izquierdo. También podés tocar 'descartar' si preferís escribir tu propio texto desde cero, o 'volver'.",
+                "📄 Tenés cargado el artículo base en el editor.\n\n"
+                "Hacé los cambios necesarios y tocá **Confirmar texto**, o elegí **Es un tema distinto** para empezar de cero.",
                 ["confirmar_texto", "descartar", "volver"],
             )
         return (
-            "  Necesito el texto o los pasos de tu artículo (al menos 20 caracteres). Pegalo o redactalo acá abajo cuando gustes, o tocá 'volver' para cambiar el título.",
+            "✍️ Escribí o pegá el contenido de tu artículo acá abajo y tocá **Confirmar texto** cuando esté listo.",
             ["confirmar_texto", "volver"],
         )
+
     if est == EstadoFlujo.DECISION_TEXTO:
         return (
-            "  Encontré un artículo con contenido muy parecido. Podés elegir 'enriquecer' para sumar tu aporte, 'continuar' para publicar tu texto propio, o 'volver' para modificar tu texto.",
+            "🔍 Encontré un articulo con contenido muy similar.\n\n"
+            "Podés **Enriquecer el existente** para sumar tu aporte, o **Continuar con mi texto** si tu caso es diferente.",
             list(OPCIONES_ENRIQUECER_CONTINUAR),
         )
+
     if est == EstadoFlujo.ESPERANDO_PLANTILLA:
         return (
-            "  Seleccioná la plantilla que mejor se ajuste a tu documento ('instructivo' o 'soluciones'), o tocá 'volver' para revisar el texto.",
+            "📋 Elegí el formato de tu artículo abajo: **Instructivo** (paso a paso) o **Soluciones** (resolución de un error).",
             list(OPCIONES_PLANTILLAS),
         )
+
     if est == EstadoFlujo.ESPERANDO_METADATOS:
-        plantilla = (sesion.borrador.tipo_plantilla if sesion.borrador else "") or ""
+        plantilla = (sesion.borrador.tipo_plantilla if sesion.borrador else "") or "artículo"
         return (
-            f" Necesitamos al menos dos etiquetas temáticas para clasificar el {plantilla} "
-            "y que selecciones la categoría desde el menú desplegable en el formulario de la izquierda. "
-            "Podés escribir las etiquetas acá o tocar 'volver' para cambiar de plantilla.",
+            f"🏷️ Seleccioná la categoría y agregá al menos otra etiqueta para clasificar este {plantilla}.",
             ["volver"],
         )
+
     if est in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR):
         if getattr(sesion, "confirmando_rechazo", False):
             return (
-                " Estás por descartar el borrador. Tocá 'confirmar_rechazo' si querés cancelarlo definitivamente, o 'volver' para conservarlo.",
+                "⚠️ ¿Seguro que querés descartar el borrador? Tocá **Sí, descartar** para cancelarlo definitivamente o **Volver** para conservarlo.",
                 ["confirmar_rechazo", "volver"],
             )
         if sesion.validacion and not sesion.validacion.valido:
             return (
-                "El borrador tiene puntos pendientes obligatorios. Podés tocar 'editar' para corregirlos o 'rechazar' para cancelar.",
+                "⚠️ El borrador tiene observaciones bloqueantes. Corregilas en el panel izquierdo y guardá los cambios para continuar.",
                 list(OPCIONES_REVISION_BLOQUEANTE),
             )
         return (
-            " El borrador está listo para confirmar. Podés tocar 'conforme' para registrar tu conformidad, 'editar' para cambiar algún campo, o 'rechazar' para cancelar.",
+            "✅ El borrador superó las validaciones mínimas. Si estás conforme con el contenido, tocá **Estoy conforme**.",
             list(OPCIONES_REVISION_VALIDO),
         )
+
+
     if est in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO):
         return (
             msg_sesion_finalizada(est.value),
             OPCIONES_REINICIAR,
         )
+
     return (
-        " Podes continuar escribiendo o tocar 'reiniciar' para comenzar de nuevo.",
+        "💡 Podés continuar escribiendo o tocar **Empezar de nuevo** para reiniciar.",
         OPCIONES_REINICIAR,
     )

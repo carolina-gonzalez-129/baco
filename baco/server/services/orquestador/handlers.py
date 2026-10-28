@@ -647,10 +647,7 @@ async def handle_esperando_texto(
             tags=req.tags,
         )
 
-        msg_edicion = (
-            f"Guardé tu texto en edición ({largo_efectivo} / {TEXTO_MAX_PERCENTIL_99} caracteres). "
-            "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá 'Confirmar texto'."
-        )
+        msg_edicion = MSG_TEXTO_EN_EDICION
         return construir_respuesta(sesion, msg_edicion, ops_texto, aviso_privacidad=aviso_priv_frag)
 
     if req.texto is not None:
