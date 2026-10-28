@@ -198,8 +198,8 @@ VARIANTES_TAGS_FALTANTES = [
 
 
 VARIANTES_CATEGORIA_FALTANTE = [
-    "¡Perfecto! Ya asignamos las etiquetas  Ahora por favor decime la categoría por acá si ya sabés cuál es (por ejemplo: Ventas, Compras). Si no sabés cuál es, podés buscarla y seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
-    "Falta definir la categoría: podés escribirla por acá si ya la sabés (ej. Ventas, Compras) o seleccionarla desde el menú desplegable en la sección inferior del panel izquierdo.",
+    "¡Etiquetas listas! Ahora indicame la **categoría** por acá o seleccionala en el menú de  **panel izquierdo** y tocá **Enviar datos**.",
+    "Sólo falta la **categoría**: escribila por acá (ej: Ventas) o elegila en el **panel izquierdo** y tocá **Enviar datos**.",
 ]
 
 
@@ -254,8 +254,7 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
         f"{prefijo}🏷️ Asignamos el formato **{plantilla.capitalize()}**.\n\n"
         "Para continuar, completá la clasificación:\n"
         "• Sumá **al menos una etiqueta más** (o las que creas necesarias).\n"
-        "• Seleccioná la **categoría**.\n\n"
-        "Podés indicármelas por acá o cargarlas en  la sección inferior del panel izquierdo y tocar **Enviar datos**."
+        "Podés indicármelas por acá o cargarlas en el menu desplegable de la sección inferior del panel izquierdo."
     )
 
 
