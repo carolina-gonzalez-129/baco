@@ -66,6 +66,13 @@ def buscar_duplicados(
     titulo_limpio = (titulo or "").strip() if isinstance(titulo, str) else ""
     texto_limpio = (texto or "").strip() if isinstance(texto, str) else ""
 
+    if titulo_limpio:
+        sanit_t = sanitizar_borrador(texto="", titulo=titulo_limpio, sanitizar_redundancia_titulo=False)
+        titulo_limpio = sanit_t["titulo_sanitizado"] or titulo_limpio
+    if texto_limpio:
+        sanit_tx = sanitizar_borrador(texto=texto_limpio)
+        texto_limpio = sanit_tx["texto_sanitizado"] or texto_limpio
+
     if not titulo_limpio and not texto_limpio:
         return BuscarDuplicadosToolOutput(
             decision_sugerida="crear_nuevo",

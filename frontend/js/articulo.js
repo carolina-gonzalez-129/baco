@@ -320,6 +320,20 @@
   headers['X-Session-ID'] = sessionId;
 
   let borrador = null;
+
+  function obtenerBorradorSesionExistente() {
+    try {
+      const padre = window.opener || window.parent;
+      if (padre && padre !== window && padre.BACO && padre.BACO.store) {
+        const sOp = padre.BACO.store.get();
+        if (sOp && sOp.borrador && (!sessionId || sOp.session_id === sessionId)) {
+          return sOp.borrador;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   try {
     const res = await fetch(baseUrl + '/chat/borrador', {
       method: 'GET',
@@ -328,51 +342,57 @@
     });
 
     if (res.status === 404) {
-      mostrarMensaje(
-        'Borrador no encontrado',
-        `No existe un borrador para la sesión '${sessionId}' o la sesión expiró.`
-      );
-      return;
-    }
-
-    if (res.status === 409) {
-      let detalle = 'El borrador todavía no cuenta con conformidad registrada.';
-      try {
-        const errJson = await res.json();
-        if (errJson && errJson.detail) detalle = errJson.detail;
-      } catch (_) {}
-      mostrarMensaje(
-        'Artículo no finalizado',
-        detalle + ' Para visualizarlo como artículo final, registrá tu conformidad en el chat.'
-      );
-      return;
-    }
-
-    if (res.status === 401) {
+      borrador = obtenerBorradorSesionExistente();
+      if (!borrador) {
+        mostrarMensaje(
+          'Borrador no encontrado',
+          `No existe un borrador para la sesión '${sessionId}' o la sesión expiró.`
+        );
+        return;
+      }
+    } else if (res.status === 409) {
+      borrador = obtenerBorradorSesionExistente();
+      if (!borrador) {
+        let detalle = 'El borrador todavía no cuenta con conformidad registrada.';
+        try {
+          const errJson = await res.json();
+          if (errJson && errJson.detail) detalle = errJson.detail;
+        } catch (_) {}
+        mostrarMensaje(
+          'Artículo no finalizado',
+          detalle + ' Para visualizarlo como artículo final, registrá tu conformidad en el chat.'
+        );
+        return;
+      }
+    } else if (res.status === 401) {
       mostrarMensaje(
         'Acceso no autorizado',
         'El servidor rechazó la solicitud. Verificá la clave API en config.js.'
       );
       return;
+    } else if (!res.ok) {
+      borrador = obtenerBorradorSesionExistente();
+      if (!borrador) {
+        let detalle = `Error HTTP ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson && errJson.detail) detalle = errJson.detail;
+        } catch (_) {}
+        mostrarMensaje('Error al obtener el borrador', detalle);
+        return;
+      }
+    } else {
+      borrador = await res.json();
     }
-
-    if (!res.ok) {
-      let detalle = `Error HTTP ${res.status}`;
-      try {
-        const errJson = await res.json();
-        if (errJson && errJson.detail) detalle = errJson.detail;
-      } catch (_) {}
-      mostrarMensaje('Error al obtener el borrador', detalle);
+  } catch (err) {
+    borrador = obtenerBorradorSesionExistente();
+    if (!borrador) {
+      mostrarMensaje(
+        'Error de conexión',
+        `No se pudo conectar con el servidor en ${baseUrl}. Comprobá que esté iniciado.`
+      );
       return;
     }
-
-    borrador = await res.json();
-  } catch (err) {
-    mostrarMensaje(
-      'Error de conexión',
-      `No se pudo conectar con el servidor en ${baseUrl}. Comprobá que esté iniciado.`
-    );
-    return;
   }
 
   // Validación de borrador vacío

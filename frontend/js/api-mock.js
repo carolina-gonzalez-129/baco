@@ -269,25 +269,45 @@ BACO.apiMock = (function () {
 
   function sanitizar(texto, titulo) {
     let t = String(texto || ''), cambios = [];
-    if (RE_CUIL_CONTEXTO.test(t)) {
-      t = t.replace(new RegExp(RE_CUIL_CONTEXTO.source, 'gi'), function(m) {
-        var sep = m.match(/^[\s\S]*?[\s:=#]+/i);
-        return (sep ? sep[0] : '') + '[CUIT_OCULTO]';
-      });
-      cambios.push('CUIT/CUIL');
+    function limpiar(str) {
+      let s = str;
+      if (RE_CUIL_CONTEXTO.test(s)) {
+        s = s.replace(new RegExp(RE_CUIL_CONTEXTO.source, 'gi'), function(m) {
+          var sep = m.match(/^[\s\S]*?[\s:=#]+/i);
+          return (sep ? sep[0] : '') + '[CUIT_OCULTO]';
+        });
+        cambios.push('CUIT/CUIL');
+      }
+      if (RE_CUIT.test(s)) { s = s.replace(new RegExp(RE_CUIT.source, 'g'), '[CUIT_OCULTO]'); cambios.push('CUIT'); }
+      if (RE_DNI_CONTEXTO.test(s)) {
+        s = s.replace(new RegExp(RE_DNI_CONTEXTO.source, 'gi'), function(m) {
+          var sep = m.match(/^[\s\S]*?[\s:=#]+/i);
+          return (sep ? sep[0] : '') + '[DOCUMENTO_OCULTO]';
+        });
+        cambios.push('DNI');
+      }
+      if (/\b\d{22}\b/.test(s)) { s = s.replace(/\b\d{22}\b/g, '[CBU_OCULTO]'); cambios.push('CBU'); }
+      if (/\b(?:\d[ -]*?){13,19}\b/.test(s)) {
+        s = s.replace(/\b(?:\d[ -]*?){13,19}\b/g, function(m) {
+          var d = m.replace(/[\s-]/g, '');
+          return (d.length >= 13 && d.length <= 19) ? '[TARJETA_CREDITO]' : m;
+        });
+        cambios.push('tarjeta de crédito');
+      }
+      if (RE_MAIL.test(s)) {
+        s = s.replace(new RegExp(RE_MAIL.source, 'g'), function(m) {
+          var dom = m.split('@')[1] || '';
+          if (dom === 'ejemplo.com' || dom.endsWith('.ejemplo.com')) return m;
+          return 'usuario@ejemplo.com';
+        });
+        cambios.push('correo electrónico');
+      }
+      return s;
     }
-    if (RE_CUIT.test(t)) { t = t.replace(new RegExp(RE_CUIT.source, 'g'), '[CUIT_OCULTO]'); cambios.push('CUIT'); }
-    if (RE_DNI_CONTEXTO.test(t)) {
-      t = t.replace(new RegExp(RE_DNI_CONTEXTO.source, 'gi'), function(m) {
-        var sep = m.match(/^[\s\S]*?[\s:=#]+/i);
-        return (sep ? sep[0] : '') + '[DOCUMENTO_OCULTO]';
-      });
-      cambios.push('DNI');
-    }
-    if (RE_MAIL.test(t)) { t = t.replace(new RegExp(RE_MAIL.source, 'g'), 'usuario@ejemplo.com'); cambios.push('correo electrónico'); }
-    let ti = String(titulo || '').replace(/^(c[oó]mo|como)\s+/i, '').trim();
+    t = limpiar(t);
+    let ti = limpiar(String(titulo || '')).replace(/^(c[oó]mo|como)\s+/i, '').trim();
     if (ti) ti = ti.charAt(0).toUpperCase() + ti.slice(1);
-    return { texto_sanitizado: t, titulo_sanitizado: ti, cambios: cambios };
+    return { texto_sanitizado: t, titulo_sanitizado: ti, cambios: Array.from(new Set(cambios)) };
   }
 
   function sanitizarBloques(bloques, titulo) {
@@ -474,7 +494,10 @@ BACO.apiMock = (function () {
   function resp(mensaje, opciones, aviso, avisoMeta) {
     const s = sesion;
     if (s.borrador) sincronizarBorrador(s.borrador);
-    const actual = MAPA_ETAPAS[s.estado] || 1;
+    let actual = MAPA_ETAPAS[s.estado] || 1;
+    if (s.borrador && s.borrador.metadatos_anteriores && !s.borrador.metadatos_heredados_revisados && actual > 3) {
+      actual = 3;
+    }
     const tagsAcum = s.borrador
       ? combinarTags(s.borrador.tipo_plantilla, s.borrador.tags, s.tags)
       : combinarTags(tipoPlantilla(s.tags), s.tags);

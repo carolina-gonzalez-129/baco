@@ -385,6 +385,8 @@ def construir_estado_recursos(sid: str) -> EstadoRecursosResponse:
         multimedia_habilitada=multimedia_habilitada(sesion),
         skills_habilitadas=b.skills_habilitadas,
         skills_motivo=b.skills_motivo,
+        estado=sesion.estado.value if sesion.estado else None,
+        borrador=b,
     )
 
 

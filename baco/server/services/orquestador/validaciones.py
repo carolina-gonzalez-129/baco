@@ -61,8 +61,14 @@ MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
 }
 
 
-def obtener_etapa_flujo(estado: EstadoFlujo) -> EtapaFlujo:
+def obtener_etapa_flujo(
+    estado: EstadoFlujo, sesion: Optional[SesionChat] = None
+) -> EtapaFlujo:
     actual, nombre = MAPA_ESTADO_ETAPA.get(estado, (1, ETAPAS_FLUJO[0]))
+    if sesion and sesion.borrador:
+        b = sesion.borrador
+        if b.metadatos_anteriores and not b.metadatos_heredados_revisados and actual > 3:
+            actual, nombre = (3, ETAPAS_FLUJO[2])
     return EtapaFlujo(
         actual=actual,
         total=len(ETAPAS_FLUJO),
@@ -459,7 +465,10 @@ def consolidar_texto_enriquecimiento(
 
 def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest) -> None:
     if req.titulo is not None and req.titulo.strip():
-        sesion.titulo = req.titulo.strip()
+        sanit_t = sanitizar_borrador(texto="", titulo=req.titulo.strip(), sanitizar_redundancia_titulo=False)
+        sesion.titulo = (sanit_t["titulo_sanitizado"] or req.titulo.strip()).strip()
+        if sesion.borrador is not None:
+            sesion.borrador.titulo = sesion.titulo
     if (
         req.texto is not None
         and req.texto.strip()
@@ -490,13 +499,21 @@ def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest)
         sesion.posiciones = [r.posicion for r in recs_merged.values()]
         sesion.texto = componer_texto_publicable(sesion.bloques_texto, sesion.recursos)
     if getattr(req, "texto_editor", None) is not None:
-        sesion.texto_editor = req.texto_editor
+        sanit_te = sanitizar_borrador(texto=req.texto_editor)["texto_sanitizado"]
+        sesion.texto_editor = sanit_te
         if sesion.borrador is not None:
-            sesion.borrador.texto_editor = req.texto_editor
+            sesion.borrador.texto_editor = sanit_te
     if req.categoria_id is not None:
         sesion.categoria_id = req.categoria_id
     if req.tags is not None:
-        sesion.tags = req.tags
+        tags_san = [
+            sanitizar_borrador(texto=t, sanitizar_redundancia_titulo=False)["texto_sanitizado"].strip()
+            for t in req.tags
+            if isinstance(t, str) and t.strip()
+        ]
+        sesion.tags = tags_san
+        if sesion.borrador is not None:
+            sesion.borrador.tags = tags_san
 
 
 async def cargar_datos_articulo(
@@ -864,6 +881,11 @@ def construir_respuesta(
     aviso_privacidad: Optional[str] = None,
     aviso_metadatos_heredados: Optional[str] = None,
 ) -> ChatOrquestadorResponse:
+    txt_titulo_actual = (
+        sesion.borrador.titulo
+        if sesion.borrador is not None
+        else (sesion.titulo or None)
+    )
     txt_limpio_actual = (
         sesion.borrador.texto_limpio
         if sesion.borrador is not None
@@ -920,7 +942,7 @@ def construir_respuesta(
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
         estado=sesion.estado,
-        etapa=obtener_etapa_flujo(sesion.estado),
+        etapa=obtener_etapa_flujo(sesion.estado, sesion),
         mensaje=mensaje,
         opciones=opciones_finales,
         tags_acumulados=obtener_tags_acumulados(sesion),
@@ -928,6 +950,7 @@ def construir_respuesta(
         tags_disponibles=list(sesion.tags_disponibles),
         coincidencias=sesion.coincidencias if sesion.estado in (EstadoFlujo.DECISION_TITULO, EstadoFlujo.DECISION_TEXTO) else [],
         borrador=sesion.borrador,
+        titulo=txt_titulo_actual,
         texto_limpio=txt_limpio_actual,
         multimedia_habilitada=multimedia_habilitada(sesion),
         skills_habilitadas=skills_hab,
