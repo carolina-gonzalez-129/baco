@@ -1031,14 +1031,14 @@
         renderBloques();
       }
       store.aplicarTurno(r);
-      if (msgNodoUsuario && (r.aviso_privacidad || r.titulo || (r.borrador && r.borrador.titulo))) {
+      if (msgNodoUsuario && (r.aviso_privacidad || r.titulo || (r.borrador && r.borrador.titulo) || r.texto_limpio || (r.borrador && r.borrador.texto_limpio))) {
         const bubbleEl = msgNodoUsuario.querySelector('.bubble');
         if (bubbleEl) {
           const titSanit = (r.borrador && r.borrador.titulo) || r.titulo;
           const txtSanit = (r.borrador && r.borrador.texto_limpio) || r.texto_limpio;
           let textoOficial = null;
-          if (cuerpo.titulo && titSanit) textoOficial = titSanit;
-          else if (cuerpo.texto && txtSanit) textoOficial = txtSanit;
+          if (cuerpo.texto && txtSanit) textoOficial = txtSanit;
+          else if (cuerpo.titulo && titSanit) textoOficial = titSanit;
           if (textoOficial) {
             bubbleEl.innerHTML = esc(textoOficial) + '<div class="stamp">' + hora() + '</div>';
           }
@@ -1966,6 +1966,11 @@
   function pintarValidacion(s) {
     const slot = $('#slotValidacion');
     if (!slot) return;
+    const flujosConValidacion = ['REVISION_BORRADOR', 'SUBSANANDO_BORRADOR', 'CONFORMIDAD_USUARIO', 'APROBADO'];
+    if (!s || !flujosConValidacion.includes(s.flujo)) {
+      slot.innerHTML = '';
+      return;
+    }
     const v = s.validacion;
     if (!v) { slot.innerHTML = ''; return; }
 
