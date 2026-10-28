@@ -4,7 +4,7 @@ from baco.server.schemas.chat_orquestado import EstadoFlujo
 
 
 MENSAJE_BIENVENIDA = (
-    "🤖 ¡Hola! Soy BACO, tu asistente para crear y actualizar artículos en la base de conocimiento.\n\n"
+    "🤖 ¡Hola! Soy BACO, tu asistente en la Base de Conocimiento de Finnegans.\n\n"
     "Para comenzar, **escribí el título** de lo que te gustaría publicar. "
     "Una buena fórmula es incluir la acción y el módulo (por ejemplo: *Configurar punto de venta en Ventas*).\n\n"
 )
