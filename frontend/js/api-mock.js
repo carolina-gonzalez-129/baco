@@ -773,12 +773,26 @@ BACO.apiMock = (function () {
 
         /* ---- ESPERANDO_TEXTO ---- */
         if (sesion.estado === 'ESPERANDO_TEXTO') {
+          if (opcion === 'descartar' || opcion === 'continuar') {
+            if (sesion.borrador && sesion.borrador.articulo_original_id) {
+              sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
+              if (!sesion.articulos_descartados_ids.includes(sesion.borrador.articulo_original_id)) {
+                sesion.articulos_descartados_ids.push(sesion.borrador.articulo_original_id);
+              }
+            }
+            sesion.borrador = null;
+            sesion.texto = '';
+            sesion.texto_limpio = '';
+            sesion.texto_en_edicion = '';
+          }
+
           const opsTexto = (sesion.borrador && sesion.borrador.modo === 'enriquecimiento')
             ? ['confirmar_texto', 'descartar', 'volver']
             : ['confirmar_texto', 'volver'];
 
           const esConfirmacion = opcion === 'confirmar_texto' ||
-            (req.accion && ['confirmar_texto', 'confirmar texto', 'confirmar'].includes(String(req.accion).trim().toLowerCase()));
+            (req.accion && ['confirmar_texto', 'confirmar texto', 'confirmar'].includes(String(req.accion).trim().toLowerCase())) ||
+            ((opcion === 'descartar' || opcion === 'continuar') && Boolean(req.texto && String(req.texto).trim()));
           if (!esConfirmacion) {
             const frag = String(req.texto != null ? req.texto : (req.mensaje || '')).trim();
             if (!frag) return resp('Perfecto, ahora necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos.', opsTexto);

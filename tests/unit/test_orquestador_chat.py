@@ -1093,6 +1093,41 @@ def test_actualizar_o_enriquecer_termina_busqueda_duplicados_sin_evaluar_texto(c
     mock_buscador.evaluar_texto.assert_not_called()
 
 
+def test_actualizar_luego_descartar_con_texto_explicito_evalua_duplicados_y_no_modifica_existente(client, mock_buscador):
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia de serie encontrada",
+        "link": "https://bc.finneg.com/t/501",
+        "coincidencias": [(501, "Novedades Impositivas Mayo 2026", "https://bc.finneg.com/t/501")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 501,
+        "titulo": "Novedades Impositivas Mayo 2026",
+        "url": "https://bc.finneg.com/t/501",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 23,
+        "tags": ["instructivo", "afip"],
+    }
+    mock_buscador.evaluar_texto.return_value = None
+
+    # 1. Ingresa un título
+    r1 = client.post("/chat", json={"mensaje": "Novedades Impositivas Junio 2026"}).json()
+    assert r1["estado"] == EstadoFlujo.DECISION_TITULO
+
+    # 2. Elige "Actualizar el existente"
+    r2 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "actualizar"}).json()
+    assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r2["borrador"]["articulo_original_id"] == 501
+
+    # 3. Al enviar texto explícitamente tras descartar, se evalúa texto y se crea borrador nuevo:
+    texto_nuevo = "Este es un texto totalmente distinto para un articulo nuevo con mas de veinte caracteres."
+    r3 = client.post("/chat", json={"session_id": r1["session_id"], "accion": "descartar", "texto": texto_nuevo}).json()
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert r3["borrador"]["modo"] == "nuevo"
+    assert r3["borrador"]["articulo_original_id"] is None
+    assert r3["borrador"]["titulo"] == "Novedades Impositivas Junio 2026"
+    mock_buscador.evaluar_texto.assert_called_once()
+
+
 def test_descartar_titulo_con_titulo_y_texto_ejecuta_evaluar_texto_inmediatamente(client, mock_buscador):
     # Simular coincidencia de título
     mock_buscador.evaluar_titulo.return_value = {
