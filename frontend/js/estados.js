@@ -53,7 +53,7 @@ BACO.CAMPOS_ACTIVOS = {
 /* Etiqueta y payload del botón principal, según el estado */
 BACO.ACCION_PRINCIPAL = {
   ESPERANDO_TEXTO:     { label: 'Confirmar texto',    campo: 'texto'  },
-  ESPERANDO_METADATOS: { label: 'Enviar etiquetas',   campo: 'tags'   },
+  ESPERANDO_METADATOS: { label: 'Enviar datos',       campo: 'tags'   },
   REVISION_BORRADOR:   { label: 'Guardar cambios',    campo: 'todo'   },
   SUBSANANDO_BORRADOR: { label: 'Guardar cambios',    campo: 'todo'   }
 };

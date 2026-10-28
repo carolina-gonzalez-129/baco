@@ -1,7 +1,7 @@
 from baco.server.services.reglas_semanticas import son_semanticas_divergentes
 
 MIN_CARACTERES_EMBEDDINGS = 400
-
+#Si llegase me gustaría cotejar mas si la cota debe quedar mas alta, p /reducir falsos positivos!
 
 def extraer_url(coincidencia):
     if not coincidencia:
@@ -60,14 +60,14 @@ class BuscadorDuplicados:
             return {
                 "encontrado": False,
                 "requiere_texto": True,
-                "mensaje": "El título no está duplicado. Indicá el texto para verificar el contenido.",
+                "mensaje": "No hubo coincidencias de título. Por favor indicá el texto para verificar el contenido.",
             }
         if coincide_texto := self.evaluar_texto(texto, headers, titulo, limite=limite):
             return {"encontrado": True, **coincide_texto}
         return {
             "encontrado": False,
             "requiere_texto": False,
-            "mensaje": "No se encontraron duplicados, ofrecer publicar!",
+            "mensaje": "No se encontraron coincidencias de ningun tipo",
         }
 
     def evaluar_titulo(self, titulo: str, limite: int = 5):
@@ -79,7 +79,7 @@ class BuscadorDuplicados:
                 f"El título parece pertenecer a la serie '{base}', ¿te gustaría actualizar la última entrada?", serie
             )
         if similares := self.buscar_por_titulo_trigrama(titulo, threshold=0.70, limite=limite):
-            return self._hallazgo("Encontramos un artículo muy similar, ¿te gustaría mejorarlo?", similares)
+            return self._hallazgo("Encontramos un artículo cuyo titulo es muy similar, ¿te gustaría mejorarlo?", similares)
         return None
 
     def filtrar_articulos_series(self, filas: list) -> list:

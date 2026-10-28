@@ -18,12 +18,13 @@ app.mount("/", mcp_http_app)
 
 #p/otros
 #  uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
-##  cloudflared tunnel --url http://127.0.0.1:8080"
+
+
 # x mi
 # x si me olvide de matar el servidor  Stop-Process -Force -Id (el q aparece cdo dice Started server process [nro)
 # dsde el navegador /docs con las credenciales, igual no permite usarlo asi xq lepusimos mas
 #RECORDAR Q SIEMPRE TENGO Q POR
-# si es para mi python -m uvicorn baco.server.app.main:app --reload --host 0.0.0.0 --port 8080
+
 #para probarlo con el front
 # cd C:\Users\ahreq\IdeaProjects\GeminiAgente\frontend
 # python -m http.server 5173
