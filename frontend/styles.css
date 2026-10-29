@@ -1335,6 +1335,21 @@ input,textarea,select{font-family:inherit}
   cursor: not-allowed;
 }
 
+:root {
+  --cat-color-agro-bg: #2E9E5B;
+  --cat-color-agro-text: #ffffff;
+  --cat-color-erp-bg: #2563EB;
+  --cat-color-erp-text: #ffffff;
+  --cat-color-comercial-bg: #EAB308;
+  --cat-color-comercial-text: #111827;
+  --cat-color-constructoras-bg: #F97316;
+  --cat-color-constructoras-text: #ffffff;
+  --cat-color-hcm-bg: #7C3AED;
+  --cat-color-hcm-text: #ffffff;
+  --cat-color-manufacturas-bg: #06B6D4;
+  --cat-color-manufacturas-text: #111827;
+}
+
 /* =============================================================
    Selectores de Categoría y Etiquetas superiores (Fila Flex)
    ============================================================= */
@@ -1359,7 +1374,7 @@ input,textarea,select{font-family:inherit}
   border-radius: 4px;
   background: var(--surface);
   height: 36px;
-  padding: 0 10px;
+  padding: 0 30px 0 10px;
   box-sizing: border-box;
   transition: border-color .15s, box-shadow .15s;
 }
@@ -1375,18 +1390,34 @@ input,textarea,select{font-family:inherit}
   cursor: not-allowed;
 }
 
-.selector-cat-wrap::after {
-  content: '';
+.selector-flecha {
   position: absolute;
   right: 11px;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%238A8FA3' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: center;
-  pointer-events: none;
+  z-index: 2;
+  transition: opacity .15s;
+}
+
+.selector-flecha:hover {
+  opacity: .7;
+}
+
+.selector-cat-wrap:has(select:disabled) .selector-flecha,
+.selectores-fila .tagbox:has(select:disabled) .selector-flecha,
+.selector-flecha:disabled {
+  cursor: not-allowed;
+  opacity: .5;
 }
 
 .selector-cat-wrap select.cat-select {
@@ -1426,6 +1457,42 @@ input,textarea,select{font-family:inherit}
   align-items: center;
 }
 
+.selector-cat-wrap select.cat-select[data-modulo="agro"],
+.selector-cat-wrap select.cat-select[data-modulo="agro"]:has(option:checked:not([value=''])) {
+  background-color: var(--cat-color-agro-bg) !important;
+  color: var(--cat-color-agro-text) !important;
+}
+
+.selector-cat-wrap select.cat-select[data-modulo="erp"],
+.selector-cat-wrap select.cat-select[data-modulo="erp"]:has(option:checked:not([value=''])) {
+  background-color: var(--cat-color-erp-bg) !important;
+  color: var(--cat-color-erp-text) !important;
+}
+
+.selector-cat-wrap select.cat-select[data-modulo="gestion-comercial"],
+.selector-cat-wrap select.cat-select[data-modulo="gestion-comercial"]:has(option:checked:not([value=''])) {
+  background-color: var(--cat-color-comercial-bg) !important;
+  color: var(--cat-color-comercial-text) !important;
+}
+
+.selector-cat-wrap select.cat-select[data-modulo="constructoras"],
+.selector-cat-wrap select.cat-select[data-modulo="constructoras"]:has(option:checked:not([value=''])) {
+  background-color: var(--cat-color-constructoras-bg) !important;
+  color: var(--cat-color-constructoras-text) !important;
+}
+
+.selector-cat-wrap select.cat-select[data-modulo="hcm"],
+.selector-cat-wrap select.cat-select[data-modulo="hcm"]:has(option:checked:not([value=''])) {
+  background-color: var(--cat-color-hcm-bg) !important;
+  color: var(--cat-color-hcm-text) !important;
+}
+
+.selector-cat-wrap select.cat-select[data-modulo="manufacturas"],
+.selector-cat-wrap select.cat-select[data-modulo="manufacturas"]:has(option:checked:not([value=''])) {
+  background-color: var(--cat-color-manufacturas-bg) !important;
+  color: var(--cat-color-manufacturas-text) !important;
+}
+
 .selector-cat-wrap select.cat-select option {
   background: var(--surface);
   color: var(--ink);
@@ -1434,13 +1501,14 @@ input,textarea,select{font-family:inherit}
 }
 
 .selectores-fila .tagbox {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   height: 36px;
   min-height: 36px;
-  padding: 0 10px;
+  padding: 0 30px 0 10px;
   border: 1px solid var(--rule-2);
   border-radius: 4px;
   background: var(--surface);
@@ -1468,7 +1536,7 @@ input,textarea,select{font-family:inherit}
   flex: 1;
   min-width: 60px;
   height: 100%;
-  padding-right: 20px;
+  padding-right: 0;
   margin: 0;
 }
 

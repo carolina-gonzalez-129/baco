@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="styles.css?v=20261025_4">
+<link rel="stylesheet" href="styles.css?v=20261029_1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23E4614A'/><circle cx='11' cy='11' r='3' fill='white'/><circle cx='21' cy='16' r='3' fill='white'/><circle cx='11' cy='21' r='3' fill='white'/></svg>">
 </head>
 <body>
@@ -114,8 +114,9 @@
                 <!-- Selector de Categoría (Izquierda) -->
                 <div class="selector-cat-wrap">
                   <select class="input sel cat-select" id="fCategoria">
-                    <option value="">Seleccionar categoría del desplegable...</option>
+                    <option value="" selected disabled>Seleccionar categoría del desplegable...</option>
                   </select>
+                  <button type="button" class="selector-flecha" id="btnFlechaCat" aria-label="Abrir categorías" tabindex="-1"></button>
                 </div>
 
                 <!-- Selector de Etiquetas (Derecha) -->
@@ -124,6 +125,7 @@
                   <select class="input sel tag-select" id="fTagsSelect">
                     <option value="" selected disabled>selecciona al menos 2 etiquetas…</option>
                   </select>
+                  <button type="button" class="selector-flecha" id="btnFlechaTags" aria-label="Abrir etiquetas" tabindex="-1"></button>
                 </div>
               </div>
 
@@ -276,6 +278,6 @@
 <script src="js/api.js?v=20261026_14"></script>
 <script src="js/estados.js?v=20261028_17"></script>
 <script src="js/panel-multimedia.js?v=20261026_14"></script>
-<script src="js/app.js?v=20261028_16"></script>
+<script src="js/app.js?v=20261029_1"></script>
 </body>
 </html>

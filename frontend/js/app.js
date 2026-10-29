@@ -1144,7 +1144,9 @@
 
     let mostrarCampoTags = false;
     if (etapaPostTexto) {
-      if (esEnriquecerOActualizar) {
+      if (s.flujo === 'ESPERANDO_METADATOS') {
+        mostrarCampoTags = true;
+      } else if (esEnriquecerOActualizar) {
         mostrarCampoTags = !catValida || !tagsValidos;
       } else {
         mostrarCampoTags = true;
@@ -1686,7 +1688,10 @@
 
     const actualId = (s.form.categoria_id && Number(s.form.categoria_id) > 1) ? Number(s.form.categoria_id) : null;
 
-    let selHtml = '<option value=""' + (!actualId ? ' selected' : '') + ' disabled>Elegí una categoría del desplegable…</option>';
+    let selHtml = '';
+    if (!actualId) {
+      selHtml += '<option value="" selected disabled>Seleccionar categoría del desplegable...</option>';
+    }
 
     const catsOrdenadas = [...cats].sort((a, b) =>
       (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
@@ -1703,6 +1708,10 @@
     });
     sel.innerHTML = selHtml;
     sel.value = actualId ? String(actualId) : '';
+    sel.disabled = !habilitado;
+    actualizarColorCategoria(sel);
+    const btnFlechaCat = $('#btnFlechaCat');
+    if (btnFlechaCat) btnFlechaCat.disabled = !habilitado;
 
     chipsRow.innerHTML = '';
     if (!catsFiltradas.length) return;
@@ -1726,6 +1735,44 @@
         };
         chipsRow.appendChild(chip);
       });
+    }
+  }
+
+  function actualizarColorCategoria(sel) {
+    if (!sel) return;
+
+    // Limpiar primero todo color previo (data-modulo, clases y estilos)
+    if (sel.dataset) delete sel.dataset.modulo;
+    if (typeof sel.removeAttribute === 'function') sel.removeAttribute('data-modulo');
+    const wrap = sel.closest ? sel.closest('.selector-cat-wrap') : (sel.parentElement || null);
+    if (wrap) {
+      if (wrap.dataset) delete wrap.dataset.modulo;
+      if (typeof wrap.removeAttribute === 'function') wrap.removeAttribute('data-modulo');
+    }
+
+    if (!sel.value || sel.selectedIndex < 0) return;
+
+    const opt = sel.options ? sel.options[sel.selectedIndex] : null;
+    const texto = (opt && opt.value)
+      ? (opt.text || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      : '';
+    const MAPA_MODULOS = {
+      'agro': 'agro',
+      'erp': 'erp',
+      'gestion comercial': 'gestion-comercial',
+      'comercializadoras': 'gestion-comercial',
+      'constructoras': 'constructoras',
+      'hcm': 'hcm',
+      'manufacturas': 'manufacturas'
+    };
+    const mod = MAPA_MODULOS[texto] || null;
+    if (mod) {
+      if (sel.dataset) sel.dataset.modulo = mod;
+      if (typeof sel.setAttribute === 'function') sel.setAttribute('data-modulo', mod);
+      if (wrap) {
+        if (wrap.dataset) wrap.dataset.modulo = mod;
+        if (typeof wrap.setAttribute === 'function') wrap.setAttribute('data-modulo', mod);
+      }
     }
   }
 
@@ -1905,13 +1952,18 @@
         .filter((t) => t && typeof t === 'string' && t.trim() && s.form.tags.indexOf(t) === -1)
         .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
-      let selHtml = '<option value="" selected disabled>Elegí una etiqueta del desplegable…</option>';
+      const hayTags = (s.form.tags || []).length > 0;
+      let selHtml = hayTags
+        ? '<option value="" selected disabled style="display:none;"></option>'
+        : '<option value="" selected disabled>selecciona al menos 2 etiquetas…</option>';
       tagsOrdenados.forEach((t) => {
         selHtml += '<option value="' + esc(t) + '">' + esc(t) + '</option>';
       });
       selTags.innerHTML = selHtml;
       selTags.value = '';
       selTags.disabled = input.disabled;
+      const btnFlechaTags = $('#btnFlechaTags');
+      if (btnFlechaTags) btnFlechaTags.disabled = !!input.disabled;
     }
 
     const row = $('#suggRow');
@@ -3189,8 +3241,46 @@
     if (fTit) fTit.addEventListener('input', (e) => store.setForm({ titulo: e.target.value }));
     const fCue = $('#fCuerpo');
     if (fCue) fCue.addEventListener('input', (e) => store.setForm({ texto: e.target.value }));
+    function abrirDesplegable(sel) {
+      if (!sel || sel.disabled) return;
+      if (typeof sel.showPicker === 'function') {
+        try {
+          sel.showPicker();
+          return;
+        } catch (_) {}
+      }
+      sel.focus();
+      sel.click();
+    }
+
     const fCat = $('#fCategoria');
-    if (fCat) fCat.addEventListener('change', (e) => store.setForm({ categoria_id: parseInt(e.target.value, 10) || null }));
+    if (fCat) {
+      fCat.addEventListener('change', (e) => {
+        actualizarColorCategoria(e.target);
+        store.setForm({ categoria_id: parseInt(e.target.value, 10) || null });
+      });
+      fCat.addEventListener('input', (e) => actualizarColorCategoria(e.target));
+      actualizarColorCategoria(fCat);
+    }
+
+    const btnFlechaCat = $('#btnFlechaCat');
+    if (btnFlechaCat) {
+      btnFlechaCat.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        abrirDesplegable($('#fCategoria'));
+      });
+    }
+
+    const wrapCat = $('.selector-cat-wrap');
+    if (wrapCat) {
+      wrapCat.addEventListener('click', (e) => {
+        if (e.target !== $('#fCategoria') && e.target !== btnFlechaCat) {
+          abrirDesplegable($('#fCategoria'));
+        }
+      });
+    }
+
     const fTagSel = $('#fTagsSelect');
     if (fTagSel) {
       fTagSel.addEventListener('change', (e) => {
@@ -3205,6 +3295,15 @@
           }
         }
         e.target.value = '';
+      });
+    }
+
+    const btnFlechaTags = $('#btnFlechaTags');
+    if (btnFlechaTags) {
+      btnFlechaTags.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        abrirDesplegable($('#fTagsSelect'));
       });
     }
 
