@@ -1368,8 +1368,7 @@ def test_mensajes_flujo_conformidad(client):
     ).json()
     assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert (
-        "Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. "
-        "Esto registra tu conformidad; no lo publica."
+        "Revisá el borrador. Si estás conforme con el contenido, tocá **Estoy conforme**."
     ) in r_meta["mensaje"]
 
     # 2. Al confirmar (tocá Estoy conforme / accion: conforme)
@@ -1406,8 +1405,7 @@ def test_mensajes_flujo_conformidad(client):
     assert "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad." in r_edit["mensaje"]
     # Y vuelve a incluir el mensaje antes del botón para invitar a confirmar de nuevo
     assert (
-        "Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. "
-        "Esto registra tu conformidad; no lo publica."
+        "Revisá el borrador. Si estás conforme con el contenido, tocá **Estoy conforme**."
     ) in r_edit["mensaje"]
 
 

@@ -578,7 +578,7 @@ BACO.apiMock = (function () {
     }
     const obs = detalle ? '\nAdemás te dejo algunas sugerencias:\n' + detalle + '\n\n' : '\n\n';
     return { msg: (prefijo || '') + 'El borrador quedó validado (' + v.status + ').' + obs +
-      'Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. Esto registra tu conformidad; no lo publica.', ops: OPS.REVISION_VALIDO };
+      'Revisá el borrador. Si estás conforme con el contenido, tocá **Estoy conforme**.', ops: OPS.REVISION_VALIDO };
   }
 
   function avanzar(prefijo, aviso) {

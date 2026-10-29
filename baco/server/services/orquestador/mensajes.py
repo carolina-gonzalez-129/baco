@@ -99,12 +99,11 @@ PREFIJO_BORRADOR_ACTUALIZADO = "Borrador actualizado. "
 PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
 
 MSG_ANTES_DE_CONFORME = (
-    "Revisá el borrador. Si estás conforme con el contenido, tocá Estoy conforme. "
-    "Esto registra tu conformidad; no lo publica."
+    "Revisá el borrador. Si estás conforme con el contenido, tocá **Estoy conforme**."
 )
 MSG_CONFORMIDAD_REGISTRADA = (
-    "✅ Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedo listo. "
-    "Todavía no está publicado: la aprobación y publicación final las hace un moderador. "
+    "✅ Genial! Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedo listo. "
+    "Todavía no esta publicado: la aprobación y publicación final las hace un moderador. "
 )
 MSG_CONFORMIDAD_INVALIDADA = (
     "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad."
@@ -169,14 +168,14 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"📄 Cargué el artículo ('{titulo}') en la Vista previa del panel izquierdo.\n\n"
+        f"📄 Cargué el artículo ('{titulo}') en la **Vista previa** del panel izquierdo.\n\n"
         "Hace los cambios que necesites y tocá **Confirmar texto**."
     )
 
 
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la Vista previa del panel izquierdo.\n\n'
+        f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la **Vista previa** del panel izquierdo.\n\n'
         "Hace los cambios que necesites y tocá **Confirmar texto**."
     )
 
