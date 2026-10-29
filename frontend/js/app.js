@@ -1832,7 +1832,7 @@
     const max = maximo || cfg.MAX_TEXTO_PERCENTIL_99 || 16777;
     const min = minimo || cfg.MIN_TEXTO || 20;
     if (nodo) {
-      nodo.textContent = actual + ' / ' + max + ' caracteres';
+      nodo.textContent = actual + ' caracteres';
       if (actual > max) {
         nodo.className = 'cont exceso';
       } else if (actual > 0 && actual < min) {

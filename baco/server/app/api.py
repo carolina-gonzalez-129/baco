@@ -721,3 +721,9 @@ def previsualizar_recurso_temporal(session_id: str, archivo: str):
     from fastapi.responses import FileResponse
     return FileResponse(str(ruta_archivo))
 
+from baco.server import config_limites
+##ARREGLAR ESTO DESPUES DEL VIERNES PARA Q
+#1)ABARQUE LO DE SKILLS UN PERCENTIL RAZONABLE DEL 51 % (P 90, 95, 98?)
+## 2) EL FRONT LO LEA DIRECTO DESDE ACA Y NO ESTE HARDCODEADO
+## 3)@router.get("/limites")
+#def obtener_limites():
