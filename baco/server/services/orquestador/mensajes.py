@@ -254,7 +254,7 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
         f"{prefijo}🏷️ Asignamos el formato **{plantilla.capitalize()}**.\n\n"
         "Para continuar, completá la clasificación:\n"
         "• Sumá **al menos una etiqueta más** (o las que creas necesarias).\n"
-        "Podés indicármelas por acá o cargarlas en el menu desplegable de la sección inferior del panel izquierdo."
+        "Podés indicarlas por aca o cargarlas en el menu desplegable arriba del panel izquierdo."
     )
 
 

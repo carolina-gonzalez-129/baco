@@ -109,9 +109,36 @@
                 placeholder='Ej: Obtener CAE - Mensaje ARCA: "Imposible conectar con webservice"'>
             </div>
 
+            <div class="field selectores-campo" id="campoTags">
+              <div class="selectores-fila">
+                <!-- Selector de Categoría (Izquierda) -->
+                <div class="selector-cat-wrap">
+                  <select class="input sel cat-select" id="fCategoria">
+                    <option value="">Seleccionar categoría del desplegable...</option>
+                  </select>
+                </div>
+
+                <!-- Selector de Etiquetas (Derecha) -->
+                <div class="tagbox selector-tags-wrap" id="tagBox">
+                  <input class="taginput" id="tagInput" autocomplete="off">
+                  <select class="input sel tag-select" id="fTagsSelect">
+                    <option value="" selected disabled>selecciona al menos 2 etiquetas…</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Elementos secundarios conservados para compatibilidad JS -->
+              <span class="flabel flabel-oculto" style="display:none;">Etiquetas <span class="req">*</span>
+                <span class="cont" id="contTags">0/2</span>
+              </span>
+              <div class="suggrow" id="suggRow" style="display:none;"></div>
+              <label class="flabel flabel-oculto" for="fCategoria" style="display:none;">Categoría <span class="req">*</span></label>
+              <div class="suggrow" id="catChipsRow" style="display:none;"></div>
+            </div>
+
             <div class="field" id="campoTexto">
               <label class="flabel" for="fCuerpo">Contenido <span class="req">*</span>
-                <span class="cont" id="contTexto">0 / 16777</span>
+                <span class="cont" id="contTexto">0 caracteres</span>
               </label>
               <div class="edhead discourse-toolbar" id="editorToolbar" role="toolbar" aria-label="Barra de herramientas del editor">
                 <div class="ed-mode-switch" role="group" aria-label="Alternar modo de edición">
@@ -178,24 +205,6 @@
               <div class="editor-img-bar" id="editorImgBar" hidden></div>
             </div>
 
-            <div class="field" id="campoTags">
-              <span class="flabel">Etiquetas <span class="req">*</span>
-                <span class="cont" id="contTags">0/2</span>
-              </span>
-              <div class="tagbox" id="tagBox">
-                <input class="taginput" id="tagInput" placeholder="Escribir y presionar Enter…" autocomplete="off">
-              </div>
-              <select class="input sel" id="fTagsSelect" style="margin-top:8px">
-                <option value="">Seleccionar etiqueta del desplegable...</option>
-              </select>
-              <div class="suggrow" id="suggRow"></div>
-
-              <label class="flabel" for="fCategoria" style="margin-top:14px">Categoría <span class="req">*</span></label>
-              <select class="input sel" id="fCategoria">
-                <option value="">Seleccionar categoría del desplegable...</option>
-              </select>
-              <div class="suggrow" id="catChipsRow"></div>
-            </div>
           </div>
 
           <div id="slotBorrador"></div>
@@ -224,8 +233,8 @@
 
         <div class="composer">
           <div class="composer-meta" id="chatComposerMeta" hidden>
-            <span class="cont" id="chatInputCont">0 / 16777 caracteres</span>
-            <span class="aviso-limite-texto-mini" id="chatInputAvisoMax" hidden>Supera el límite de 16777 caracteres</span>
+            <span class="cont" id="chatInputCont">0 caracteres</span>
+            <span class="aviso-limite-texto-mini" id="chatInputAvisoMax" hidden>Supera el límite de caracteres</span>
           </div>
           <div class="cbox">
             <textarea id="chatInput" rows="1" placeholder="Respondé acá o preguntale algo a BACO…"></textarea>
