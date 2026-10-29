@@ -91,11 +91,11 @@ MSG_SESION_EXPIRADA = (
     "Para retomar, ingresá el título de tu artículo o tocá 'reiniciar'."
 )
 
-PREFIJO_SIN_DUPLICADOS = " ¡Perfecto! Ya registré tu contenido "
-PREFIJO_CONTINUAR_PROPIO = "Continuamos con tu propio texto. "
-PREFIJO_METADATOS_REGISTRADOS = "Metadatos registrados. "
-PREFIJO_DATOS_SANITIZADOS = "Datos sensibles sanitizados. "
-PREFIJO_BORRADOR_ACTUALIZADO = "Borrador actualizado. "
+PREFIJO_SIN_DUPLICADOS = " "
+PREFIJO_CONTINUAR_PROPIO = " "
+PREFIJO_METADATOS_REGISTRADOS = " "
+PREFIJO_DATOS_SANITIZADOS = ". "
+PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
 
 MSG_ANTES_DE_CONFORME = (
@@ -111,11 +111,11 @@ MSG_CONFORMIDAD_INVALIDADA = (
 
 
 def prefijo_borrador_creado(articulo_id: int) -> str:
-    return f"Borrador de sesión creado sobre #{articulo_id}. "
+    return ""
 
 
 def prefijo_borrador_enriquecido(articulo_id: int) -> str:
-    return f"Borrador de enriquecimiento creado sobre #{articulo_id}. "
+    return ""
 
 
 def msg_coincidencia(res_msg: str, titulo: str, url: str) -> str:
