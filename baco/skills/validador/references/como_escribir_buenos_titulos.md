@@ -15,7 +15,7 @@ La primera parte nombra la acción; el subtítulo incorpora el mensaje textual q
 ## Mensajes del sistema
 
 - Se puede usar “Mensaje”, “Aviso” o “Advertencia” para presentar lo que muestra el sistema.
-- Usar la palabra “Error” solo cuando aparezca en el mensaje original del sistema.
+- No usar la palabra “Error” como parte de frases propias en el título (por ejemplo, “Error al generar el CAE” está mal). Solo puede aparecer cuando el mensaje original del sistema la incluye, y siempre entre comillas, citando ese mensaje (por ejemplo: No se pudo generar el CAE: “Error 500”). Si no hay mensaje del sistema que citar, reformular el título sin esa palabra: “No se pudo generar el CAE”.
 - Mantener el texto del mensaje fiel al original cuando se lo incluya entre comillas.
 
 ## Criterios de calidad
