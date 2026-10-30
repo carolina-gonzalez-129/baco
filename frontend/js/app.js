@@ -2512,7 +2512,11 @@
         transferirTextoAlPanelIzquierdo(textoRespuesta, true);
       }
 
-      const msgHtml = '<div class="respuesta-agente">' + nl2br(r.response) + '</div>' +
+      const textoChat = metodo === 'aplicarPlantilla' || metodo === 'auditarSemantica'
+        ? '🤖 Apliqué la **skill** y los resultados fueron transferidos a la sección izquierda del panel'
+        : r.response;
+
+      const msgHtml = '<div class="respuesta-agente">' + nl2br(textoChat) + '</div>' +
         '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">↖ Transferido al panel de carga (clic para volver a transferir)</button></div>';
       const bubbleEl = decir(msgHtml, ['ver_articulo_final'], true);
       if (bubbleEl) {

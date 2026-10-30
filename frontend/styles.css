@@ -1445,8 +1445,8 @@ input,textarea,select{font-family:inherit}
 }
 
 .selector-cat-wrap select.cat-select:has(option:checked:not([value=''])) {
-  background-color: #3b7b7a;
-  color: #ffffff;
+  background: transparent !important;
+  color: #000 !important;
   font-weight: 600;
   border-radius: 3px;
   padding: 2px 7px;
