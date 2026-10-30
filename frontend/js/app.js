@@ -1036,6 +1036,10 @@
           reconstruirBloques(bloquesAutorizados, recsAutorizados, b);
         }
         renderBloques();
+      } else if (r && !r.borrador && !r.texto_limpio && r.estado === 'ESPERANDO_TEXTO') {
+        const bloquesAUsar = (descartoDocExistentePorTexto && textoOriginalIngresado) ? [textoOriginalIngresado] : [''];
+        reconstruirBloques(bloquesAUsar, [], null);
+        renderBloques();
       }
       store.aplicarTurno(r);
       if (msgNodoUsuario && (r.aviso_privacidad || r.titulo || (r.borrador && r.borrador.titulo) || r.texto_limpio || (r.borrador && r.borrador.texto_limpio))) {
@@ -1118,8 +1122,18 @@
     const tInp = $('#tagInput');
     const tSel = $('#fTagsSelect');
     const fCat = $('#fCategoria');
+    const txtDeshab = !act.texto || s.enviando || Boolean(estadoEditor.enviando);
     if (fTit) fTit.disabled = !act.titulo || s.enviando;
-    if (fCue) fCue.disabled = !act.texto || s.enviando;
+    if (fCue) fCue.disabled = txtDeshab;
+    textareasMap.forEach((ta) => {
+      ta.disabled = txtDeshab;
+    });
+    const contBloques = $('#contenedorBloques');
+    if (contBloques) {
+      contBloques.querySelectorAll('.bloque-textarea').forEach((ta) => {
+        ta.disabled = txtDeshab;
+      });
+    }
     if (tInp) tInp.disabled = !act.tags || s.enviando;
     if (tSel) tSel.disabled = !act.tags || s.enviando;
     if (fCat) fCat.disabled = !act.categoria || s.enviando;
@@ -2213,10 +2227,8 @@
       }
 
       const titConservado = tituloOriginalIngresado || (s.form && s.form.titulo) || '';
-      const txtConservado = eraPorTexto
-        ? (textoOriginalIngresado || (s.borrador && typeof s.borrador.texto_editor === 'string' ? s.borrador.texto_editor : '') || (s.form && s.form.texto) || '')
-        : '';
-      const bloquesAUsar = eraPorTexto
+      const txtConservado = (eraPorTexto && textoOriginalIngresado) ? textoOriginalIngresado : '';
+      const bloquesAUsar = (eraPorTexto && textoOriginalIngresado)
         ? ((bloquesOriginalesIngresados && bloquesOriginalesIngresados.length) ? bloquesOriginalesIngresados.slice() : [txtConservado])
         : [''];
 
@@ -2294,6 +2306,20 @@
   async function confirmarTexto() {
     const s = store.get();
     sincronizarTextoDesdePreview();
+    const contBloques = $('#contenedorBloques');
+    if (contBloques) {
+      contBloques.querySelectorAll('.bloque-textarea').forEach((ta) => {
+        const idx = parseInt(ta.getAttribute('data-bloque-idx'), 10);
+        if (!isNaN(idx)) {
+          while (estadoEditor.bloques_texto.length <= idx) {
+            estadoEditor.bloques_texto.push('');
+          }
+          estadoEditor.bloques_texto[idx] = ta.value;
+        }
+        const b = estadoEditor.bloques.find((x) => x.id === ta.getAttribute('data-id'));
+        if (b) b.contenido = ta.value;
+      });
+    }
     const esEnriquecer = Boolean(s && s.borrador && s.borrador.modo === 'enriquecimiento');
     let textoFinal = '';
     const textoEditor = componerTextoDesdeBloques().trim();

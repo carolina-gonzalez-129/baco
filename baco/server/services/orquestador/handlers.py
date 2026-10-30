@@ -652,12 +652,6 @@ async def handle_esperando_texto(
 
     if req.texto is not None:
         texto_raw = req.texto.strip()
-        if (
-            sesion.texto_en_edicion
-            and req.texto.strip() != sesion.texto_en_edicion.strip()
-            and (sesion.borrador is None or sesion.borrador.modo != "enriquecimiento")
-        ):
-            texto_raw = f"{sesion.texto_en_edicion}\n\n{req.texto.strip()}".strip()
     elif req.mensaje is not None and req.mensaje.strip().lower() not in (
         "confirmar_texto", "confirmar texto", "confirmar",
         "quitar_recursos", "quitar recursos", "seguir_con_recursos", "seguir con recursos"

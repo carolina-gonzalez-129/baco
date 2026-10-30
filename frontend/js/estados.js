@@ -266,6 +266,9 @@ BACO.store = (function () {
         if (typeof r.texto_limpio === 'string' && r.texto_limpio) {
           estado.form.texto_editor = r.texto_limpio;
           estado.form.texto = r.texto_limpio;
+        } else if (!r.borrador && !r.texto_limpio && r.estado === 'ESPERANDO_TEXTO') {
+          estado.form.texto_editor = '';
+          estado.form.texto = '';
         }
         if (estado.tags_acumulados.length) {
           estado.form.tags = estado.tags_acumulados.slice();
