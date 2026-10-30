@@ -1261,14 +1261,16 @@ input,textarea,select{font-family:inherit}
 }
 
 #btnVerArticuloFinal,
-#btnVerArticuloModal {
+#btnVerArticuloModal,
+#btnContinuarPostSkill {
   background: var(--coral) !important;
   color: #fff !important;
   border-color: var(--coral) !important;
 }
 
 #btnVerArticuloFinal:hover,
-#btnVerArticuloModal:hover {
+#btnVerArticuloModal:hover,
+#btnContinuarPostSkill:hover {
   background: var(--coral-600) !important;
 }
 

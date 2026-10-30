@@ -15,36 +15,6 @@ from baco.server.services.orquestador.recursos_service import (
 from baco.server.services.validar_articulo import sanitizar_borrador
 
 # SERVICIO ENCARGADO DE INTERACTUAR CON LAS SKILLS DE BACO SOBRE BORRADORES EN CONFORMIDAD
-# LA APLICACIÓN DE SKILLS Y LA GESTIÓN DE RECURSOS MULTIMEDIA SON MUTUAMENTE EXCLUYENTES:
-# EL AGENTE SOLO RECIBE TEXTO LIMPIO SIN RECURSOS NI MARCADORES MULTIMEDIA.
-
-RE_MARCADORES_O_TAGS_MULTIMEDIA = re.compile(
-    r"\[\[recurso:|!\[[^\]]*\]\([^\)]*\)|<(?:img|video|audio|iframe)\b",
-    re.IGNORECASE,
-)
-
-
-def _validar_sin_recursos_para_skills(borrador: BorradorSesion, texto: str) -> None:
-    """Guarda defensiva: la aplicación de skills y la presencia de recursos multimedia
-    en el borrador son mutuamente excluyentes. El agente solo recibe texto puro."""
-    if getattr(borrador, "recursos", None) and len(borrador.recursos) > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "No se pueden aplicar skills a un borrador que contiene recursos multimedia. "
-                "La aplicación de skills y los recursos multimedia son mutuamente excluyentes; "
-                "los recursos deben incorporarse una vez estructurado y auditado el texto."
-            ),
-        )
-    if RE_MARCADORES_O_TAGS_MULTIMEDIA.search(texto or ""):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "No se pueden aplicar skills si el texto contiene marcadores de recursos ([[recurso:...]]) "
-                "o tags multimedia (HTML o Markdown). El agente solo admite texto limpio sin recursos. "
-                "Los recursos deben incorporarse después de aplicar las skills."
-            ),
-        )
 
 
 def _escapar_delimitadores_xml(texto: str) -> str:
@@ -54,12 +24,9 @@ def _escapar_delimitadores_xml(texto: str) -> str:
     texto_seguro = texto_seguro.replace("<borrador_contenido>", "&lt;borrador_contenido&gt;")
     return texto_seguro[: TEXTO_MAX + BUFFER_CARACTERES_PROMPT_XML]
 
-
 def _obtener_texto_limpio_estricto(borrador: BorradorSesion) -> str:
-    """Devuelve estrictamente texto_limpio con texto efectivo real.
-    Verifica que no contenga marcadores de recursos ni tags multimedia."""
+    """Devuelve el texto limpio del borrador verificando que contenga texto efectivo."""
     texto_limpio = (borrador.texto_limpio or "").strip()
-    _validar_sin_recursos_para_skills(borrador, texto_limpio)
 
     if not texto_limpio or not texto_efectivo_sin_marcadores(texto_limpio):
         raise HTTPException(
@@ -67,7 +34,6 @@ def _obtener_texto_limpio_estricto(borrador: BorradorSesion) -> str:
             detail="El borrador no contiene texto efectivo para procesar con la skill.",
         )
     return texto_limpio
-
 
 def ejecutar_skill_plantillas(session_id: str, borrador: BorradorSesion, baco) -> str:
     texto_entrada = _obtener_texto_limpio_estricto(borrador)
