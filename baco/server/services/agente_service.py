@@ -111,6 +111,20 @@ def ejecutar_skill_plantillas(session_id: str, borrador: BorradorSesion, baco) -
             ),
         )
 
+    if borrador.titulo:
+        lineas = resultado_verificado.splitlines()
+        for idx, linea in enumerate(lineas):
+            if not linea.strip():
+                continue
+            linea_limpia = linea.strip().lstrip("#").strip().lower()
+            titulo_limpio = borrador.titulo.strip().lstrip("#").strip().lower()
+            if linea_limpia == titulo_limpio:
+                idx_inicio = idx + 1
+                while idx_inicio < len(lineas) and not lineas[idx_inicio].strip():
+                    idx_inicio += 1
+                resultado_verificado = "\n".join(lineas[idx_inicio:])
+            break
+
     actualizar_borrador_texto(session_id, resultado_verificado)
     return resultado_verificado
 
