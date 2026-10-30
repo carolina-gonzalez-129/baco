@@ -250,6 +250,9 @@ def test_endpoints_skills_devuelven_200_cuando_flag_es_true(client):
     SESIONES[sid2] = sesion2
 
     res_auditoria = client.post("/chat/auditar-semantica", headers={"X-Session-ID": sid2})
+    res_revalidar = client.post("/chat/revalidar-post-skill", headers={"X-Session-ID": sid2})
+    assert res_revalidar.status_code == 200
+    assert "valido" in res_revalidar.json()
     assert res_auditoria.status_code == 200
 
 

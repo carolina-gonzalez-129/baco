@@ -25,6 +25,7 @@ from baco.server.schemas.recurso import (
     EstadoRecursosResponse,
     Recurso,
 )
+from baco.server.schemas.validacion import ValidarFormatoResponse
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
 from baco.server.services.validar_articulo import sanitizar_borrador
@@ -56,7 +57,7 @@ from baco.server.services.orquestador.recursos_service import (
     obtener_ruta_fisica_recurso,
     texto_efectivo_sin_marcadores,
 )
-from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento
+from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento, validar_borrador
 
 router = APIRouter(tags=["API REST"])
 
@@ -250,6 +251,25 @@ def auditar_semantica(
         )
     dictamen = ejecutar_skill_validador(borrador, baco)
     return ChatResponse(response=dictamen)
+
+
+@router.post(
+    "/chat/revalidar-post-skill",
+    response_model=ValidarFormatoResponse,
+    summary="Revalida el borrador de sesión tras la aplicación de skills en silencio",
+)
+def revalidar_post_skill(
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),
+) -> ValidarFormatoResponse:
+    sid, _ = sesion_valida
+    sesion = gestor_sesiones.obtener_sesion(sid)
+    if not sesion:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existe la sesión '{sid}' o la sesión expiró.",
+        )
+    validar_borrador(sesion)
+    return sesion.validacion
 
 
 @router.post(
