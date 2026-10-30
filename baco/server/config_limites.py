@@ -3,7 +3,7 @@ TITULO_MAX = 255
 TEXTO_MIN = 20
 # Quizas estaria bueno mas adelante que a la cota de texto max skills lo obtenga viendo los p 90, 95, y 99
 #haciendo un join de la tabla de cant_caracteres con la tabla de artículos para usar la columna texto_sin_headers
-TEXTO_MAX = 6928
+TEXTO_MAX = 6687
 TAGS_MIN = 2
 TAGS_MAX = 5
 TAGS_PLANTILLAS_PERMITIDAS = ("instructivo", "soluciones")
