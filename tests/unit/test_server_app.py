@@ -76,6 +76,16 @@ def test_endpoint_auditar_semantica_sin_credencial_retorna_401():
             assert resp.status_code == 401
 
 
+def test_endpoint_revalidar_post_skill_sin_credencial_retorna_401():
+    with patch("baco.server.db.config.crear_ro_pool"), \
+         patch("baco.server.services.embeddings.get_model_titulo"), \
+         patch("baco.server.services.embeddings.get_model_texto"):
+        with TestClient(app, headers={"X-API-Key": API_KEY}) as unauth_client:
+            unauth_client.cookies.clear()
+            resp = unauth_client.post("/chat/revalidar-post-skill")
+            assert resp.status_code == 401
+
+
 # ==============================================================================
 # 2. Tests del Servidor MCP (mcp_server.py)
 # ==============================================================================
@@ -137,3 +147,4 @@ def test_main_app_incluye_rutas_esperadas(client):
     assert "/chat/borrador" in paths
     assert "/chat/aplicar-plantilla" in paths
     assert "/chat/auditar-semantica" in paths
+    assert "/chat/revalidar-post-skill" in paths
