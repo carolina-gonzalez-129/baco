@@ -15,6 +15,9 @@ register_exception_handlers(app)
 
 app.include_router(api_router)
 app.mount("/", mcp_http_app)
+#########MODIFICAR EL LIFESPAN PARA Q EL MCP SERVER TENGA SU PROPIO LIFESPAN
+######## LA VERSIÓN MOCK PODRIA TENER UNA PRECARGA DE ARTÍCULOS EN CACHE
+#########POR LO DEL POOL DE CONEXIONES A LA DB
 
 
 #  uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
@@ -22,6 +25,6 @@ app.mount("/", mcp_http_app)
 # cd C:\Users\ahreq\IdeaProjects\GeminiAgente\frontend
 # python -m http.server 5173
 #
-
+#  uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8081 PARA IR PROBANDO COSAAS
 
 

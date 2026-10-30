@@ -174,7 +174,7 @@ def _consolidar_bloques_y_recursos_enriquecimiento(
     validar_marcadores_existentes: bool = True,
     forzar_preservar_base: bool = False,
 ) -> Tuple[list[str], Dict[str, object], Optional[str], Optional[str]]:
-    """Consolida bloques_base y recs_base con un texto de aporte o edición en modo enriquecimiento."""
+
     texto_base_limpio = "\n\n".join(bloques_base).strip()
     raw = (texto_aporte_raw or "").strip()
     if not raw:
@@ -605,7 +605,7 @@ async def handle_esperando_texto(
                 nuevos_bloques, recursos_prev, recs_nuevos_frag, ultimo_id=ultimo_id_prev
             )
         elif bloques_existentes:
-            # Regla 6: adiciones por chat con bloques existentes se agregan al final del último bloque de texto
+
             ultimo_bloque = f"{bloques_existentes[-1]}\n\n{fragmento_limpio}".strip() if fragmento_limpio else bloques_existentes[-1]
             nuevos_bloques = list(bloques_existentes[:-1]) + ([ultimo_bloque] if ultimo_bloque else [])
             nuevo_borrador_txt = "\n\n".join(nuevos_bloques).strip()

@@ -280,18 +280,13 @@ class BorradorSesion(BaseModel):
         """Indica si las skills del agente están habilitadas para el borrador.
 
         Calculado estrictamente en el servidor:
-        False si el modo es enriquecimiento (enriquecer o actualizar),
-        si el largo efectivo supera TEXTO_MAX (6687) o si el borrador tiene recursos.
+        False si el largo efectivo supera TEXTO_MAX (6687).
         """
-        if self.modo == "enriquecimiento":
-            return False
         from baco.server.config_limites import TEXTO_MAX
         from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 
         largo = len(texto_efectivo_sin_marcadores(self.texto_limpio or ""))
         if largo > TEXTO_MAX:
-            return False
-        if bool(self.recursos):
             return False
         return True
 
@@ -299,27 +294,17 @@ class BorradorSesion(BaseModel):
     @property
     def skills_motivo(self) -> Optional[str]:
         """Texto explicativo del motivo por el cual las skills están deshabilitadas."""
-        if self.modo == "enriquecimiento":
-            return "Las skills de IA están deshabilitadas al enriquecer o actualizar artículos existentes."
         from baco.server.config_limites import TEXTO_MAX
         from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 
         largo = len(texto_efectivo_sin_marcadores(self.texto_limpio or ""))
-        supera_largo = largo > TEXTO_MAX
-        tiene_recursos = bool(self.recursos)
-        if supera_largo and tiene_recursos:
-            return (
-                f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
-                f"({largo} caracteres recibidos) y el borrador contiene recursos multimedia."
-            )
-        if supera_largo:
+        if largo > TEXTO_MAX:
             return (
                 f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
                 f"({largo} caracteres recibidos)."
             )
-        if tiene_recursos:
-            return "El borrador contiene recursos multimedia. Las skills de IA solo admiten texto plano sin recursos."
         return None
+
 
     @model_validator(mode="after")
     def sincronizar_bloques_y_vector_multimedia(self) -> "BorradorSesion":

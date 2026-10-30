@@ -2157,14 +2157,7 @@
     if (op === 'editar' && s.flujo === 'REVISION_BORRADOR') {
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
-      const stAct = store.get();
-      return enviarTurno({
-        accion: 'editar',
-        titulo: stAct.form.titulo,
-        texto: stAct.form.texto,
-        tags: stAct.form.tags,
-        categoria_id: stAct.form.categoria_id
-      }, 'Guardar cambios');
+      return enviarTurno({ accion: 'editar' }, label);
     }
     if (op === 'reiniciar') {
       consultandoDocExistentePorTitulo = false;
@@ -2523,6 +2516,16 @@
         const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
         if (btnTransf) {
           btnTransf.onclick = () => transferirTextoAlPanelIzquierdo(textoRespuesta, true);
+        }
+        const btnVer = bubbleEl.querySelector('#btnVerArticuloFinal');
+        if (btnVer && btnVer.parentElement) {
+          const btnContinuar = el('button', 'btn btn-sm btn-primary', 'Continuar');
+          btnContinuar.id = 'btnContinuarPostSkill';
+          // TODO: etapa 6 (revalidación silenciosa)
+          btnContinuar.onclick = () => {
+            console.log("Continuar post-skill: pendiente de implementar");
+          };
+          btnVer.parentElement.appendChild(btnContinuar);
         }
       }
     } catch (e) {
