@@ -382,16 +382,6 @@ BACO.apiMock = (function () {
         description: 'El artículo tiene ' + tags.length + ' etiquetas y el máximo es ' + L.MAX_TAGS + '.',
         action: 'Quitar las etiquetas menos relevantes.' });
     }
-    if (/^(c[oó]mo|como)\s/i.test(titulo)) {
-      findings.push({ severity: 'Ajuste', field: 'titulo',
-        description: 'El título empieza con "Cómo", que es redundante según las pautas.',
-        action: 'Comenzar con un verbo en infinitivo.' });
-    }
-    if (/\berror\b/i.test(titulo) && !/["“][^"”]*error[^"”]*["”]/i.test(titulo)) {
-      findings.push({ severity: 'Ajuste', field: 'titulo',
-        description: 'Se usa la palabra "Error" fuera de comillas.',
-        action: 'Usar "Mensaje" o "Aviso", salvo que sea textual del sistema.' });
-    }
     if (!/ruta\s*[:>]/i.test(texto) && lenTxt > 100) {
       findings.push({ severity: 'Sugerencia', field: 'texto',
         description: 'No se indicó la ruta de acceso con el símbolo >.',

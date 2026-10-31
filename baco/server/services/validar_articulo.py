@@ -115,7 +115,6 @@ SUFIJOS_HOST_INTERNO = (".test", ".local", ".internal", ".localhost")
 RE_IP_PRIVADA = re.compile(r"^(?:10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|127\.\d+\.\d+\.\d+)$")
 
 RE_TITULO_REDUNDANTE = re.compile(r"^\s*(?:cómo|como|pasos para|como hacer para)\b", re.IGNORECASE)
-RE_TITULO_ERROR = re.compile(r"\berror\b", re.IGNORECASE)
 
 
 # ==============================================================================
@@ -628,26 +627,6 @@ def validar_por_tipo(articulo: ArticuloSchema, titulo_original: str, longitud_te
             action="Remover o reemplazar por URLs genéricas o de documentación oficial."
         ))
 
-    # si pusieron titulo chequeo q no arranque con como hacer y q no tenga error sin comillas
-    if titulo_limpio:
-        if RE_TITULO_REDUNDANTE.search(titulo_limpio):
-            findings.append(_finding(
-                severity="Requiere ajuste",
-                field="titulo",
-                description="El título comienza con fórmulas redundantes ('Cómo...', 'Pasos para...').",
-                action="Iniciar directamente con un verbo en infinitivo (ej. 'Emitir...', 'Configurar...') o el proceso directo."
-            ))
-
-        # si pusieron error sin comillas tiro sugerencia
-        if RE_TITULO_ERROR.search(titulo_sanitizado):
-            tiene_comillas = ('"' in titulo_sanitizado or "“" in titulo_sanitizado or "”" in titulo_sanitizado or "'" in titulo_sanitizado)
-            if not tiene_comillas and ":" not in titulo_sanitizado:
-                findings.append(_finding(
-                    severity="Sugerencia",
-                    field="titulo",
-                    description="El título incluye la palabra 'Error' sin citar el mensaje textual del sistema.",
-                    action="Citar el mensaje entre comillas si es literal, o titular con la acción correctiva correspondiente."
-                ))
 
     # largo minimo y maximo segun config_limites y que no queden marcadores tipo
     if longitud_texto < TEXTO_MIN:
