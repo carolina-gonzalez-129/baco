@@ -143,8 +143,11 @@ def test_b_eliminar_en_esperando_plantilla_y_metadatos_el_estado_no_avanza(clien
     r_check1 = client.post("/chat", json={"session_id": sid, "mensaje": "ayuda"}).json()
     assert r_check1["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
 
-    # Seleccionar plantilla -> como faltan tags y categoría, pasa a ESPERANDO_METADATOS
+    # Seleccionar plantilla -> REVISION_BORRADOR; 'continuar_revision' con tags y categoría faltantes -> ESPERANDO_METADATOS
     r4 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
     # Eliminar segundo recurso en ESPERANDO_METADATOS

@@ -100,6 +100,12 @@ class CoincidenciaArticulo(BaseModel):
     )
 
 
+class BotonOpcion(BaseModel):
+    accion: str = Field(..., description="Identificador de la acción ('volver', 'confirmar_texto', etc.)")
+    label: str = Field(..., description="Texto visible del botón ('Volver', 'Confirmar texto', etc.)")
+    estilo: str = Field(default="btn-ghost", description="Clase CSS del botón")
+
+
 class CategoriaOpcion(BaseModel):
     id: int = Field(..., description="ID de la categoría en la tabla 'categorias'.")
     nombre: str = Field(..., description="Nombre de la categoría en la tabla 'categorias'.")
@@ -169,6 +175,14 @@ class BorradorSesion(BaseModel):
     metadatos_anteriores: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Metadatos heredados del artículo original: categoria_id, categoria_nombre, tags",
+    )
+    revision_intermedia: bool = Field(
+        default=False,
+        description="True durante revision intermedia.",
+    )
+    texto_base_revision_final: Optional[str] = Field(
+        default=None,
+        description="Texto base revision final.",
     )
     metadatos_heredados_revisados: bool = Field(
         default=False,
@@ -746,6 +760,10 @@ class ChatOrquestadorResponse(BaseModel):
         default_factory=list,
         description="Botones o acciones válidas en el estado actual."
     )
+    botones: List[BotonOpcion] = Field(
+        default_factory=list,
+        description="Botones inyectados dinámicamente por el servidor.",
+    )
     tags_acumulados: List[str] = Field(
         default_factory=list,
         description="Etiquetas acumuladas en la sesión o borrador hasta el momento."
@@ -786,3 +804,23 @@ class ChatOrquestadorResponse(BaseModel):
         default=None,
         description="Aviso informativo cuando el borrador heredó metadatos de una versión anterior que aún no fueron confirmados.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def poblar_botones(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("botones"):
+                from baco.server.services.orquestador.mensajes import DESCRIPTORES_BOTONES
+                ops = data.get("opciones") or []
+                bts = []
+                for op in ops:
+                    if isinstance(op, str):
+                        desc = DESCRIPTORES_BOTONES.get(
+                            op,
+                            {"accion": op, "label": op.replace("_", " ").capitalize(), "estilo": "btn-ghost"},
+                        )
+                        bts.append(desc)
+                    elif isinstance(op, dict):
+                        bts.append(op)
+                data["botones"] = bts
+        return data

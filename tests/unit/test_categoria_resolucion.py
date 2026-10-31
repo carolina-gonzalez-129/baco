@@ -118,6 +118,9 @@ def test_flujo_chat_resolucion_agro_directa(client, mock_buscador):
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    r_meta = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
     # Turno 1: ingresa etiquetas
@@ -141,6 +144,8 @@ def test_flujo_chat_categoria_ambigua_y_seleccion_posterior(client, mock_buscado
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
     client.post("/chat", json={"session_id": sid, "mensaje": "facturacion, proveedores"})
 
     # Ingresa término ambiguo
@@ -165,6 +170,8 @@ def test_flujo_chat_categoria_inexistente_mensaje_especifico(client, mock_buscad
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
     client.post("/chat", json={"session_id": sid, "mensaje": "gestion, administracion"})
 
     r_no = client.post("/chat", json={"session_id": sid, "mensaje": "Computación cuántica"}).json()
@@ -181,6 +188,8 @@ def test_seleccion_via_menu_desplegable_asigna_id_y_nombre(client, mock_buscador
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
     client.post("/chat", json={"session_id": sid, "mensaje": "ventas, facturacion"})
 
     r_menu = client.post("/chat", json={"session_id": sid, "categoria_id": 20}).json()
@@ -198,6 +207,8 @@ def test_reproduccion_caso_original_articulo_muestra_nombre_ventas(client, mock_
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
 
     # 1. Tags temáticos
     client.post("/chat", json={"session_id": sid, "mensaje": "ventas, facturacion"})
@@ -235,6 +246,9 @@ def test_turno_etiquetas_tematicas_con_ventas_y_agro_no_asigna_categoria_prematu
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    r_meta = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
     # Turno 1: usuario ingresa 'ventas, agro'

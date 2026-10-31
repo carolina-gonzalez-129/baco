@@ -175,13 +175,6 @@
   let ultimoTextareaActivo = null;
   let ultimoCursorCapturado = null;
   const textareasMap = new Map();
-  let consultandoDocExistentePorTitulo = false;
-  let tituloOriginalIngresado = '';
-  let descartoDocExistentePorTitulo = false;
-  let consultandoDocExistentePorTexto = false;
-  let textoOriginalIngresado = '';
-  let bloquesOriginalesIngresados = [''];
-  let descartoDocExistentePorTexto = false;
 
   /* Función única que lee multimedia_habilitada de la respuesta del servidor */
   function actualizarDisponibilidadRecursos(resp) {
@@ -443,9 +436,15 @@
 
   function sincronizarTextoConStore() {
     const limpio = componerTextoDesdeBloques();
-    store.setForm({ texto: limpio });
-    const fc = $('#fCuerpo');
-    if (fc) fc.value = limpio;
+    const s = store.get();
+    const esEnriquecer = Boolean(s && s.borrador && s.borrador.modo === 'enriquecimiento');
+    if (esEnriquecer) {
+      store.setForm({ texto_editor: limpio });
+    } else {
+      store.setForm({ texto: limpio, texto_editor: limpio });
+      const fc = $('#fCuerpo');
+      if (fc) fc.value = limpio;
+    }
   }
 
   function crearDivisor(pos, deshabilitado) {
@@ -722,7 +721,6 @@
     }
   }
 
-  /* Reordena un recurso llamando a PUT /chat/recursos/reordenar y renderiza la respuesta del servidor */
   async function moverBloque(recId, direccion) {
     if (!recId || estadoEditor.enviando) return;
     const recs = ordenarRecursosPorPosicionYOrden(estadoEditor.recursos);
@@ -999,9 +997,6 @@
 
   async function enviarTurno(payload, etiquetaUsuario) {
     const cuerpo = Object.assign({}, payload);
-    if (cuerpo && cuerpo.titulo) {
-      tituloOriginalIngresado = cuerpo.titulo;
-    }
 
     let msgNodoUsuario = null;
     if (etiquetaUsuario) msgNodoUsuario = burbuja('me', esc(anonimizarTextoFront(etiquetaUsuario)));
@@ -1037,8 +1032,8 @@
         }
         renderBloques();
       } else if (r && !r.borrador && !r.texto_limpio && r.estado === 'ESPERANDO_TEXTO') {
-        const bloquesAUsar = (descartoDocExistentePorTexto && textoOriginalIngresado) ? [textoOriginalIngresado] : [''];
-        reconstruirBloques(bloquesAUsar, [], null);
+        estadoEditor.modo = 'edicion';
+        reconstruirBloques([''], [], null);
         renderBloques();
       }
       store.aplicarTurno(r);
@@ -1060,20 +1055,26 @@
       if (r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
 
       const opcionesTurno = Array.isArray(r.opciones) ? r.opciones.slice() : [];
+      const botonesTurno = Array.isArray(r.botones) ? r.botones.slice() : [];
       if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO' || (r.borrador && r.borrador.conforme)) {
         if (!opcionesTurno.includes('ver_articulo_final')) {
           opcionesTurno.unshift('ver_articulo_final');
         }
+        if (!botonesTurno.some((b) => b.accion === 'ver_articulo_final')) {
+          botonesTurno.unshift({ accion: 'ver_articulo_final', label: 'Ver artículo', estilo: 'btn-primary' });
+        }
       }
-      decir(nl2br(r.mensaje), opcionesTurno);
+      decir(nl2br(r.mensaje), opcionesTurno, false, botonesTurno);
 
       if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO') mostrarConforme();
+      return r;
     } catch (e) {
       esperando.remove();
       store.set({ enviando: false });
       ultimoFallo = { tipo: 'turno', payload: payload };
       mostrarError(e);
       decir('No pude completar el paso: ' + esc(e.message));
+      return null;
     }
   }
 
@@ -1093,8 +1094,6 @@
      ========================================================= */
   function pintar(s) {
     const info = BACO.ESTADOS[s.flujo] || BACO.ESTADOS.ESPERANDO_TITULO;
-    const etapaActual = (s.etapa && s.etapa.actual) || info.paso || 1;
-    const etapaTotal = (s.etapa && s.etapa.total) || 5;
 
     const pill = $('#pillEstado');
     if (pill) {
@@ -1104,16 +1103,9 @@
     const ayuda = $('#ayudaEstado');
     if (ayuda) ayuda.textContent = info.ayuda;
 
-    const pct = BACO.avance(s);
-    if ($('#meterFill')) {
-      $('#meterFill').style.width = pct + '%';
-      $('#meterFill').classList.toggle('full', s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO');
-    }
-    if ($('#meterPct')) $('#meterPct').textContent = 'Etapa ' + etapaActual + ' de ' + etapaTotal;
 
     if ($('#sesion')) $('#sesion').textContent = s.session_id ? 'sesión ' + s.session_id.slice(0, 8) : '';
 
-    pintarStepper(s, etapaActual);
     pintarTagsAcumuladosRail(s);
 
     const act = BACO.CAMPOS_ACTIVOS[s.flujo] || {};
@@ -1241,7 +1233,18 @@
     const wrapper = $('#editorBloquesWrapper');
     const fc = $('#fCuerpo');
     const prev = $('#preview');
-    if (estadoEditor.modo === 'preview') {
+    const btnEd = $('#btnEditor');
+    const btnPr = $('#btnPreview');
+    const enPreview = estadoEditor.modo === 'preview';
+    if (btnEd) {
+      btnEd.classList.toggle('sel', !enPreview);
+      btnEd.setAttribute('aria-pressed', String(!enPreview));
+    }
+    if (btnPr) {
+      btnPr.classList.toggle('sel', enPreview);
+      btnPr.setAttribute('aria-pressed', String(enPreview));
+    }
+    if (enPreview) {
       if (wrapper) wrapper.hidden = true;
       if (fc) fc.hidden = true;
       if (prev) {
@@ -1304,16 +1307,29 @@
 
   /* Vista previa reactiva que respeta el orden exacto (posicion, orden) intercalado con bloques_texto */
   function textoVistaPrevia(s) {
-    const cuerpo = (s && s.form && typeof s.form.texto === 'string')
-      ? s.form.texto
-      : componerTextoDesdeBloques();
-    const listaRecs = (estadoEditor.recursos && estadoEditor.recursos.length)
-      ? estadoEditor.recursos
-      : (window.BACO && window.BACO.panelMultimedia && window.BACO.panelMultimedia.lista ? window.BACO.panelMultimedia.lista(s) : []);
+    const esEnriquecer = Boolean(s && s.borrador && s.borrador.modo === 'enriquecimiento');
+    const cuerpo = esEnriquecer
+      ? ((estadoVistaPrevia.bloques_texto && estadoVistaPrevia.bloques_texto.length)
+          ? estadoVistaPrevia.bloques_texto.join('\n\n')
+          : ((s && s.borrador && s.borrador.texto_limpio) || (s && s.form && s.form.texto) || ''))
+      : ((s && s.form && typeof s.form.texto === 'string')
+          ? s.form.texto
+          : componerTextoDesdeBloques());
+    const listaRecs = esEnriquecer
+      ? (estadoVistaPrevia.recursos && estadoVistaPrevia.recursos.length
+          ? estadoVistaPrevia.recursos
+          : ((s && s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || []))
+      : ((estadoEditor.recursos && estadoEditor.recursos.length)
+          ? estadoEditor.recursos
+          : (window.BACO && window.BACO.panelMultimedia && window.BACO.panelMultimedia.lista ? window.BACO.panelMultimedia.lista(s) : []));
     const contexto = Object.assign({}, s || {}, {
-      bloques_texto: (estadoEditor.bloques_texto && estadoEditor.bloques_texto.length)
-        ? estadoEditor.bloques_texto
-        : (s && s.borrador && s.borrador.bloques_texto)
+      bloques_texto: esEnriquecer
+        ? (estadoVistaPrevia.bloques_texto && estadoVistaPrevia.bloques_texto.length
+            ? estadoVistaPrevia.bloques_texto
+            : (s && s.borrador && s.borrador.bloques_texto))
+        : ((estadoEditor.bloques_texto && estadoEditor.bloques_texto.length)
+            ? estadoEditor.bloques_texto
+            : (s && s.borrador && s.borrador.bloques_texto))
     });
     if (window.BACO && window.BACO.panelMultimedia && typeof window.BACO.panelMultimedia.componerVistaPrevia === 'function') {
       return window.BACO.panelMultimedia.componerVistaPrevia(cuerpo, listaRecs, contexto);
@@ -1651,29 +1667,6 @@
 
   BACO.sincronizarTextoDesdePreview = sincronizarTextoDesdePreview;
 
-  function pintarStepper(s, etapaActual) {
-    const cont = $('#pasos');
-    if (!cont) return;
-    const nombres = (s.etapa && Array.isArray(s.etapa.etapas) && s.etapa.etapas.length)
-      ? s.etapa.etapas
-      : ['Título y duplicados', 'Contenido', 'Plantilla y etiquetas', 'Revisión', 'Conformidad'];
-
-    if (cont.children.length !== nombres.length) {
-      cont.innerHTML = '';
-      nombres.forEach((nom, idx) => {
-        cont.appendChild(el('div', 'paso', '<span class="pn">' + (idx + 1) + '</span> ' + esc(nom)));
-      });
-    }
-
-    Array.prototype.forEach.call(cont.querySelectorAll('.paso'), (nodo, i) => {
-      const n = i + 1;
-      const completado = (s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO') ? true : (n < etapaActual);
-      const activo = (s.flujo !== 'CONFORMIDAD_USUARIO' && s.flujo !== 'APROBADO') && (n === etapaActual);
-      nodo.classList.toggle('on', activo);
-      nodo.classList.toggle('hecho', completado);
-    });
-  }
-
   function pintarTagsAcumuladosRail(s) {
     const rail = $('#railTags');
     if (!rail) return;
@@ -1755,7 +1748,7 @@
   function actualizarColorCategoria(sel) {
     if (!sel) return;
 
-    // Limpiar primero todo color previo (data-modulo, clases y estilos)
+    // Limpiar primero t odo color previo (data-modulo, clases y estilos)
     if (sel.dataset) delete sel.dataset.modulo;
     if (typeof sel.removeAttribute === 'function') sel.removeAttribute('data-modulo');
     const wrap = sel.closest ? sel.closest('.selector-cat-wrap') : (sel.parentElement || null);
@@ -1836,7 +1829,6 @@
           if (hayCambios(sAct) && sAct.form && sAct.form.texto) {
             payload.texto = sAct.form.texto;
           }
-          store.setForm({ categoria_id: null, tags: [] });
           enviarTurno(payload, 'Rechazar metadatos heredados');
         };
       }
@@ -1854,13 +1846,11 @@
     }
     const b = s.borrador;
     const tags = (s.tags_acumulados && s.tags_acumulados.length) ? s.tags_acumulados : (b.tags || []);
-    const etapaTxt = (s.etapa ? (s.etapa.actual + ' de ' + s.etapa.total + ' (' + s.etapa.nombre + ')') : '5 de 5 (Conformidad)');
     slot.innerHTML =
       '<div class="resumen-final">' +
         '<h3><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.8 8.2l2.6 2.6 5.4-5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         'Resumen final de la carga</h3>' +
         '<div class="rf-grid">' +
-          '<div><span class="rf-k">Progreso</span><span class="rf-v">Etapa ' + esc(etapaTxt) + '</span></div>' +
           '<div><span class="rf-k">Modo</span><span class="rf-v">' + esc(b.modo) + '</span></div>' +
           '<div><span class="rf-k">Plantilla</span><span class="rf-v">' + esc(b.tipo_plantilla || '—') + '</span></div>' +
           '<div><span class="rf-k">Categoría</span><span class="rf-v">' + esc(nombreCategoria(s, b.categoria_id)) + '</span></div>' +
@@ -2113,21 +2103,24 @@
     const barra = $('#opcionesBarra');
     if (!barra) return;
     barra.innerHTML = '';
-    if (!s.opciones.length) return;
-    const tieneMetaPendiente = s.flujo === 'REVISION_BORRADOR' && !!(s.aviso_metadatos_heredados || (s.borrador && s.borrador.metadatos_anteriores && !s.borrador.metadatos_heredados_revisados));
-    const cartelConBotones = Boolean(
-      $('#bannerMetadatosHeredados') &&
-      $('#bannerMetadatosHeredados').querySelector('#btnAcepMetaHeredados')
-    );
-    if (tieneMetaPendiente && cartelConBotones) return;
-    s.opciones.forEach((op) => {
-      if (op === 'confirmar_texto' && BACO.ACCION_PRINCIPAL[s.flujo] && BACO.ACCION_PRINCIPAL[s.flujo].campo === 'texto') {
+    const botones = (Array.isArray(s.botones) && s.botones.length)
+      ? s.botones
+      : (s.opciones || []).map((op) => {
+          const def = BACO.OPCIONES[op] || {};
+          return { accion: op, label: def.label || op, estilo: def.estilo || 'btn-ghost' };
+        });
+    if (!botones.length) return;
+
+    botones.forEach((btnDef) => {
+      const accion = btnDef.accion || btnDef;
+      if (accion === 'confirmar_texto' && BACO.ACCION_PRINCIPAL[s.flujo] && BACO.ACCION_PRINCIPAL[s.flujo].campo === 'texto') {
         return;
       }
-      const def = BACO.OPCIONES[op] || { label: op, estilo: 'btn-ghost' };
-      const b = el('button', 'btn btn-sm ' + def.estilo, esc(def.label));
+      const label = btnDef.label || (BACO.OPCIONES[accion] || {}).label || accion;
+      const estilo = btnDef.estilo || (BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost';
+      const b = el('button', 'btn btn-sm ' + estilo, esc(label));
       b.disabled = s.enviando;
-      b.onclick = () => accionar(op, def.label);
+      b.onclick = () => accionar(accion, label);
       barra.appendChild(b);
     });
   }
@@ -2135,7 +2128,7 @@
   /* =========================================================
      Acciones
      ========================================================= */
-  function accionar(op, label) {
+  async function accionar(op, label) {
     const s = store.get();
 
     if (op === 'ver_articulo_final') {
@@ -2160,13 +2153,6 @@
       return enviarTurno({ accion: 'editar' }, label);
     }
     if (op === 'reiniciar') {
-      consultandoDocExistentePorTitulo = false;
-      descartoDocExistentePorTitulo = false;
-      tituloOriginalIngresado = '';
-      consultandoDocExistentePorTexto = false;
-      descartoDocExistentePorTexto = false;
-      textoOriginalIngresado = '';
-      bloquesOriginalesIngresados = [''];
       store.reiniciarLocal();
       if (api.olvidarSesion) api.olvidarSesion();
       $('#thread').innerHTML = '';
@@ -2180,27 +2166,9 @@
       return enviarTurno({ accion: 'reiniciar' });
     }
     if (op === 'enriquecer' || op === 'actualizar') {
-      if (s.flujo === 'DECISION_TITULO') {
-        consultandoDocExistentePorTitulo = true;
-        tituloOriginalIngresado = (s.form && s.form.titulo) || tituloOriginalIngresado || '';
-      }
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
       const sAct = store.get();
-      if (s.flujo === 'DECISION_TEXTO') {
-        consultandoDocExistentePorTexto = true;
-        const textoCapturado = (sAct.form && typeof sAct.form.texto === 'string' && sAct.form.texto.trim())
-          ? sAct.form.texto
-          : (componerTextoDesdeBloques().trim() || textoOriginalIngresado || '');
-        if (textoCapturado) {
-          textoOriginalIngresado = textoCapturado;
-        }
-        if (estadoEditor.bloques_texto && estadoEditor.bloques_texto.length) {
-          bloquesOriginalesIngresados = estadoEditor.bloques_texto.slice();
-        } else if (textoCapturado) {
-          bloquesOriginalesIngresados = [textoCapturado];
-        }
-      }
       const payload = { accion: op };
       const txt = (sAct.form && typeof sAct.form.texto === 'string' ? sAct.form.texto : '').trim() ||
                   componerTextoDesdeBloques().trim();
@@ -2209,87 +2177,40 @@
       }
       return enviarTurno(payload, label);
     }
-    if (op === 'descartar' && (consultandoDocExistentePorTitulo || consultandoDocExistentePorTexto) && s.flujo === 'ESPERANDO_TEXTO') {
-      const eraPorTexto = consultandoDocExistentePorTexto;
-      consultandoDocExistentePorTitulo = false;
-      consultandoDocExistentePorTexto = false;
-      if (eraPorTexto) {
-        descartoDocExistentePorTexto = true;
-      } else {
-        descartoDocExistentePorTitulo = true;
+    if (op === 'conforme' || op === 'aprobar' || op === 'continuar_revision') {
+      // 'continuar_revision' (revisión intermedia) y 'conforme' (revisión final) guardan antes
+      // los cambios pendientes de la Vista previa.
+      const accionFinal = op === 'continuar_revision' ? 'continuar_revision' : 'conforme';
+      sincronizarTextoDesdePreview();
+      const sAct = store.get();
+      const textoVistaPrevia = (sAct.form && typeof sAct.form.texto === 'string') ? sAct.form.texto : '';
+      const textoServidor = (sAct.borrador && typeof sAct.borrador.texto_limpio === 'string') ? sAct.borrador.texto_limpio : '';
+
+      if (textoVistaPrevia !== textoServidor) {
+        const payloadGuardar = {
+          titulo: sAct.form.titulo,
+          texto: sAct.form.texto,
+          tags: sAct.form.tags,
+          categoria_id: sAct.form.categoria_id
+        };
+        const resGuardar = await enviarTurno(payloadGuardar, 'Guardar cambios');
+        if (!resGuardar) {
+          return;
+        }
+        const sPost = store.get();
+        const tieneBloqueantes = Boolean(
+          (resGuardar.validacion && resGuardar.validacion.valido === false) ||
+          (resGuardar.validacion && Array.isArray(resGuardar.validacion.findings) && resGuardar.validacion.findings.some((f) => f.severity === 'Bloqueante')) ||
+          (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.includes(accionFinal)) ||
+          (sPost.validacion && sPost.validacion.valido === false)
+        );
+        const estadoNoRevision = (resGuardar.estado || sPost.flujo) !== 'REVISION_BORRADOR';
+
+        if (tieneBloqueantes || estadoNoRevision) {
+          return;
+        }
       }
-
-      const titConservado = tituloOriginalIngresado || (s.form && s.form.titulo) || '';
-      const txtConservado = (eraPorTexto && textoOriginalIngresado) ? textoOriginalIngresado : '';
-      const bloquesAUsar = (eraPorTexto && textoOriginalIngresado)
-        ? ((bloquesOriginalesIngresados && bloquesOriginalesIngresados.length) ? bloquesOriginalesIngresados.slice() : [txtConservado])
-        : [''];
-
-      estadoVistaPrevia.bloques_texto = [''];
-      estadoVistaPrevia.recursos = [];
-      estadoEditor.bloques_texto = bloquesAUsar.slice();
-      estadoEditor.recursos = [];
-      textareasMap.clear();
-      reconstruirBloques(bloquesAUsar, [], null);
-      estadoEditor.modo = 'edicion';
-
-      const btnEd = $('#btnEditor');
-      if (btnEd) {
-        btnEd.classList.add('sel');
-        btnEd.setAttribute('aria-pressed', 'true');
-      }
-      const btnPr = $('#btnPreview');
-      if (btnPr) {
-        btnPr.classList.remove('sel');
-        btnPr.setAttribute('aria-pressed', 'false');
-      }
-      const prEl = $('#preview');
-      if (prEl) prEl.hidden = true;
-      const ebwEl = $('#editorBloquesWrapper');
-      if (ebwEl) ebwEl.hidden = false;
-      const fcEl = $('#fCuerpo');
-      if (fcEl) fcEl.value = txtConservado;
-      const slotEl = $('#slotBorrador');
-      if (slotEl) slotEl.innerHTML = '';
-      const barEl = $('#editorImgBar');
-      if (barEl) {
-        barEl.hidden = true;
-        barEl.innerHTML = '';
-      }
-      const pmEl = $('#panelMultimedia');
-      if (pmEl) {
-        pmEl.hidden = true;
-        pmEl.innerHTML = '';
-      }
-      renderBloques();
-
-      store.set({
-        flujo: 'ESPERANDO_TEXTO',
-        borrador: null,
-        coincidencias: [],
-        validacion: null,
-        aviso_metadatos_heredados: null,
-        opciones: ['confirmar_texto', 'volver']
-      });
-      store.setForm({
-        titulo: titConservado,
-        texto: txtConservado,
-        texto_editor: txtConservado,
-        tags: [],
-        categoria_id: null
-      });
-
-      if ($('#fTitulo')) $('#fTitulo').value = titConservado;
-
-      pintar(store.get());
-
-      burbuja('me', esc(label || 'Es un tema distinto'));
-      if (eraPorTexto) {
-        decir('Listo, lo tomamos como un tema distinto. Podés continuar con tu texto.', ['confirmar_texto', 'volver']);
-      } else {
-        decir('Listo, lo tomamos como un tema distinto. Contame el contenido del artículo.', ['confirmar_texto', 'volver']);
-      }
-      return;
+      return enviarTurno({ accion: accionFinal }, label);
     }
     enviarTurno({ accion: op }, label);
   }
@@ -2372,15 +2293,6 @@
     if (textoFinal) {
       const lenCp = Array.from(textoFinal).length;
       if (lenCp > cfg.MAX_TEXTO_PERCENTIL_99) return;
-      if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
-        descartoDocExistentePorTitulo = false;
-        descartoDocExistentePorTexto = false;
-        return enviarTurno({
-          accion: 'descartar',
-          texto: textoFinal,
-          titulo: (s.form && s.form.titulo) || tituloOriginalIngresado
-        }, 'Confirmar texto (' + lenCp + ' caracteres)');
-      }
       return enviarTurno({
         accion: 'confirmar_texto',
         texto: textoFinal,
@@ -2394,21 +2306,7 @@
       if (lenPend > cfg.MAX_TEXTO_PERCENTIL_99) return;
       chatIn.value = '';
       chatIn.style.height = 'auto';
-      if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
-        descartoDocExistentePorTitulo = false;
-        descartoDocExistentePorTexto = false;
-        return enviarTurno({
-          accion: 'descartar',
-          texto: pendiente,
-          titulo: (s.form && s.form.titulo) || tituloOriginalIngresado
-        }, 'Confirmar texto (' + lenPend + ' caracteres)');
-      }
       return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + lenPend + ' caracteres)');
-    }
-    if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
-      descartoDocExistentePorTitulo = false;
-      descartoDocExistentePorTexto = false;
-      return enviarTurno({ accion: 'descartar' }, 'Confirmar texto');
     }
     return enviarTurno({ accion: 'confirmar_texto' }, 'Confirmar texto');
   }
@@ -2443,7 +2341,7 @@
     const textoLimpio = limpiarMarcadoresSeccion(texto);
     const recs = (s.borrador && (Array.isArray(s.borrador.multimedia) ? s.borrador.multimedia : Object.values(s.borrador.recursos || {}))) || [];
 
-    store.setForm({ texto: textoLimpio });
+    store.setForm({ texto: textoLimpio, texto_editor: textoLimpio });
     if (s.borrador) {
       s.borrador.bloques_texto = [texto];
       s.borrador.texto_limpio = textoLimpio;
@@ -2460,6 +2358,8 @@
     const prev = $('#preview');
     if (prev && !prev.hidden) {
       prev.innerHTML = renderMd(textoVistaPrevia(store.get()));
+      renderVistaPreviaEditable(store.get());
+      conectarEventosVistaPrevia();
     }
 
     if (avisoToast) {
@@ -2474,17 +2374,20 @@
       decir('Todavía no hay un borrador armado. Las skills se habilitan recién cuando lleguemos a la revisión.');
       return;
     }
-    const tieneRecursos = Boolean(
-      (Array.isArray(s.borrador.multimedia) && s.borrador.multimedia.length > 0) ||
-      (s.borrador.recursos && Object.keys(s.borrador.recursos).length > 0) ||
-      (estadoEditor.recursos && estadoEditor.recursos.length > 0)
-    );
-    if (s.borrador.skills_habilitadas === false || tieneRecursos) {
-      const mot = s.borrador.skills_motivo || 'Quitá los recursos cargados si querés aplicar las skills de asistencia.';
-      toast('Skills deshabilitadas: ' + mot);
-      decir('⚠️ Las skills no están disponibles para este borrador:\n' + esc(mot));
-      return;
+   
+    sincronizarTextoDesdePreview();
+    sincronizarTextoConStore();
+    const sAct = store.get();
+    if (sAct.borrador && hayCambios(sAct)) {
+      const payloadGuardar = {
+        titulo: sAct.form.titulo,
+        texto: sAct.form.texto,
+        tags: sAct.form.tags,
+        categoria_id: sAct.form.categoria_id
+      };
+      await enviarTurno(payloadGuardar, 'Guardar cambios');
     }
+
     burbuja('me', esc(etiqueta));
     const esperando = burbuja('bot', '<div class="typing"><i></i><i></i><i></i></div>' +
       '<div class="lento">El agente puede tardar varios segundos…</div>');
@@ -2505,27 +2408,20 @@
         transferirTextoAlPanelIzquierdo(textoRespuesta, true);
       }
 
-      const textoChat = metodo === 'aplicarPlantilla' || metodo === 'auditarSemantica'
-        ? '🤖 Apliqué la **skill** y los resultados fueron transferidos a la sección izquierda del panel'
+      const textoChat = (metodo === 'aplicarPlantilla' || metodo === 'auditarSemantica')
+        ? '🤖 Apliqué la **skill** y los resultados fueron transferidos al panel de carga'
         : r.response;
 
+      const labelBotonTransf = '↖ Transferido al panel de carga (clic para volver a transferir)';
       const msgHtml = '<div class="respuesta-agente">' + nl2br(textoChat) + '</div>' +
-        '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">↖ Transferido al panel de carga (clic para volver a transferir)</button></div>';
+        '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">' + labelBotonTransf + '</button></div>';
       const bubbleEl = decir(msgHtml, ['ver_articulo_final'], true);
       if (bubbleEl) {
         const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
         if (btnTransf) {
-          btnTransf.onclick = () => transferirTextoAlPanelIzquierdo(textoRespuesta, true);
-        }
-        const btnVer = bubbleEl.querySelector('#btnVerArticuloFinal');
-        if (btnVer && btnVer.parentElement) {
-          const btnContinuar = el('button', 'btn btn-sm btn-primary', 'Continuar');
-          btnContinuar.id = 'btnContinuarPostSkill';
-          // TODO: etapa 6 (revalidación silenciosa)
-          btnContinuar.onclick = () => {
-            console.log("Continuar post-skill: pendiente de implementar");
+          btnTransf.onclick = () => {
+            transferirTextoAlPanelIzquierdo(textoRespuesta, true);
           };
-          btnVer.parentElement.appendChild(btnContinuar);
         }
       }
     } catch (e) {
@@ -2561,11 +2457,7 @@
       const tagsFinales = (s.tags_acumulados && s.tags_acumulados.length)
         ? s.tags_acumulados
         : (b.tags || []);
-      const etapaFinal = s.etapa
-        ? ('Etapa ' + s.etapa.actual + ' de ' + s.etapa.total + ' · ' + s.etapa.nombre)
-        : 'Etapa 5 de 5 · Conformidad';
       $('#recap').innerHTML =
-        '<div class="r"><span class="k">Progreso</span><span class="v">' + esc(etapaFinal) + '</span></div>' +
         '<div class="r"><span class="k">Modo</span><span class="v">' + esc(b.modo) + '</span></div>' +
         (b.articulo_original_id ? '<div class="r"><span class="k">Sobre</span><span class="v">#' + b.articulo_original_id + '</span></div>' : '') +
         '<div class="r"><span class="k">Título</span><span class="v">' + esc(b.titulo) + '</span></div>' +
@@ -2622,25 +2514,36 @@
     return m;
   }
 
-  function decir(html, opciones, ancho) {
+  function decir(html, opciones, ancho, botones) {
+    const esperando = $('#esperando');
+    if (esperando) esperando.remove();
     const b = burbuja('bot', html);
     if (ancho) b.querySelector('.bubble').classList.add('ancha');
+
     /* En el panel derecho (BACO Companion) nunca se muestra el botón "Confirmar texto" */
     const opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto');
+
     const sActual = store.get();
-    const tieneMetaPendiente = (sActual.flujo === 'REVISION_BORRADOR' && !!(sActual.aviso_metadatos_heredados || (sActual.borrador && sActual.borrador.metadatos_anteriores && !sActual.borrador.metadatos_heredados_revisados)));
-    const cartelConBotones = Boolean(
-      $('#bannerMetadatosHeredados') &&
-      $('#bannerMetadatosHeredados').querySelector('#btnAcepMetaHeredados')
-    );
-    const opcionesCompanionFinal = (tieneMetaPendiente && cartelConBotones) ? [] : opcionesCompanion;
-    if (opcionesCompanionFinal.length) {
+    const listaBotones = (Array.isArray(botones) && botones.length)
+      ? botones
+      : (Array.isArray(sActual.botones) && sActual.botones.length)
+        ? sActual.botones
+        : (opcionesCompanion || []).map((op) => {
+            const def = BACO.OPCIONES[op] || {};
+            return { accion: op, label: def.label || op, estilo: def.estilo || 'btn-ghost' };
+          });
+
+    const botonesCompanion = listaBotones.filter((btnDef) => (btnDef.accion || btnDef) !== 'confirmar_texto');
+
+    if (botonesCompanion.length) {
       const cont = el('div', 'acciones');
-      opcionesCompanionFinal.forEach((op) => {
-        const def = BACO.OPCIONES[op] || { label: op, estilo: 'btn-ghost' };
-        const btn = el('button', 'btn btn-sm ' + def.estilo, esc(def.label));
-        if (op === 'ver_articulo_final') btn.id = 'btnVerArticuloFinal';
-        btn.onclick = () => accionar(op, def.label);
+      botonesCompanion.forEach((btnDef) => {
+        const accion = btnDef.accion || btnDef;
+        const label = btnDef.label || (BACO.OPCIONES[accion] || {}).label || accion;
+        const estilo = btnDef.estilo || (BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost';
+        const btn = el('button', 'btn btn-sm ' + estilo, esc(label));
+        if (accion === 'ver_articulo_final') btn.id = 'btnVerArticuloFinal';
+        btn.onclick = () => accionar(accion, label);
         cont.appendChild(btn);
       });
       b.querySelector('.bubble').insertBefore(cont, b.querySelector('.stamp'));
@@ -2657,9 +2560,6 @@
     if (s.flujo === 'ESPERANDO_TITULO')  return enviarTurno({ titulo: v }, v);
     if (s.flujo === 'ESPERANDO_TEXTO') {
       const cmd = v.toLowerCase();
-      if (['es un tema distinto', 'tema distinto', 'descartar'].includes(cmd) && (consultandoDocExistentePorTitulo || consultandoDocExistentePorTexto)) {
-        return accionar('descartar', 'Es un tema distinto');
-      }
       if (['volver', 'atras', 'atrás', 'regresar', 'reiniciar', 'ayuda', '?', 'descartar', 'continuar'].includes(cmd)) {
         return enviarTurno({ mensaje: v }, v);
       }
@@ -2673,11 +2573,6 @@
       sincronizarTextoConStore();
       renderBloques();
       const acumulado = componerTextoDesdeBloques();
-      if (descartoDocExistentePorTitulo || descartoDocExistentePorTexto) {
-        descartoDocExistentePorTitulo = false;
-        descartoDocExistentePorTexto = false;
-        return enviarTurno({ accion: 'descartar', mensaje: v, texto: acumulado, titulo: (s.form && s.form.titulo) || tituloOriginalIngresado }, v);
-      }
       return enviarTurno({ mensaje: v, texto: acumulado }, v);
     }
     if (s.flujo === 'ESPERANDO_METADATOS') {
@@ -2739,6 +2634,30 @@
     t.textContent = msg; t.classList.add('show');
     clearTimeout(tToast);
     tToast = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  function sincronizarConformidadContenidoAdicional(b) {
+    if (!b) return;
+    const s = store.get();
+    const teniaConformidad = Boolean(b.conforme);
+    if (teniaConformidad) {
+      b.conforme = false;
+      b.conforme_en = null;
+      b.conformidad_invalidada = true;
+    }
+    const cambios = { borrador: b };
+    if (teniaConformidad && s && s.flujo === 'CONFORMIDAD_USUARIO') {
+      cambios.flujo = 'REVISION_BORRADOR';
+      cambios.opciones = ['conforme', 'editar', 'rechazar'];
+      if (s.etapa && s.etapa.actual === 5) {
+        cambios.etapa = Object.assign({}, s.etapa, {
+          actual: 4,
+          nombre: (s.etapa.etapas && s.etapa.etapas[3]) || 'Revisión'
+        });
+      }
+    }
+    store.set(cambios);
+    renderVistaPreviaEditable();
   }
 
   function pintarRecursosDetectados(s) {
@@ -2846,14 +2765,8 @@
         if (b) {
           b.contenido_adicional = b.contenido_adicional || [];
           b.contenido_adicional.push(item);
-          if (b.conforme) {
-            b.conforme = false;
-            b.conforme_en = null;
-            b.conformidad_invalidada = true;
-            if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
-          }
+          sincronizarConformidadContenidoAdicional(b);
         }
-        pintarRecursosDetectados(s);
         toast('Contenido nuevo agregado a la sección aparte');
       } catch (err) {
         toast('Error al agregar contenido: ' + (err.message || err));
@@ -2923,20 +2836,15 @@
         return;
       }
       try {
+        let itemMod = null;
         if (api.modificarContenidoAdicional) {
-          await api.modificarContenidoAdicional(id, nuevoTexto);
+          itemMod = await api.modificarContenidoAdicional(id, nuevoTexto);
         }
         if (b && b.contenido_adicional) {
           const it = b.contenido_adicional.find((x) => x.id === id);
-          if (it) it.contenido = nuevoTexto;
-          if (b.conforme) {
-            b.conforme = false;
-            b.conforme_en = null;
-            b.conformidad_invalidada = true;
-            if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
-          }
+          if (it) it.contenido = (itemMod && itemMod.contenido) || nuevoTexto;
+          sincronizarConformidadContenidoAdicional(b);
         }
-        pintarRecursosDetectados(s);
         toast('Contenido modificado correctamente');
       } catch (err) {
         toast('Error al modificar ítem: ' + (err.message || err));
@@ -2980,14 +2888,8 @@
           if (b && b.contenido_adicional) {
             b.contenido_adicional = b.contenido_adicional.filter((it) => it.id !== id);
             b.contenido_adicional.forEach((it, idx) => { it.posicion = idx; });
-            if (b.conforme) {
-              b.conforme = false;
-              b.conforme_en = null;
-              b.conformidad_invalidada = true;
-              if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
-            }
+            sincronizarConformidadContenidoAdicional(b);
           }
-          pintarRecursosDetectados(s);
           toast('Ítem eliminado del borrador');
         } catch (err) {
           toast('Error al eliminar ítem: ' + (err.message || err));
@@ -3013,16 +2915,14 @@
 
         const ordenIds = b.contenido_adicional.map((it) => it.id);
         try {
+          let itemsReordenados = null;
           if (api.reordenarContenidoAdicional) {
-            await api.reordenarContenidoAdicional(ordenIds);
+            itemsReordenados = await api.reordenarContenidoAdicional(ordenIds);
           }
-          if (b.conforme) {
-            b.conforme = false;
-            b.conforme_en = null;
-            b.conformidad_invalidada = true;
-            if (s.flujo === 'CONFORMIDAD_USUARIO') s.flujo = 'REVISION_BORRADOR';
+          if (Array.isArray(itemsReordenados) && itemsReordenados.length) {
+            b.contenido_adicional = itemsReordenados;
           }
-          pintarRecursosDetectados(s);
+          sincronizarConformidadContenidoAdicional(b);
           toast('Orden de contenido actualizado');
         } catch (err) {
           toast('Error al reordenar: ' + (err.message || err));

@@ -30,6 +30,7 @@ from baco.server.services.orquestador.mensajes import (
     MSG_RECHAZADO,
     MSG_SIN_COINCIDENCIAS_TITULO,
     MSG_TEXTO_EN_EDICION,
+    MSG_USAR_CONTINUAR,
     MSG_VOLVER_ENRIQUECER_O_DESCARTAR,
     MSG_VOLVER_METADATOS,
     MSG_VOLVER_PLANTILLA,
@@ -59,6 +60,7 @@ from baco.server.services.orquestador.mensajes import (
     msg_error_longitud_minima,
     msg_opcion_invalida,
     msg_pedir_categoria,
+    msg_pedir_metadatos,
     msg_categoria_ambigua,
     msg_categoria_no_encontrada,
     msg_pedir_tag_adicional,
@@ -80,6 +82,7 @@ from baco.server.services.orquestador.recursos_service import (
     texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.sesion import SesionChat
+from baco.server.services.orquestador.retroceso import retroceder
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     actualizar_metadatos_sesion,
@@ -464,14 +467,7 @@ async def handle_decision_titulo(
         return construir_respuesta(sesion, MSG_DESCARTAR_COINCIDENCIA_TITULO, ["confirmar_texto", "volver"])
 
     if opcion == "volver":
-        sesion.limpiar_fallos("DECISION_TITULO")
-        sesion.coincidencias = []
-        sesion.estado = EstadoFlujo.ESPERANDO_TITULO
-        return construir_respuesta(
-            sesion,
-            MSG_VOLVER_TITULO,
-            [],
-        )
+        return retroceder(sesion)
 
     intento = sesion.registrar_fallo("DECISION_TITULO")
     elegido = sesion.coincidencias[0] if sesion.coincidencias else None
@@ -484,32 +480,7 @@ async def handle_esperando_texto(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     if opcion == "volver":
-        sesion.limpiar_fallos("ESPERANDO_TEXTO")
-        sesion.texto_en_edicion = ""
-        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
-            elegido = sesion.coincidencias[0] if sesion.coincidencias else None
-            es_semantico = any(getattr(c, "tipo_coincidencia", "") == "semantico" for c in sesion.coincidencias)
-            if es_semantico:
-                sesion.estado = EstadoFlujo.DECISION_TEXTO
-                return construir_respuesta(
-                    sesion,
-                    msg_coincidencia(sesion.coincidencias[0].mensaje if (sesion.coincidencias and hasattr(sesion.coincidencias[0], "mensaje")) else "Coincidencia por contenido", elegido.titulo if elegido else "", elegido.url if elegido else ""),
-                    OPCIONES_ENRIQUECER_CONTINUAR,
-                )
-            sesion.estado = EstadoFlujo.DECISION_TITULO
-            es_serie = elegido and elegido.tipo_coincidencia == "serie"
-            ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
-            return construir_respuesta(
-                sesion,
-                MSG_VOLVER_ENRIQUECER_O_DESCARTAR,
-                ops,
-            )
-        sesion.estado = EstadoFlujo.ESPERANDO_TITULO
-        return construir_respuesta(
-            sesion,
-            MSG_VOLVER_TITULO,
-            [],
-        )
+        return retroceder(sesion)
 
     if opcion in ("descartar", "continuar"):
         if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
@@ -1031,14 +1002,7 @@ async def handle_decision_texto(
         return avanzar_a_metadatos_o_revision(sesion, PREFIJO_CONTINUAR_PROPIO)
 
     if opcion == "volver":
-        sesion.limpiar_fallos("DECISION_TEXTO")
-        sesion.coincidencias = []
-        sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-        return construir_respuesta(
-            sesion,
-            MSG_VOLVER_TEXTO,
-            ["volver"],
-        )
+        return retroceder(sesion)
 
     intento = sesion.registrar_fallo("DECISION_TEXTO")
     return construir_respuesta(sesion, msg_opcion_invalida(intento), OPCIONES_ENRIQUECER_CONTINUAR)
@@ -1049,25 +1013,7 @@ async def handle_esperando_plantilla(
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
     if opcion == "volver":
-        sesion.limpiar_fallos("ESPERANDO_PLANTILLA")
-        if b and b.metadatos_anteriores:
-            b.metadatos_heredados_revisados = False
-            sesion.metadatos_heredados_revisados = False
-            ant = b.metadatos_anteriores
-            b.categoria_id = ant.get("categoria_id")
-            b.categoria_nombre = ant.get("categoria_nombre") or (DICCIONARIO_OFICIAL_CATEGORIAS.get(b.categoria_id) if b.categoria_id else None)
-            b.tags = list(ant.get("tags") or [])
-            b.tipo_plantilla = extraer_tipo_plantilla(b.tags)
-            sesion.categoria_id = b.categoria_id
-            sesion.categoria_nombre = b.categoria_nombre
-            sesion.tags = list(b.tags)
-            return avanzar_a_metadatos_o_revision(sesion)
-        sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-        return construir_respuesta(
-            sesion,
-            MSG_VOLVER_TEXTO_ACTUALIZADO,
-            ["confirmar_texto", "volver"],
-        )
+        return retroceder(sesion)
 
     if req.categoria_id is not None:
         b.categoria_id = req.categoria_id
@@ -1109,15 +1055,7 @@ async def handle_esperando_metadatos(
         if resp_meta is not None:
             return resp_meta
     if opcion == "volver":
-        sesion.limpiar_fallos("ESPERANDO_METADATOS")
-        sesion.estado = EstadoFlujo.ESPERANDO_PLANTILLA
-        if b:
-            b.tipo_plantilla = None
-        return construir_respuesta(
-            sesion,
-            MSG_VOLVER_PLANTILLA,
-            OPCIONES_PLANTILLAS,
-        )
+        return retroceder(sesion)
 
     if req.categoria_id is not None:
         res_dir = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
@@ -1473,6 +1411,33 @@ def _registrar_conformidad(sesion: SesionChat) -> ChatOrquestadorResponse:
     )
 
 
+def _continuar_a_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
+    """Cierra la revisión intermedia: pide categoría y tags si faltan o pasa a la revisión final."""
+    b = sesion.borrador
+    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        return avanzar_a_metadatos_o_revision(
+            sesion, "Debés aceptar o rechazar los metadatos heredados antes de continuar. "
+        )
+
+    if not sesion.validacion:
+        validar_borrador(sesion)
+    if not sesion.validacion or not sesion.validacion.valido:
+        msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
+        return construir_respuesta(sesion, msg, ops)
+
+    b.revision_intermedia = False
+    b.texto_base_revision_final = b.texto_limpio
+    if b.categoria_id is None and sesion.categoria_id is not None:
+        b.categoria_id = sesion.categoria_id
+    if b.categoria_id is None or len(b.tags) < 2:
+        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
+        return construir_respuesta(sesion, msg_pedir_metadatos(b.tipo_plantilla or ""), ["volver"])
+
+    # Metadatos ya completos (p. ej. heredados aceptados): directo a la revisión final.
+    msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)
+    return construir_respuesta(sesion, msg, ops)
+
+
 async def handle_revision_borrador(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
@@ -1519,15 +1484,14 @@ async def handle_revision_borrador(
         return construir_respuesta(sesion, MSG_PEDIR_EDICION, ops)
 
     if opcion == "volver":
-        sesion.limpiar_fallos("REVISION_BORRADOR")
-        if b and b.modo == "enriquecimiento":
-            sesion.estado = EstadoFlujo.DECISION_TITULO
-            elegido = sesion.coincidencias[0] if sesion.coincidencias else None
-            es_serie = elegido and elegido.tipo_coincidencia == "serie"
-            ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
-            return construir_respuesta(sesion, MSG_VOLVER_ENRIQUECER_O_DESCARTAR, ops)
-        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-        return construir_respuesta(sesion, MSG_VOLVER_METADATOS, ["volver"])
+        return retroceder(sesion)
+
+    if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
+        return _continuar_a_metadatos(sesion)
+
+    if opcion == "conforme" and b is not None and b.revision_intermedia:
+        msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
+        return construir_respuesta(sesion, msg, ops)
 
     if opcion == "conforme":
         return _registrar_conformidad(sesion)

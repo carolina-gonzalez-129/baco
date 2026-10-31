@@ -301,7 +301,9 @@ class GestorSesiones:
 
     obtener_borrador_aprobado = obtener_borrador_conforme
 
-    def obtener_borrador_sesion_validado(self, session_id: str) -> BorradorSesion:
+    def obtener_borrador_sesion_validado(
+        self, session_id: str, permitir_revision: bool = False
+    ) -> BorradorSesion:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
 
@@ -319,12 +321,22 @@ class GestorSesiones:
             sesion.borrador.conforme_en = None
             sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
-        if (
-            sesion.estado != EstadoFlujo.CONFORMIDAD_USUARIO
-            or sesion.borrador is None
-            or not sesion.borrador.conforme
-        ):
-            raise EstadoInvalidoError(f"El borrador no está en estado CONFORMIDAD_USUARIO (estado actual: '{sesion.estado.value}').")
+        if permitir_revision:
+            if (
+                sesion.estado not in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.REVISION_BORRADOR)
+                or sesion.borrador is None
+                or (sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO and not sesion.borrador.conforme)
+            ):
+                raise EstadoInvalidoError(
+                    f"El borrador no está en un estado válido (REVISION_BORRADOR o CONFORMIDAD_USUARIO) (estado actual: '{sesion.estado.value}')."
+                )
+        else:
+            if (
+                sesion.estado != EstadoFlujo.CONFORMIDAD_USUARIO
+                or sesion.borrador is None
+                or not sesion.borrador.conforme
+            ):
+                raise EstadoInvalidoError(f"El borrador no está en estado CONFORMIDAD_USUARIO (estado actual: '{sesion.estado.value}').")
 
         sesion.updated_at = ahora
         return _sanitizar_y_clonar_borrador(sesion.borrador, sesion)

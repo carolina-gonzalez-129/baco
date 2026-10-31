@@ -83,6 +83,20 @@ def resolver_sesion_y_borrador(
     return sid, borrador
 
 
+def resolver_sesion_y_borrador_para_skills(
+    baco_session: Optional[str] = Cookie(default=None),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+) -> Tuple[str, BorradorSesion]:
+    sid = extraer_session_id(baco_session, x_session_id)
+    if not sid:
+        raise HTTPException(
+            status_code=401,
+            detail="No se encontró una sesión activa (se requiere cookie 'baco_session' o cabecera 'X-Session-ID').",
+        )
+    borrador = obtener_borrador_sesion_validado(sid, permitir_revision=True)
+    return sid, borrador
+
+
 def resolver_sesion_activa(
     baco_session: Optional[str] = Cookie(default=None),
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
@@ -221,7 +235,7 @@ def obtener_borrador_de_sesion(
     summary="Aplica la skill 'plantillas' para estructurar el borrador en su formato oficial"
 )
 def aplicar_plantilla(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     sid, borrador = sesion_valida
@@ -240,7 +254,7 @@ def aplicar_plantilla(
     summary="Aplica la skill 'validador' para auditar la coherencia semántica y estilo del artículo"
 )
 def auditar_semantica(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     _, borrador = sesion_valida
@@ -248,6 +262,15 @@ def auditar_semantica(
         raise HTTPException(
             status_code=422,
             detail=borrador.skills_motivo or "Las skills están deshabilitadas para este borrador.",
+        )
+    # La skill 'validador' audita con categoría y tags: se solicitan antes de ejecutarla.
+    if borrador.categoria_id is None or len(borrador.tags or []) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Para ejecutar la skill 'validador' primero completá la clasificación del artículo: "
+                "asigná una categoría y al menos 2 etiquetas."
+            ),
         )
     dictamen = ejecutar_skill_validador(borrador, baco)
     return ChatResponse(response=dictamen)
@@ -259,7 +282,7 @@ def auditar_semantica(
     summary="Revalida el borrador de sesión tras la aplicación de skills en silencio",
 )
 def revalidar_post_skill(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
 ) -> ValidarFormatoResponse:
     sid, _ = sesion_valida
     sesion = gestor_sesiones.obtener_sesion(sid)
