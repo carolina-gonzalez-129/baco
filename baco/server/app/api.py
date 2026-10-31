@@ -220,7 +220,7 @@ async def chat_orquestado(
 @router.get(
     "/chat/borrador",
     response_model=BorradorSesion,
-    summary="Obtiene el borrador de sesión validado y con conformidad registrada de la sesión activa"
+    summary="Obtiene el borrador de sesión validado y finalizado de la sesión activa"
 )
 def obtener_borrador_de_sesion(
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),

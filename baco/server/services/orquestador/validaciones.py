@@ -22,7 +22,7 @@ from baco.server.services.validar_articulo import (
     validar_texto_y_estructura_post_duplicados,
 )
 from baco.server.services.orquestador.mensajes import (
-    MSG_ANTES_DE_CONFORME,
+    MSG_ANTES_DE_FINALIZAR,
     MSG_ANTES_DE_CONTINUAR,
     OPCIONES_PLANTILLAS,
     OPCIONES_REVISION_BLOQUEANTE,
@@ -1052,7 +1052,7 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
-    msg_cierre = MSG_ANTES_DE_CONTINUAR if b.revision_intermedia else MSG_ANTES_DE_CONFORME
+    msg_cierre = MSG_ANTES_DE_CONTINUAR if b.revision_intermedia else MSG_ANTES_DE_FINALIZAR
     ops_validas = OPCIONES_REVISION_INTERMEDIA_VALIDO if b.revision_intermedia else OPCIONES_REVISION_VALIDO
 
     if ajustes:

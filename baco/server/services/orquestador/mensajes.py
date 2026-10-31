@@ -13,12 +13,11 @@ OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
 OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
 OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
-OPCIONES_REVISION_VALIDO = ["conforme", "finalizar", "editar", "rechazar"]
+OPCIONES_REVISION_VALIDO = ["finalizar", "editar", "rechazar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 # Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar"]
 OPCIONES_REINICIAR = ["reiniciar"]
-OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
 OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador", "volver"]
 OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
 
@@ -130,21 +129,14 @@ PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
 
-MSG_ANTES_DE_CONFORME = (
-    "Revisá el borrador. Si estás conforme con el contenido, tocá **Continuar**."
+MSG_ANTES_DE_FINALIZAR = (
+    "Revisá el borrador. Cuando termines, tocá **Finalizar**."
 )
 MSG_ANTES_DE_CONTINUAR = (
     "Revisamos tu texto y no hay puntos obligatorios pendientes. Podés seguir editándolo o tocar **Continuar** para completar la categoría y las etiquetas."
 )
 MSG_USAR_CONTINUAR = (
     "Todavía faltan la categoría y las etiquetas: tocá **Continuar** para completarlas."
-)
-MSG_CONFORMIDAD_REGISTRADA = (
-    "✅ Genial! Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedo listo. "
-    "Todavía no esta publicado: la aprobación y publicación final las hace un moderador. "
-)
-MSG_CONFORMIDAD_INVALIDADA = (
-    "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad."
 )
 MSG_BORRADOR_FINALIZADO = (
     "✅ Registramos tu borrador. Pasó las validaciones mínimas. Todavía no está publicado: "
@@ -297,10 +289,6 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
         "• Sumá **al menos una etiqueta más** (o las que creas necesarias).\n"
         "Podés indicarlas por aca o cargarlas en el menu desplegable arriba del panel izquierdo."
     )
-
-
-def msg_articulo_conforme(titulo: str = "") -> str:
-    return MSG_CONFORMIDAD_REGISTRADA
 
 
 def msg_sesion_finalizada(estado_valor: str) -> str:

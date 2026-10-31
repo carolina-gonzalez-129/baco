@@ -323,39 +323,24 @@ class GestorSesiones:
             raise SesionNoEncontradaError(f"No existe la sesión '{session_id}' o la sesión expiró.")
 
         sesion = self._sesiones[session_id]
-        # Invariante: no se puede quedar en CONFORMIDAD_USUARIO con texto distinto al confirmado
-        if (
-            sesion.borrador is not None
-            and sesion.borrador.texto_original_conforme is not None
-            and sesion.borrador.texto_alineado_discourse != sesion.borrador.texto_original_conforme
-        ):
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
         if permitir_revision:
             if (
-                sesion.estado not in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.FINALIZADO, EstadoFlujo.REVISION_BORRADOR)
+                sesion.estado not in (EstadoFlujo.FINALIZADO, EstadoFlujo.REVISION_BORRADOR)
                 or sesion.borrador is None
-                or (sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO and not sesion.borrador.conforme)
                 or (sesion.estado == EstadoFlujo.FINALIZADO and not sesion.borrador.finalizado)
             ):
                 raise EstadoInvalidoError(
-                    f"El borrador no está en un estado válido (REVISION_BORRADOR, CONFORMIDAD_USUARIO o FINALIZADO) (estado actual: '{sesion.estado.value}')."
+                    f"El borrador no está en un estado válido (REVISION_BORRADOR o FINALIZADO) (estado actual: '{sesion.estado.value}')."
                 )
         else:
-            es_conforme = (
-                sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO
-                and sesion.borrador is not None
-                and sesion.borrador.conforme
-            )
             es_finalizado = (
                 sesion.estado == EstadoFlujo.FINALIZADO
                 and sesion.borrador is not None
                 and sesion.borrador.finalizado
             )
-            if not (es_conforme or es_finalizado):
-                raise EstadoInvalidoError(f"El borrador no está en estado CONFORMIDAD_USUARIO o FINALIZADO (estado actual: '{sesion.estado.value}').")
+            if not es_finalizado:
+                raise EstadoInvalidoError(f"El borrador no está en estado FINALIZADO (estado actual: '{sesion.estado.value}').")
 
         sesion.updated_at = ahora
         return _sanitizar_y_clonar_borrador(sesion.borrador, sesion)
@@ -372,14 +357,8 @@ class GestorSesiones:
 
         sesion = self._sesiones[session_id]
         if sesion.borrador is not None:
-            if not sesion.borrador.texto_original_conforme:
-                sesion.borrador.texto_original_conforme = sesion.borrador.texto_alineado_discourse
             texto_strip = (nuevo_texto or "").strip()
             if sesion.borrador.texto_limpio != texto_strip:
-                sesion.borrador.conforme = False
-                sesion.borrador.conforme_en = None
-                sesion.borrador.conformidad_invalidada = True
-                sesion.estado = EstadoFlujo.REVISION_BORRADOR
                 _invalidar_finalizado(sesion)
             sesion.borrador.bloques_texto = [texto_strip] if texto_strip else []
             sesion.bloques_texto = list(sesion.borrador.bloques_texto)
@@ -418,8 +397,6 @@ class GestorSesiones:
         sesion.orden_multimedia = list(b.orden_multimedia)
         sesion.posiciones = list(b.posiciones)
         sesion.texto = b.texto_alineado_discourse
-        if b.conformidad_invalidada and sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
-            sesion.estado = EstadoFlujo.REVISION_BORRADOR
         _invalidar_finalizado(sesion)
         return b.multimedia
 
@@ -645,14 +622,6 @@ class GestorSesiones:
         items.append(nuevo_item)
         sesion.contenido_adicional = list(items)
 
-        # Si el borrador ya tenía conformidad, cualquier agregado la invalida
-        if sesion.borrador.conforme:
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.borrador.conformidad_invalidada = True
-            if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
-                sesion.estado = EstadoFlujo.REVISION_BORRADOR
-
         _invalidar_finalizado(sesion)
 
         # Invariante innegociable: texto_limpio y recursos NO cambian
@@ -681,14 +650,6 @@ class GestorSesiones:
 
         sesion.borrador.contenido_adicional = items_filtrados
         sesion.contenido_adicional = list(items_filtrados)
-
-        # Si el borrador ya tenía conformidad, se invalida
-        if sesion.borrador.conforme:
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.borrador.conformidad_invalidada = True
-            if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
-                sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
         _invalidar_finalizado(sesion)
 
@@ -721,14 +682,6 @@ class GestorSesiones:
 
         sesion.borrador.contenido_adicional = nuevos_items
         sesion.contenido_adicional = list(nuevos_items)
-
-        # Si el borrador ya tenía conformidad, se invalida
-        if sesion.borrador.conforme:
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.borrador.conformidad_invalidada = True
-            if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
-                sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
         _invalidar_finalizado(sesion)
 
@@ -766,14 +719,6 @@ class GestorSesiones:
             item.tipo = nuevo_tipo
 
         sesion.contenido_adicional = list(sesion.borrador.contenido_adicional)
-
-        # Invalida conformidad si ya estaba dada
-        if sesion.borrador.conforme:
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.borrador.conformidad_invalidada = True
-            if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
-                sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
         _invalidar_finalizado(sesion)
 

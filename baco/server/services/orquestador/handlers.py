@@ -19,8 +19,6 @@ from baco.server.schemas.chat_orquestado import (
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.mensajes import (
-    MSG_CONFORMIDAD_INVALIDADA,
-    MSG_CONFORMIDAD_REGISTRADA,
     MSG_DESCARTAR_COINCIDENCIA_TITULO,
     MSG_ELEGIR_PLANTILLA,
     MSG_OPERACION_CANCELADA,
@@ -42,7 +40,6 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_SERIE_DECISION,
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
-    OPCIONES_CONFORMIDAD,
     OPCIONES_FINALIZADO,
     MSG_BORRADOR_FINALIZADO,
     OPCIONES_REVISION_BLOQUEANTE,
@@ -54,7 +51,6 @@ from baco.server.services.orquestador.mensajes import (
     PREFIJO_METADATOS_REGISTRADOS,
     PREFIJO_SIN_DUPLICADOS,
     msg_actualizar_serie_cargado,
-    msg_articulo_conforme,
     msg_articulo_muy_largo,
     msg_coincidencia,
     msg_enriquecer_cargado,
@@ -1213,7 +1209,7 @@ def _resolver_flujo_rechazo(
             ops,
         )
 
-    if opcion in ("editar", "sanitizar", "conforme") or hubo_cambios:
+    if opcion in ("editar", "sanitizar") or hubo_cambios:
         sesion.confirmando_rechazo = False
         return None
 
@@ -1255,7 +1251,7 @@ def _gestionar_metadatos_heredados(
 
 
 def _ejecutar_sanitizacion_borrador(
-    sesion: SesionChat, req: ChatOrquestadorRequest, tenia_conformidad: bool
+    sesion: SesionChat, req: ChatOrquestadorRequest
 ) -> ChatOrquestadorResponse:
     """Ejecuta la sanitización sobre el borrador actual (explícita o silenciosa)."""
     b = sesion.borrador
@@ -1295,11 +1291,7 @@ def _ejecutar_sanitizacion_borrador(
     b.conforme_en = None
     sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
-    if tenia_conformidad:
-        b.conformidad_invalidada = True
-        prefijo = f"{MSG_CONFORMIDAD_INVALIDADA}\n\n"
-    else:
-        prefijo = PREFIJO_DATOS_SANITIZADOS
+    prefijo = PREFIJO_DATOS_SANITIZADOS
 
     msg, ops = validar_borrador(sesion, prefijo)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_sanit)
@@ -1309,7 +1301,6 @@ def _aplicar_mutaciones_borrador(
     sesion: SesionChat,
     req: ChatOrquestadorRequest,
     texto_edicion: Optional[str] = None,
-    tenia_conformidad: bool = False,
 ) -> ChatOrquestadorResponse:
     """Aísla el parseo y actualización de título, texto, tags y categoría cuando hubo_cambios es True."""
     b = sesion.borrador
@@ -1396,65 +1387,10 @@ def _aplicar_mutaciones_borrador(
     b.conforme_en = None
     sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
-    if tenia_conformidad:
-        b.conformidad_invalidada = True
-        prefijo = f"{MSG_CONFORMIDAD_INVALIDADA}\n\n"
-    else:
-        prefijo = PREFIJO_BORRADOR_ACTUALIZADO
+    prefijo = PREFIJO_BORRADOR_ACTUALIZADO
 
     msg, ops = validar_borrador(sesion, prefijo)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_priv_edicion)
-
-
-def _registrar_conformidad(sesion: SesionChat) -> ChatOrquestadorResponse:
-    """Registra la conformidad del usuario aplicando sanitización silenciosa final si corresponde."""
-    b = sesion.borrador
-    if b is None:
-        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
-
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return avanzar_a_metadatos_o_revision(sesion, "Debés aceptar o rechazar los metadatos heredados antes de confirmar la conformidad. ")
-
-    b.metadatos_heredados_revisados = True
-    sesion.metadatos_heredados_revisados = True
-
-    if not sesion.validacion:
-        validar_borrador(sesion)
-    if not sesion.validacion or not sesion.validacion.valido:
-        msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
-        return construir_respuesta(sesion, msg, ops)
-
-    limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
-    titulo_conf = limpio["titulo_sanitizado"]
-    bloques_conf = [
-        sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
-        for bl in b.bloques_texto
-        if bl.strip()
-    ]
-    bloques_conf = [bl for bl in bloques_conf if bl]
-    aviso_privacidad_final = limpio.get("aviso_privacidad")
-
-    sesion.actualizar_contenido_borrador(titulo=titulo_conf, bloques_texto=bloques_conf)
-    b.conforme = True
-    b.conforme_en = datetime.now(timezone.utc).isoformat()
-    b.texto_original_conforme = b.texto_alineado_discourse
-    b.conformidad_invalidada = False
-    sesion.estado = EstadoFlujo.CONFORMIDAD_USUARIO
-
-    if sesion.validacion and sesion.validacion.status == "Listo con ajustes sugeridos":
-        mensaje_conforme = (
-            f"{MSG_CONFORMIDAD_REGISTRADA}\n\n"
-            "(observaciones de estilo confirmadas por el redactor)."
-        )
-    else:
-        mensaje_conforme = MSG_CONFORMIDAD_REGISTRADA
-
-    return construir_respuesta(
-        sesion,
-        mensaje_conforme,
-        OPCIONES_CONFORMIDAD,
-        aviso_privacidad=aviso_privacidad_final,
-    )
 
 
 def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
@@ -1528,12 +1464,6 @@ async def handle_revision_borrador(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
-    tenia_conformidad = bool(
-        (b and b.conforme)
-        or (b and getattr(b, "conformidad_invalidada", False))
-        or (sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO)
-        or (b and b.texto_original_conforme is not None and b.texto_alineado_discourse != b.texto_original_conforme)
-    )
     texto_edicion = req.texto
     if texto_edicion is None and opcion == "editar" and req.mensaje and req.mensaje.strip().lower() != "editar":
         texto_edicion = req.mensaje
@@ -1549,16 +1479,16 @@ async def handle_revision_borrador(
     resp_meta = _gestionar_metadatos_heredados(sesion, opcion)
     if resp_meta is not None:
         if hubo_cambios and texto_edicion is not None:
-            _aplicar_mutaciones_borrador(sesion, req, texto_edicion, tenia_conformidad)
+            _aplicar_mutaciones_borrador(sesion, req, texto_edicion)
         return resp_meta
 
     # 3. Acción explícita o silenciosa de sanitización
     if opcion == "sanitizar":
-        return _ejecutar_sanitizacion_borrador(sesion, req, tenia_conformidad)
+        return _ejecutar_sanitizacion_borrador(sesion, req)
 
     # 4. Mutaciones y edición de campos del borrador
     if hubo_cambios:
-        return _aplicar_mutaciones_borrador(sesion, req, texto_edicion, tenia_conformidad)
+        return _aplicar_mutaciones_borrador(sesion, req, texto_edicion)
 
     # 5. Opciones estándar del estado de revisión
     if opcion == "editar":
@@ -1575,22 +1505,12 @@ async def handle_revision_borrador(
     if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
         return _continuar_a_metadatos(sesion)
 
-    if opcion in ("conforme", "finalizar") and b is not None and b.revision_intermedia:
+    if opcion == "finalizar" and b is not None and b.revision_intermedia:
         msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
         return construir_respuesta(sesion, msg, ops)
 
-    if opcion == "conforme":
-        return _registrar_conformidad(sesion)
-
     if opcion == "finalizar":
         return _registrar_finalizado(sesion)
-
-    if opcion == "copiar_borrador":
-        return construir_respuesta(
-            sesion,
-            MSG_CONFORMIDAD_REGISTRADA,
-            OPCIONES_CONFORMIDAD,
-        )
 
     if opcion == "rechazar":
         sesion.confirmando_rechazo = True
