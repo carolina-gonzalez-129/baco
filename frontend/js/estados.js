@@ -195,6 +195,11 @@ BACO.store = (function () {
 
     /* Aplica la respuesta de un turno del backend */
     aplicarTurno(r) {
+      if (r && r.estado === 'FINALIZADO') {
+        const noEsVolver = (item) => (typeof item === 'object' && item !== null ? item.accion : item) !== 'volver';
+        if (Array.isArray(r.opciones)) r.opciones = r.opciones.filter(noEsVolver);
+        if (Array.isArray(r.botones)) r.botones = r.botones.filter(noEsVolver);
+      }
       estado.session_id = r.session_id;
       estado.flujo = r.estado;
       if (r.etapa) {
