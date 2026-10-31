@@ -362,12 +362,12 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             )
         if sesion.validacion and not sesion.validacion.valido:
             return (
-                "⚠️ El borrador tiene observaciones bloqueantes. Corregilas en el panel izquierdo y guardá los cambios para continuar.",
+                "⚠️ El borrador tiene observaciones **bloqueantes**. Corregilas en el panel izquierdo y guardá los cambios para continuar.",
                 list(OPCIONES_REVISION_BLOQUEANTE),
             )
         if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
             return (
-                "✅ El borrador superó las validaciones mínimas. Podés seguir editándolo o tocar **Continuar** "
+                "✅ El borrador cumple las validaciones mínimas. Podés seguir editándolo o tocar **Continuar** "
                 "para completar la categoría y una o mas etiquetas tematicas.",
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )

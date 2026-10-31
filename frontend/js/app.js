@@ -2175,8 +2175,16 @@
       const sAct = store.get();
       const textoVistaPrevia = (sAct.form && typeof sAct.form.texto === 'string') ? sAct.form.texto : '';
       const textoServidor = (sAct.borrador && typeof sAct.borrador.texto_limpio === 'string') ? sAct.borrador.texto_limpio : '';
+      const catForm = sAct.form && sAct.form.categoria_id;
+      const catBorrador = sAct.borrador && sAct.borrador.categoria_id;
+      const cambioCategoria = Boolean(
+        catForm !== null &&
+        catForm !== undefined &&
+        catForm !== '' &&
+        (catBorrador == null || String(catForm) !== String(catBorrador))
+      );
 
-      if (textoVistaPrevia !== textoServidor) {
+      if (textoVistaPrevia !== textoServidor || cambioCategoria) {
         const payloadGuardar = {
           titulo: sAct.form.titulo,
           texto: sAct.form.texto,

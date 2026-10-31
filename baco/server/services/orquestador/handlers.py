@@ -1378,13 +1378,6 @@ def _aplicar_mutaciones_borrador(
             categoria_id_nueva = res_cat.categoria_id
             categoria_nombre_nuevo = res_cat.categoria_nombre
 
-    hubo_mutaciones = any(
-        v is not None
-        for v in (titulo_nuevo, bloques_nuevos, tags_nuevos, categoria_id_nueva)
-    )
-    if not hubo_mutaciones:
-        return construir_respuesta(sesion, MSG_PEDIR_EDICION, ops_actuales)
-
     sesion.actualizar_contenido_borrador(
         titulo=titulo_nuevo,
         bloques_texto=bloques_nuevos,
