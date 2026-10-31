@@ -45,6 +45,65 @@ class ReglaRetroceso:
     restaurar: Callable[[SesionChat], None]
     construir_respuesta: Callable[[SesionChat], ChatOrquestadorResponse]
 
+def resetear_enriquecimiento_descartado(
+    sesion: SesionChat,
+    agregar_a_descartados: bool = False,
+    texto_extra: Optional[str] = None,
+) -> str:
+    """
+    Restaura el estado de la sesión al descartar o volver tras haber cargado
+    un artículo para enriquecer (caminos de coincidencia de título y de texto).
+    """
+    if agregar_a_descartados:
+        if sesion.borrador is not None and sesion.borrador.articulo_original_id:
+            if sesion.borrador.articulo_original_id not in sesion.articulos_descartados_ids:
+                sesion.articulos_descartados_ids.append(sesion.borrador.articulo_original_id)
+        for c in sesion.coincidencias:
+            if c.id and c.id not in sesion.articulos_descartados_ids:
+                sesion.articulos_descartados_ids.append(c.id)
+        sesion.coincidencias = []
+
+        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
+            texto_propio = (
+                (texto_extra or "").strip()
+                or (sesion.texto_en_edicion or "").strip()
+                or (sesion.texto_editor or "").strip()
+                or (sesion.borrador.texto_editor or "").strip()
+            )
+        else:
+            texto_propio = (
+                (texto_extra or "").strip()
+                or (sesion.texto_limpio or "").strip()
+                or (sesion.texto_en_edicion or "").strip()
+                or (sesion.texto or "").strip()
+            )
+    else:
+        # Comportamiento original de "Volver" en _restaurar_esperando_texto (L58)
+        sesion.articulos_descartados_ids = []
+        texto_propio = ""
+
+    sesion.borrador = None
+    sesion.contenido_adicional = []
+    sesion.limpiar_fallos("ESPERANDO_TEXTO")
+
+    if texto_propio:
+        sesion.texto = texto_propio
+        sesion.texto_limpio = texto_propio
+        sesion.texto_en_edicion = texto_propio
+        sesion.bloques_texto = [texto_propio]
+    else:
+        sesion.texto = ""
+        sesion.texto_limpio = ""
+        sesion.texto_en_edicion = ""
+        sesion.bloques_texto = []
+
+    return texto_propio
+
+
+def _restaurar_esperando_texto_enriquecimiento(sesion: SesionChat) -> None:
+    resetear_enriquecimiento_descartado(sesion, agregar_a_descartados=False)
+
+
 def _restaurar_decision_titulo(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("DECISION_TITULO")
     sesion.coincidencias = []
@@ -217,7 +276,7 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
     # ESPERANDO_TEXTO (enriquecimiento): vuelve a DECISION_TEXTO (semántico) o DECISION_TITULO
     (EstadoFlujo.ESPERANDO_TEXTO, "enriquecimiento"): ReglaRetroceso(
         estado_destino=_destino_esperando_texto_enriquecimiento,
-        restaurar=_restaurar_esperando_texto,
+        restaurar=_restaurar_esperando_texto_enriquecimiento,
         construir_respuesta=_resp_esperando_texto_enriquecimiento,
     ),
 

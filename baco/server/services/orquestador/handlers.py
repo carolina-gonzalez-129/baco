@@ -80,7 +80,10 @@ from baco.server.services.orquestador.recursos_service import (
     texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
-from baco.server.services.orquestador.retroceso import retroceder
+from baco.server.services.orquestador.retroceso import (
+    resetear_enriquecimiento_descartado,
+    retroceder,
+)
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     actualizar_metadatos_sesion,
@@ -497,38 +500,7 @@ async def handle_esperando_texto(
         return retroceder(sesion)
 
     if opcion in ("descartar", "continuar"):
-        if sesion.borrador is not None:
-            if sesion.borrador.articulo_original_id and sesion.borrador.articulo_original_id not in sesion.articulos_descartados_ids:
-                sesion.articulos_descartados_ids.append(sesion.borrador.articulo_original_id)
-        for c in sesion.coincidencias:
-            if c.id and c.id not in sesion.articulos_descartados_ids:
-                sesion.articulos_descartados_ids.append(c.id)
-
-        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
-            texto_propio = (
-                (req.texto or "").strip()
-                or (sesion.texto_en_edicion or "").strip()
-                or (sesion.texto_editor or "").strip()
-                or (sesion.borrador.texto_editor or "").strip()
-            )
-        else:
-            texto_propio = (
-                (req.texto or "").strip()
-                or (sesion.texto_limpio or "").strip()
-                or (sesion.texto_en_edicion or "").strip()
-                or (sesion.texto or "").strip()
-            )
-
-        sesion.borrador = None
-        sesion.contenido_adicional = []
-        sesion.coincidencias = []
-        sesion.limpiar_fallos("ESPERANDO_TEXTO")
-
-        if texto_propio:
-            sesion.texto = texto_propio
-            sesion.texto_limpio = texto_propio
-            sesion.texto_en_edicion = texto_propio
-            sesion.bloques_texto = [texto_propio]
+        resetear_enriquecimiento_descartado(sesion, agregar_a_descartados=True, texto_extra=req.texto)
 
         texto_directo = (req.texto or "").strip()
         if not texto_directo:

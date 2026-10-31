@@ -230,14 +230,7 @@ async def test_volver_en_esperando_texto_linea_486_modo_enriquecimiento_sin_sema
     assert sesion.metadatos_heredados_revisados is False
 
     # Campos del borrador
-    assert sesion.borrador.modo == "enriquecimiento"
-    assert sesion.borrador.titulo == TITULO_VALIDO
-    assert sesion.borrador.texto_alineado_discourse == TEXTO_VALIDO
-    assert sesion.borrador.tags == ["instructivo", "ventas"]
-    assert sesion.borrador.categoria_id == 5
-    assert sesion.borrador.tipo_plantilla == "instructivo"
-    assert sesion.borrador.metadatos_anteriores == {"categoria_id": 5, "tags": ["instructivo", "ventas"]}
-    assert sesion.borrador.metadatos_heredados_revisados is False
+    assert sesion.borrador is None
 
 
 @pytest.mark.anyio
@@ -297,14 +290,7 @@ async def test_volver_en_esperando_texto_linea_486_modo_enriquecimiento_con_sema
     assert sesion.metadatos_heredados_revisados is False
 
     # Verificación exhaustiva de campos del borrador
-    assert sesion.borrador.modo == "enriquecimiento"
-    assert sesion.borrador.titulo == TITULO_VALIDO
-    assert sesion.borrador.texto_alineado_discourse == TEXTO_VALIDO
-    assert sesion.borrador.tags == ["soluciones"]
-    assert sesion.borrador.categoria_id == 3
-    assert sesion.borrador.tipo_plantilla == "soluciones"
-    assert sesion.borrador.metadatos_anteriores is None
-    assert sesion.borrador.metadatos_heredados_revisados is False
+    assert sesion.borrador is None
 
 
 # ==============================================================================
