@@ -79,6 +79,7 @@ class EstadoFlujo(str, Enum):
     # pero el flujo operativo gestiona la subsanación bloqueante dentro de REVISION_BORRADOR.
     SUBSANANDO_BORRADOR = "SUBSANANDO_BORRADOR"
     CONFORMIDAD_USUARIO = "CONFORMIDAD_USUARIO"
+    FINALIZADO = "FINALIZADO"
     RECHAZADO = "RECHAZADO"
 
 
@@ -165,6 +166,7 @@ class BorradorSesion(BaseModel):
     conforme: bool = Field(default=False, description="Indica si el usuario prestó conformidad con el borrador.")
     conforme_en: Optional[str] = Field(default=None, description="Timestamp ISO 8601 del momento en que se registró la conformidad.")
     conformidad_invalidada: bool = Field(default=False, description="Indica si una conformidad previa fue invalidada por una modificación posterior.")
+    finalizado: bool = Field(default=False, description="Indica si el usuario finalizó el borrador.")
     tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = None
     categoria_id: Optional[int] = None
     categoria_nombre: Optional[str] = Field(

@@ -60,6 +60,7 @@ MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
     EstadoFlujo.REVISION_BORRADOR: (4, "Revisión"),
     EstadoFlujo.SUBSANANDO_BORRADOR: (4, "Revisión"),
     EstadoFlujo.CONFORMIDAD_USUARIO: (5, "Conformidad"),
+    EstadoFlujo.FINALIZADO: (5, "Conformidad"),
     EstadoFlujo.RECHAZADO: (5, "Conformidad"),
 }
 

@@ -43,6 +43,8 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
     OPCIONES_CONFORMIDAD,
+    OPCIONES_FINALIZADO,
+    MSG_BORRADOR_FINALIZADO,
     OPCIONES_REVISION_BLOQUEANTE,
     OPCIONES_REVISION_VALIDO,
     PREFIJO_BORRADOR_ACTUALIZADO,
@@ -1455,6 +1457,46 @@ def _registrar_conformidad(sesion: SesionChat) -> ChatOrquestadorResponse:
     )
 
 
+def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
+    """Registra la finalización del borrador aplicando sanitización silenciosa final si corresponde."""
+    b = sesion.borrador
+    if b is None:
+        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
+
+    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        return avanzar_a_metadatos_o_revision(sesion, "Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
+
+    b.metadatos_heredados_revisados = True
+    sesion.metadatos_heredados_revisados = True
+
+    if not sesion.validacion:
+        validar_borrador(sesion)
+    if not sesion.validacion or not sesion.validacion.valido:
+        msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
+        return construir_respuesta(sesion, msg, ops)
+
+    limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
+    titulo_conf = limpio["titulo_sanitizado"]
+    bloques_conf = [
+        sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
+        for bl in b.bloques_texto
+        if bl.strip()
+    ]
+    bloques_conf = [bl for bl in bloques_conf if bl]
+    aviso_privacidad_final = limpio.get("aviso_privacidad")
+
+    sesion.actualizar_contenido_borrador(titulo=titulo_conf, bloques_texto=bloques_conf)
+    b.finalizado = True
+    sesion.estado = EstadoFlujo.FINALIZADO
+
+    return construir_respuesta(
+        sesion,
+        MSG_BORRADOR_FINALIZADO,
+        OPCIONES_FINALIZADO,
+        aviso_privacidad=aviso_privacidad_final,
+    )
+
+
 def _continuar_a_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
     """Cierra la revisión intermedia: pide categoría y tags si faltan o pasa a la revisión final."""
     b = sesion.borrador
@@ -1533,12 +1575,15 @@ async def handle_revision_borrador(
     if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
         return _continuar_a_metadatos(sesion)
 
-    if opcion == "conforme" and b is not None and b.revision_intermedia:
+    if opcion in ("conforme", "finalizar") and b is not None and b.revision_intermedia:
         msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
         return construir_respuesta(sesion, msg, ops)
 
     if opcion == "conforme":
         return _registrar_conformidad(sesion)
+
+    if opcion == "finalizar":
+        return _registrar_finalizado(sesion)
 
     if opcion == "copiar_borrador":
         return construir_respuesta(

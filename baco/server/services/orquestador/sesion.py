@@ -328,20 +328,27 @@ class GestorSesiones:
 
         if permitir_revision:
             if (
-                sesion.estado not in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.REVISION_BORRADOR)
+                sesion.estado not in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.FINALIZADO, EstadoFlujo.REVISION_BORRADOR)
                 or sesion.borrador is None
                 or (sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO and not sesion.borrador.conforme)
+                or (sesion.estado == EstadoFlujo.FINALIZADO and not sesion.borrador.finalizado)
             ):
                 raise EstadoInvalidoError(
-                    f"El borrador no está en un estado válido (REVISION_BORRADOR o CONFORMIDAD_USUARIO) (estado actual: '{sesion.estado.value}')."
+                    f"El borrador no está en un estado válido (REVISION_BORRADOR, CONFORMIDAD_USUARIO o FINALIZADO) (estado actual: '{sesion.estado.value}')."
                 )
         else:
-            if (
-                sesion.estado != EstadoFlujo.CONFORMIDAD_USUARIO
-                or sesion.borrador is None
-                or not sesion.borrador.conforme
-            ):
-                raise EstadoInvalidoError(f"El borrador no está en estado CONFORMIDAD_USUARIO (estado actual: '{sesion.estado.value}').")
+            es_conforme = (
+                sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO
+                and sesion.borrador is not None
+                and sesion.borrador.conforme
+            )
+            es_finalizado = (
+                sesion.estado == EstadoFlujo.FINALIZADO
+                and sesion.borrador is not None
+                and sesion.borrador.finalizado
+            )
+            if not (es_conforme or es_finalizado):
+                raise EstadoInvalidoError(f"El borrador no está en estado CONFORMIDAD_USUARIO o FINALIZADO (estado actual: '{sesion.estado.value}').")
 
         sesion.updated_at = ahora
         return _sanitizar_y_clonar_borrador(sesion.borrador, sesion)

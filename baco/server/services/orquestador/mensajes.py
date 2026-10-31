@@ -13,12 +13,13 @@ OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
 OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
 OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
-OPCIONES_REVISION_VALIDO = ["conforme", "editar", "rechazar"]
+OPCIONES_REVISION_VALIDO = ["conforme", "finalizar", "editar", "rechazar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 # Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
+OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador", "volver"]
 OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
 
 DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
@@ -47,6 +48,7 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "ayuda": {"accion": "ayuda", "label": "¿Qué hago acá?", "estilo": "btn-ghost"},
     "reiniciar": {"accion": "reiniciar", "label": "Empezar de nuevo", "estilo": "btn-ghost"},
     "ver_articulo_final": {"accion": "ver_articulo_final", "label": "Ver artículo", "estilo": "btn-primary"},
+    "finalizar": {"accion": "finalizar", "label": "Finalizar", "estilo": "btn-primary"},
 }
 
 MSG_OPCIONES_RECURSOS_SKILLS = (
@@ -144,6 +146,10 @@ MSG_CONFORMIDAD_REGISTRADA = (
 )
 MSG_CONFORMIDAD_INVALIDADA = (
     "Modificaste el borrador, así que necesito que vuelvas a confirmar tu conformidad."
+)
+MSG_BORRADOR_FINALIZADO = (
+    "✅ Registramos tu borrador. Pasó las validaciones mínimas. Todavía no está publicado: "
+    "la aprobación y publicación final las hace un moderador."
 )
 
 

@@ -618,7 +618,7 @@ def test_exhaustividad_y_completitud_state_handlers():
     from baco.server.schemas.chat_orquestado import EstadoFlujo
     from baco.server.services.orquestador.handlers import STATE_HANDLERS
 
-    estados_terminales = {EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO}
+    estados_terminales = {EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.FINALIZADO, EstadoFlujo.RECHAZADO}
     estados_activos = set(EstadoFlujo) - estados_terminales
 
     assert set(STATE_HANDLERS.keys()) == estados_activos, (

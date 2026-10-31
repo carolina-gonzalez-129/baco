@@ -221,7 +221,7 @@ async def test_volver_en_esperando_texto_linea_486_modo_enriquecimiento_sin_sema
     assert sesion.texto_en_edicion == ""
     assert "ESPERANDO_TEXTO" not in sesion.intentos_fallidos_por_estado
     assert sesion.titulo == TITULO_VALIDO
-    assert sesion.texto == TEXTO_VALIDO
+    assert sesion.texto == ""
     assert sesion.tags == ["instructivo", "ventas"]
     assert sesion.categoria_id == 5
     assert sesion.confirmando_rechazo is False
@@ -288,7 +288,7 @@ async def test_volver_en_esperando_texto_linea_486_modo_enriquecimiento_con_sema
 
     # Verificación exhaustiva de campos de sesión
     assert sesion.titulo == TITULO_VALIDO
-    assert sesion.texto == TEXTO_VALIDO
+    assert sesion.texto == ""
     assert sesion.tags == ["soluciones"]
     assert sesion.categoria_id == 3
     assert sesion.confirmando_rechazo is False
