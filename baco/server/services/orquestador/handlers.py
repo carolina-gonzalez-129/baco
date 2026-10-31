@@ -1370,13 +1370,29 @@ def _aplicar_mutaciones_borrador(
         plantilla_nueva = extraer_tipo_plantilla(req.tags) or b.tipo_plantilla
         tags_nuevos = combinar_tags(plantilla_nueva, req.tags)
 
+    categoria_id_nueva = None
+    categoria_nombre_nuevo = None
+    if req.categoria_id is not None and req.categoria_id != b.categoria_id:
+        res_cat = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
+        if res_cat.categoria_id is not None:
+            categoria_id_nueva = res_cat.categoria_id
+            categoria_nombre_nuevo = res_cat.categoria_nombre
+
+    hubo_mutaciones = any(
+        v is not None
+        for v in (titulo_nuevo, bloques_nuevos, tags_nuevos, categoria_id_nueva)
+    )
+    if not hubo_mutaciones:
+        return construir_respuesta(sesion, MSG_PEDIR_EDICION, ops_actuales)
+
     sesion.actualizar_contenido_borrador(
         titulo=titulo_nuevo,
         bloques_texto=bloques_nuevos,
         texto_base_limpio=txt_nuevo_limpio if b.modo == "enriquecimiento" else None,
         recursos=recursos_nuevos,
         ultimo_id_recurso=ultimo_id_nuevo,
-        categoria_id=req.categoria_id,
+        categoria_id=categoria_id_nueva,
+        categoria_nombre=categoria_nombre_nuevo,
         tags=tags_nuevos,
         tipo_plantilla=plantilla_nueva,
     )
