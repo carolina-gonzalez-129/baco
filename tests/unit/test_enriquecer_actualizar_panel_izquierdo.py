@@ -89,7 +89,8 @@ def test_enriquecer_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(clien
     texto_modificado = TEXTO_EXISTENTE + "\n\nSe agrega apartado sobre alícuotas especiales 2026."
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_modificado}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "conforme" in r3["opciones"]
+    # Nuevo flujo: en la revisión intermedia se avanza con 'continuar_revision'
+    assert "continuar_revision" in r3["opciones"]
     assert "alícuotas especiales 2026" in r3["borrador"]["texto_limpio"]
 
 

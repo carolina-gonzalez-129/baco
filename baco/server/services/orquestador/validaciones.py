@@ -18,12 +18,15 @@ from baco.server.schemas.validacion import ValidarFormatoResponse
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.validar_articulo import (
     sanitizar_borrador,
+    validar_metadatos,
     validar_texto_y_estructura_post_duplicados,
 )
 from baco.server.services.orquestador.mensajes import (
     MSG_ANTES_DE_CONFORME,
+    MSG_ANTES_DE_CONTINUAR,
     OPCIONES_PLANTILLAS,
     OPCIONES_REVISION_BLOQUEANTE,
+    OPCIONES_REVISION_INTERMEDIA_VALIDO,
     OPCIONES_REVISION_VALIDO,
     msg_error_longitud_maxima,
     msg_error_longitud_minima,
@@ -838,6 +841,7 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "si": "enriquecer", "sí": "enriquecer", "1": "enriquecer", "enriquecer": "enriquecer",
         "actualizar": "actualizar", "actualizo": "actualizar",
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
+        "continuar_revision": "continuar_revision", "continuar revision": "continuar_revision", "continuar revisión": "continuar_revision",
         "confirmar_texto": "confirmar_texto", "confirmar texto": "confirmar_texto",
         "quitar_recursos": "quitar_recursos", "quitar recursos": "quitar_recursos", "quitar": "quitar_recursos",
         "seguir_con_recursos": "seguir_con_recursos", "seguir con recursos": "seguir_con_recursos",
@@ -899,22 +903,12 @@ def construir_respuesta(
         from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 
         largo = len(texto_efectivo_sin_marcadores(txt_limpio_actual or ""))
-        supera_largo = largo > TEXTO_MAX
-        tiene_recursos = bool(sesion.recursos)
-        if supera_largo or tiene_recursos:
+        if largo > TEXTO_MAX:
             skills_hab = False
-            if supera_largo and tiene_recursos:
-                skills_mot = (
-                    f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
-                    f"({largo} caracteres recibidos) y el borrador contiene recursos multimedia."
-                )
-            elif supera_largo:
-                skills_mot = (
-                    f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
-                    f"({largo} caracteres recibidos)."
-                )
-            else:
-                skills_mot = "El borrador contiene recursos multimedia. Las skills de IA solo admiten texto plano sin recursos."
+            skills_mot = (
+                f"El texto supera el límite de {TEXTO_MAX} caracteres para el uso de skills "
+                f"({largo} caracteres recibidos)."
+            )
         else:
             skills_hab = True
             skills_mot = None
@@ -1001,6 +995,20 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         )
 
     res = validar_texto_y_estructura_post_duplicados(articulo)
+    if b.revision_intermedia:
+        # Revisión intermedia: categoría y tags se cargan después de 'continuar_revision',
+        # por lo que los hallazgos de la fase de metadatos todavía no bloquean.
+        hallazgos_metadatos = validar_metadatos(articulo)
+        res["findings"] = [f for f in res.get("findings", []) if f not in hallazgos_metadatos]
+        severidades = {f.get("severity") for f in res["findings"]}
+        if "Bloqueante" in severidades:
+            res["status"] = "Pendiente"
+        elif "Requiere ajuste" in severidades:
+            res["status"] = "Listo con ajustes sugeridos"
+        elif res["findings"]:
+            res["status"] = "Listo con sugerencias"
+        else:
+            res["status"] = "Listo"
     valido = res["status"] != "Pendiente"
     if b.modo == "enriquecimiento" and (
         b.texto_base_limpio or (sesion.coincidencias and sesion.coincidencias[0].texto_original)
@@ -1043,19 +1051,22 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
+    msg_cierre = MSG_ANTES_DE_CONTINUAR if b.revision_intermedia else MSG_ANTES_DE_CONFORME
+    ops_validas = OPCIONES_REVISION_INTERMEDIA_VALIDO if b.revision_intermedia else OPCIONES_REVISION_VALIDO
+
     if ajustes:
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in ajustes)
         return (
             f"{prefijo}El borrador supera los requisitos técnicos mínimos pero presenta {len(ajustes)} observación(es) "
-            f"editoriales que requieren ajuste humano:\n{detalle}\n\n{MSG_ANTES_DE_CONFORME}",
-            OPCIONES_REVISION_VALIDO,
+            f"editoriales que requieren ajuste humano:\n{detalle}\n\n{msg_cierre}",
+            ops_validas,
         )
 
     obs = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in sugerencias)
     detalle_sug = f"\nSugerencias:\n{obs}\n\n" if obs else "\n\n"
     return (
-        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}{MSG_ANTES_DE_CONFORME}",
-        OPCIONES_REVISION_VALIDO,
+        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}{msg_cierre}",
+        ops_validas,
     )
 
 
@@ -1068,6 +1079,8 @@ def avanzar_a_metadatos_o_revision(
 
     # Prioridad 1: Si hay metadatos heredados de una versión anterior y todavía no fueron confirmados/revisados:
     if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        b.revision_intermedia = True
+        b.texto_base_revision_final = None
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
         cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
             DICCIONARIO_OFICIAL_CATEGORIAS.get(b.metadatos_anteriores.get("categoria_id"), f"Categoría {b.metadatos_anteriores.get('categoria_id')}")
@@ -1100,11 +1113,9 @@ def avanzar_a_metadatos_o_revision(
             sesion, msg_pedir_plantilla(prefijo), OPCIONES_PLANTILLAS, aviso_privacidad=aviso_privacidad
         )
 
-    if len(b.tags) < 2 or b.categoria_id is None:
-        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-        return construir_respuesta(
-            sesion, msg_pedir_metadatos(b.tipo_plantilla, prefijo), ["volver"], aviso_privacidad=aviso_privacidad
-        )
-
+    # Con plantilla elegida se pasa a la revisión intermedia (edición y skills). La categoría y los
+    # tags se piden al tocar 'continuar_revision' (ver handlers._continuar_a_metadatos).
+    b.revision_intermedia = True
+    b.texto_base_revision_final = None
     msg, ops = validar_borrador(sesion, prefijo)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)

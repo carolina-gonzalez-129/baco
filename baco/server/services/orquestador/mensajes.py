@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 
@@ -15,9 +15,39 @@ OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
 OPCIONES_REVISION_VALIDO = ["conforme", "editar", "rechazar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
+# Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
+OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_CONFORMIDAD = ["copiar_borrador", "reiniciar"]
 OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
+
+DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
+    "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
+    "confirmar_texto": {"accion": "confirmar_texto", "label": "Confirmar texto", "estilo": "btn-primary"},
+    "quitar_recursos": {"accion": "quitar_recursos", "label": "Quitar recursos (usar skills)", "estilo": "btn-dark"},
+    "seguir_con_recursos": {"accion": "seguir_con_recursos", "label": "Seguir con recursos (sin skills)", "estilo": "btn-ghost"},
+    "enriquecer": {"accion": "enriquecer", "label": "Enriquecer el existente", "estilo": "btn-dark"},
+    "actualizar": {"accion": "actualizar", "label": "Actualizar el existente", "estilo": "btn-dark"},
+    "descartar": {"accion": "descartar", "label": "Es un tema distinto", "estilo": "btn-ghost"},
+    "continuar": {"accion": "continuar", "label": "Continuar con mi texto", "estilo": "btn-ghost"},
+    "instructivo": {"accion": "instructivo", "label": "Instructivo", "estilo": "btn-dark"},
+    "soluciones": {"accion": "soluciones", "label": "Soluciones", "estilo": "btn-dark"},
+    "conforme": {"accion": "conforme", "label": "Estoy conforme", "estilo": "btn-primary"},
+    "continuar_revision": {"accion": "continuar_revision", "label": "Continuar", "estilo": "btn-primary"},
+    "aprobar": {"accion": "aprobar", "label": "Estoy conforme", "estilo": "btn-primary"},
+    "editar": {"accion": "editar", "label": "Seguir editando", "estilo": "btn-ghost"},
+    "seguir_editando": {"accion": "seguir_editando", "label": "Seguir editando", "estilo": "btn-ghost"},
+    "copiar_borrador": {"accion": "copiar_borrador", "label": "Copiar borrador", "estilo": "btn-primary"},
+    "sanitizar": {"accion": "sanitizar", "label": "Sanitizar", "estilo": "btn-ghost"},
+    "rechazar": {"accion": "rechazar", "label": "Descartar borrador", "estilo": "btn-ghost"},
+    "confirmar_rechazo": {"accion": "confirmar_rechazo", "label": "Sí, descartar", "estilo": "btn-peligro"},
+    "aceptar": {"accion": "aceptar", "label": "Aceptar", "estilo": "btn-primary"},
+    "aceptar_metadatos": {"accion": "aceptar_metadatos", "label": "Aceptar metadatos heredados", "estilo": "btn-primary"},
+    "rechazar_metadatos": {"accion": "rechazar_metadatos", "label": "Rechazar metadatos heredados", "estilo": "btn-secondary"},
+    "ayuda": {"accion": "ayuda", "label": "¿Qué hago acá?", "estilo": "btn-ghost"},
+    "reiniciar": {"accion": "reiniciar", "label": "Empezar de nuevo", "estilo": "btn-ghost"},
+    "ver_articulo_final": {"accion": "ver_articulo_final", "label": "Ver artículo", "estilo": "btn-primary"},
+}
 
 MSG_OPCIONES_RECURSOS_SKILLS = (
     " El texto ingresado contiene recursos multimedia (imágenes o enlaces a archivos). "
@@ -100,6 +130,14 @@ PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos oblig
 
 MSG_ANTES_DE_CONFORME = (
     "Revisá el borrador. Si estás conforme con el contenido, tocá **Estoy conforme**."
+)
+MSG_ANTES_DE_CONTINUAR = (
+    "Revisá el borrador: podés editarlo y aplicar las skills. Cuando termines, tocá **Continuar** "
+    "para completar la categoría y las etiquetas."
+)
+MSG_USAR_CONTINUAR = (
+    "Todavía no se puede registrar la conformidad: primero tocá **Continuar** para completar "
+    "la categoría y las etiquetas. "
 )
 MSG_CONFORMIDAD_REGISTRADA = (
     "✅ Genial! Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedo listo. "
@@ -334,6 +372,12 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             return (
                 "⚠️ El borrador tiene observaciones bloqueantes. Corregilas en el panel izquierdo y guardá los cambios para continuar.",
                 list(OPCIONES_REVISION_BLOQUEANTE),
+            )
+        if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
+            return (
+                "✅ El borrador superó las validaciones mínimas. Podés editarlo y aplicar las skills; "
+                "cuando termines, tocá **Continuar** para completar la categoría y las etiquetas.",
+                list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (
             "✅ El borrador superó las validaciones mínimas. Si estás conforme con el contenido, tocá **Estoy conforme**.",

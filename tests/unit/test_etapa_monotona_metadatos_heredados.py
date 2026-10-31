@@ -90,6 +90,12 @@ def test_etapa_no_retrocede_al_aceptar_metadatos_sin_plantilla(client, mock_busc
     assert r5["etapa"]["actual"] == 4
     assert r5["etapa"]["nombre"] == "Revisión"
 
+    # Nuevo flujo: 'continuar_revision' cierra la revisión intermedia; con metadatos completos
+    # pasa directo a la revisión final (sigue en Etapa 4)
+    r5b = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
+    assert r5b["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r5b["etapa"]["actual"] == 4
+
     # Da conformidad -> Etapa 5 (Conformidad)
     r6 = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
     assert r6["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO

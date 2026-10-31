@@ -101,13 +101,6 @@ input,textarea,select{font-family:inherit}
 .pill.ok     {background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
 .guardado{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
 
-.meter{margin-left:auto;display:flex;align-items:center;gap:9px;flex:none}
-.meter .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
-.meter .bar{width:92px;height:6px;border-radius:6px;background:var(--surface-3);overflow:hidden}
-.meter .fill{height:100%;background:var(--coral);border-radius:6px;transition:width .35s cubic-bezier(.4,0,.2,1)}
-.meter .fill.full{background:var(--ok)}
-.meter .pct{font-family:var(--mono);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
-
 .toolbar{display:flex;align-items:center;gap:8px;padding:4px 16px;background:var(--surface-2);border-bottom:1px solid var(--rule);flex:none}
 .toolbar .grow{flex:1}
 .switch{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);cursor:pointer}
@@ -397,16 +390,6 @@ input,textarea,select{font-family:inherit}
 .sesion{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.45)}
 .ayuda{font-size:11.5px;color:var(--ink-3);line-height:1.4}
 .estadoline,#btnEjemplo{display:none !important}
-.meter .pct{min-width:72px}
-
-/* pasos del rail */
-.pasos{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
-.paso{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;font-size:12.5px;color:rgba(255,255,255,.5)}
-.paso .pn{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;font-family:var(--mono);font-size:10px;font-weight:600;flex:none}
-.paso.on{background:var(--navy-600);color:#fff}
-.paso.on .pn{background:var(--coral)}
-.paso.hecho{color:rgba(255,255,255,.75)}
-.paso.hecho .pn{background:var(--ok);color:#fff}
 
 /* campo activo vs inactivo */
 .field{transition:opacity .18s}
@@ -450,11 +433,6 @@ input,textarea,select{font-family:inherit}
       así que el botón principal seguía visible en los estados
       donde no hay acción. */
 .btn[hidden]{display:none !important}
-
-/* 2. Los pasos completados no se leían: el verde era muy oscuro
-      sobre el navy del rail. */
-.paso.hecho{color:rgba(255,255,255,.78)}
-.paso.hecho .pn{background:#4ADE80;color:var(--navy-900);font-weight:700}
 
 /* 3. Los campos bloqueados quedaban tan lavados que el contenido
       parecía un placeholder. Ahora se atenúa sobre todo la
@@ -1261,16 +1239,14 @@ input,textarea,select{font-family:inherit}
 }
 
 #btnVerArticuloFinal,
-#btnVerArticuloModal,
-#btnContinuarPostSkill {
+#btnVerArticuloModal {
   background: var(--coral) !important;
   color: #fff !important;
   border-color: var(--coral) !important;
 }
 
 #btnVerArticuloFinal:hover,
-#btnVerArticuloModal:hover,
-#btnContinuarPostSkill:hover {
+#btnVerArticuloModal:hover {
   background: var(--coral-600) !important;
 }
 

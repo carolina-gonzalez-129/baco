@@ -243,6 +243,7 @@ def test_endpoints_skills_devuelven_200_cuando_flag_es_true(client):
         texto_original_conforme="Texto completamente válido sin recursos y dentro del límite de caracteres para skills.",
         recursos={},
         tipo_plantilla="instructivo",
+        categoria_id=20,  # la skill 'validador' exige categoría y >= 2 tags
         tags=["instructivo", "ventas"],
         conforme=True,
     )

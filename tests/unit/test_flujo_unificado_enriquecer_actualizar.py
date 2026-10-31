@@ -80,8 +80,9 @@ def test_decision_titulo_enriquecer_trae_imagenes_y_valida_bloqueante(client, mo
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r2["borrador"]["texto_alineado_discourse"]}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
-    # Al tener tags >= 2 y plantilla 'instructivo', llega a REVISION_BORRADOR y se puede dar conformidad
-    assert "conforme" in r3["opciones"]
+    # Al tener tags >= 2 y plantilla 'instructivo', llega a REVISION_BORRADOR (revisión intermedia)
+    # y se puede continuar hacia la revisión final
+    assert "continuar_revision" in r3["opciones"]
 
 
 def test_decision_titulo_actualizar_adopta_nuevo_titulo(client, mock_buscador):
@@ -134,7 +135,8 @@ def test_decision_texto_enriquecer_trae_imagenes_y_termina_duplicados(client, mo
 
     r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
     assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "conforme" in r3_conf["opciones"]
+    # Nuevo flujo: en la revisión intermedia se avanza con 'continuar_revision'
+    assert "continuar_revision" in r3_conf["opciones"]
 
 
 def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, mock_buscador):
@@ -223,8 +225,12 @@ def test_articulo_enriquecido_con_menos_de_2_tags_se_detiene_en_metadatos(client
     assert r3_conf["aviso_metadatos_heredados"] is not None
     assert "aceptar" in r3_conf["opciones"]
 
-    # Al aceptar, como tiene 1 tag y requiere mínimo 2 -> se detiene en ESPERANDO_METADATOS
+    # Al aceptar pasa a REVISION_BORRADOR; como tiene 1 tag y requiere mínimo 2,
+    # 'continuar_revision' se detiene en ESPERANDO_METADATOS
     r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
+    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
     assert "volver" in r4["opciones"]
 

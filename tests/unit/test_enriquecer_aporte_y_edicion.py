@@ -141,6 +141,11 @@ def test_edicion_en_revision_con_metadatos_pendientes(client, mock_buscador):
     assert r_acep["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_acep["aviso_metadatos_heredados"] is None
 
+    # Nuevo flujo: 'continuar_revision' cierra la revisión intermedia (metadatos heredados completos -> revisión final)
+    r_cont = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
+    assert r_cont["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert "conforme" in r_cont["opciones"]
+
     # Ahora sí permite conformidad
     r_fin = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
     assert r_fin["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO

@@ -599,43 +599,16 @@ def sanitizar_borrador(
     }
 
 
-def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
+def validar_por_tipo(articulo: ArticuloSchema, titulo_original: str, longitud_texto: int) -> list[dict[str, str]]:
+    """Fase por tipo de plantilla: reglas de texto, estructura, título y etiqueta de tipo.
+
+    Recibe el artículo ya anonimizado (articulo.texto / articulo.titulo sanitizados),
+    el título original previo a la anonimización y la longitud efectiva del texto.
+    """
     findings: list[dict[str, str]] = []
-
-    texto_limpio = (articulo.texto or "").strip()
-    titulo_limpio = (articulo.titulo or "").strip()
-
-    # 1. Autosanitización inmediata de PII y fórmulas redundantes
-    datos_sanitizados = sanitizar_borrador(texto=texto_limpio, titulo=titulo_limpio)
-    texto_sanitizado = datos_sanitizados["texto_sanitizado"]
-    titulo_sanitizado = datos_sanitizados["titulo_sanitizado"]
-
-    from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
-
-    articulo.texto = texto_sanitizado
-    articulo.titulo = titulo_sanitizado
-    longitud_texto = len(texto_efectivo_sin_marcadores(texto_sanitizado))
-
-    # 2. Si se reemplazaron PIIs o secretos, avisar al usuario de forma no bloqueante para preservarle
-    if datos_sanitizados["reemplazos_total"] > 0:
-        aviso = datos_sanitizados.get("aviso_privacidad") or (
-            "Por seguridad, se detectaron y reemplazaron automáticamente datos de identificación "
-            "personal o secretos por marcadores protegidos para preservarte."
-        )
-        findings.append(_finding(
-            severity="Sugerencia",
-            field="texto",
-            description=aviso,
-            action="Revisar que el contenido conserve el sentido técnico tras el reemplazo automático."
-        ))
-    elif datos_sanitizados.get("detalles", {}).get("credenciales_ambiguas", 0) > 0:
-        aviso = datos_sanitizados.get("aviso_privacidad")
-        findings.append(_finding(
-            severity="Sugerencia",
-            field="texto",
-            description=aviso,
-            action="Revisar si los valores sospechosos son reales y reemplazarlos por valores de ejemplo si corresponde."
-        ))
+    titulo_limpio = titulo_original
+    titulo_sanitizado = articulo.titulo
+    texto_sanitizado = articulo.texto
 
     contenido_completo = f"{titulo_sanitizado} {texto_sanitizado}"
 
@@ -699,24 +672,8 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
             action="Completar o retirar los marcadores antes de publicar."
         ))
 
-    if not articulo.categoria_id:
-        findings.append(_finding(
-            severity="Bloqueante",
-            field="categoria_id",
-            description="El artículo debe tener asignada una categoría principal.",
-            action="Seleccionar una categoría del catálogo oficial."
-        ))
-
     tags = articulo.tags or []
     slugs_o_nombres = {getattr(t, "slug", None) or getattr(t, "name", str(t)).lower().strip() for t in tags}
-
-    if len(tags) < TAGS_MIN:
-        findings.append(_finding(
-            severity="Bloqueante",
-            field="tags",
-            description=f"Se requieren al menos {TAGS_MIN} tags o etiquetas (actualmente tiene {len(tags)}).",
-            action=f"Agregar al menos {TAGS_MIN} etiquetas relevantes (ej. 'instructivo', 'facturacion')."
-        ))
 
     if not any(tipo in slugs_o_nombres for tipo in (*TAGS_PLANTILLAS_PERMITIDAS, "instructivos", "solucion")):
         plantillas_fmt = " o ".join(f"'{p}'" for p in TAGS_PLANTILLAS_PERMITIDAS)
@@ -726,6 +683,77 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
             description=f"Falta la etiqueta obligatoria de tipo de plantilla ({plantillas_fmt}).",
             action=f"Incorporar {plantillas_fmt} entre las etiquetas del artículo."
         ))
+
+    return findings
+
+
+def validar_metadatos(articulo: ArticuloSchema) -> list[dict[str, str]]:
+    """Fase por metadatos: reglas que dependen de la categoría y de los tags."""
+    findings: list[dict[str, str]] = []
+
+    if not articulo.categoria_id:
+        findings.append(_finding(
+            severity="Bloqueante",
+            field="categoria_id",
+            description="El artículo debe tener asignada una categoría principal.",
+            action="Seleccionar una categoría del catálogo oficial."
+        ))
+
+    tags = articulo.tags or []
+
+    if len(tags) < TAGS_MIN:
+        findings.append(_finding(
+            severity="Bloqueante",
+            field="tags",
+            description=f"Se requieren al menos {TAGS_MIN} tags o etiquetas (actualmente tiene {len(tags)}).",
+            action=f"Agregar al menos {TAGS_MIN} etiquetas relevantes (ej. 'instructivo', 'facturacion')."
+        ))
+
+    return findings
+
+
+def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict[str, Any]:
+    findings: list[dict[str, str]] = []
+
+    texto_limpio = (articulo.texto or "").strip()
+    titulo_limpio = (articulo.titulo or "").strip()
+
+    # 1. Autosanitización inmediata de PII y fórmulas redundantes
+    datos_sanitizados = sanitizar_borrador(texto=texto_limpio, titulo=titulo_limpio)
+    texto_sanitizado = datos_sanitizados["texto_sanitizado"]
+    titulo_sanitizado = datos_sanitizados["titulo_sanitizado"]
+
+    from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+
+    articulo.texto = texto_sanitizado
+    articulo.titulo = titulo_sanitizado
+    longitud_texto = len(texto_efectivo_sin_marcadores(texto_sanitizado))
+
+    # 2. Si se reemplazaron PIIs o secretos, avisar al usuario de forma no bloqueante para preservarle
+    if datos_sanitizados["reemplazos_total"] > 0:
+        aviso = datos_sanitizados.get("aviso_privacidad") or (
+            "Por seguridad, se detectaron y reemplazaron automáticamente datos de identificación "
+            "personal o secretos por marcadores protegidos para preservarte."
+        )
+        findings.append(_finding(
+            severity="Sugerencia",
+            field="texto",
+            description=aviso,
+            action="Revisar que el contenido conserve el sentido técnico tras el reemplazo automático."
+        ))
+    elif datos_sanitizados.get("detalles", {}).get("credenciales_ambiguas", 0) > 0:
+        aviso = datos_sanitizados.get("aviso_privacidad")
+        findings.append(_finding(
+            severity="Sugerencia",
+            field="texto",
+            description=aviso,
+            action="Revisar si los valores sospechosos son reales y reemplazarlos por valores de ejemplo si corresponde."
+        ))
+
+    findings.extend(validar_por_tipo(articulo, titulo_limpio, longitud_texto))
+    findings.extend(validar_metadatos(articulo))
+
+    tags = articulo.tags or []
 
     # si hay bloqueantes queda pendiente, sino listo
     tiene_bloqueantes = any(f["severity"] == "Bloqueante" for f in findings)

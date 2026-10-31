@@ -35,7 +35,6 @@ BACO.ESTADOS = {
                         ayuda: 'El borrador fue rechazado. Reiniciá para empezar otra carga.' }
 };
 
-/* Qué campos del formulario están activos en cada estado */
 BACO.CAMPOS_ACTIVOS = {
   ESPERANDO_TITULO:    { titulo: true,  texto: false, tags: false, categoria: false },
   DECISION_TITULO:     { titulo: false, texto: false, tags: false, categoria: false },
@@ -79,6 +78,7 @@ BACO.OPCIONES = {
   instructivo:       { label: 'Instructivo',             estilo: 'btn-dark' },
   soluciones:        { label: 'Soluciones',              estilo: 'btn-dark' },
   conforme:          { label: 'Estoy conforme',          estilo: 'btn-primary' },
+  continuar_revision: { label: 'Continuar',               estilo: 'btn-primary' },
   aprobar:           { label: 'Estoy conforme',          estilo: 'btn-primary' },
   editar:            { label: 'Seguir editando',         estilo: 'btn-ghost' },
   seguir_editando:   { label: 'Seguir editando',         estilo: 'btn-ghost' },
@@ -86,7 +86,7 @@ BACO.OPCIONES = {
   sanitizar:         { label: 'Sanitizar',               estilo: 'btn-ghost' },
   rechazar:          { label: 'Descartar borrador',      estilo: 'btn-ghost' },
   confirmar_rechazo: { label: 'Sí, descartar',           estilo: 'btn-peligro' },
-  volver:            { label: '← Volver',                estilo: 'btn-ghost' },
+  volver:            { label: 'Volver',                  estilo: 'btn-ghost' },
   ayuda:             { label: '¿Qué hago acá?',          estilo: 'btn-ghost' },
   reiniciar:         { label: 'Empezar de nuevo',        estilo: 'btn-ghost' }
 };
@@ -110,6 +110,7 @@ BACO.store = (function () {
       etapas: ETAPAS_DEFAULT.slice()
     },
     opciones: [],
+    botones: [],
     tags_acumulados: [],
     categorias_disponibles: [],
     tags_disponibles: [],
@@ -117,8 +118,9 @@ BACO.store = (function () {
     borrador: null,
     validacion: null,
     multimedia_habilitada: false,
+    skill_plantilla_aplicada: false,
 
-    /* lo que el usuario está escribiendo, antes de enviarlo */
+
     form: { titulo: '', texto: '', texto_editor: '', tags: [], categoria_id: null },
 
     enviando: false,
@@ -220,6 +222,7 @@ BACO.store = (function () {
         };
       }
       estado.opciones = r.opciones || [];
+      estado.botones = Array.isArray(r.botones) ? r.botones.slice() : [];
       estado.tags_acumulados = Array.isArray(r.tags_acumulados)
         ? r.tags_acumulados.slice()
         : ((r.borrador && r.borrador.tags) ? r.borrador.tags.slice() : []);
@@ -337,13 +340,14 @@ BACO.store = (function () {
 
     reiniciarLocal() {
       estado.session_id = null; estado.flujo = 'ESPERANDO_TITULO';
+      estado.skill_plantilla_aplicada = false;
       estado.etapa = {
         actual: 1,
         total: 5,
         nombre: ETAPAS_DEFAULT[0],
         etapas: ETAPAS_DEFAULT.slice()
       };
-      estado.opciones = []; estado.tags_acumulados = [];
+      estado.opciones = []; estado.botones = []; estado.tags_acumulados = [];
       estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;
       actualizarDisponibilidadRecursos({ multimedia_habilitada: false });
@@ -355,9 +359,4 @@ BACO.store = (function () {
 
 BACO.actualizarDisponibilidadRecursos = BACO.store.actualizarDisponibilidadRecursos;
 
-/* Porcentaje de avance del flujo, dictado por etapa del servidor */
-BACO.avance = function (s) {
-  const actual = (s.etapa && s.etapa.actual) || (BACO.ESTADOS[s.flujo] || {}).paso || 1;
-  const total = (s.etapa && s.etapa.total) || 5;
-  return Math.min(100, Math.round((actual / total) * 100));
-};
+
