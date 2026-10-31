@@ -1,3 +1,8 @@
+
+# Plantilla de salida: Instructivo
+
+La salida debe contener únicamente el cuerpo publicable del artículo. Título, categoría, tipo de plantilla y descripción ya fueron verificados como metadatos internos; no repetirlos ni convertirlos en un encabezado.
+
 Esta aplicación tiene como objetivo [incluir breve descripción de la funcionalidad o procedimiento a ver en este documento].  
 5 min [Calcular tiempo estimado de lectura]
 

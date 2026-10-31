@@ -463,7 +463,7 @@ async def handle_decision_titulo(
                 recursos=sesion.recursos,
                 ultimo_id_recurso=max_id,
                 contenido_adicional=[],
-                tipo_plantilla=extraer_tipo_plantilla(sesion.tags),
+                tipo_plantilla=(sesion.borrador.tipo_plantilla if sesion.borrador else None) or extraer_tipo_plantilla(sesion.tags),
                 categoria_id=req.categoria_id or sesion.categoria_id,
                 tags=list(req.tags or sesion.tags),
             )
@@ -867,7 +867,7 @@ async def handle_esperando_texto(
         recursos=sesion.recursos,
         ultimo_id_recurso=max_id_nuevo,
         contenido_adicional=[],
-        tipo_plantilla=extraer_tipo_plantilla(sesion.tags),
+        tipo_plantilla=(sesion.borrador.tipo_plantilla if sesion.borrador else None) or extraer_tipo_plantilla(sesion.tags),
         categoria_id=sesion.categoria_id,
         tags=list(sesion.tags),
     )
@@ -1036,7 +1036,7 @@ async def handle_decision_texto(
             recursos=sesion.recursos,
             ultimo_id_recurso=max_id,
             contenido_adicional=[],
-            tipo_plantilla=extraer_tipo_plantilla(sesion.tags),
+            tipo_plantilla=(sesion.borrador.tipo_plantilla if sesion.borrador else None) or extraer_tipo_plantilla(sesion.tags),
             categoria_id=sesion.categoria_id,
             tags=list(sesion.tags),
         )

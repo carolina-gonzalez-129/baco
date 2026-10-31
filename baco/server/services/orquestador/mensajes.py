@@ -56,22 +56,22 @@ MSG_OPCIONES_RECURSOS_SKILLS = (
 )
 
 MSG_VOLVER_TITULO = (
-    "Volvemos al paso anterior. Ingresá un nuevo título para tu artículo:"
+    "Volvemos al paso anterior. Ingresá un nuevo **título** para tu artículo:"
 )
 MSG_VOLVER_TEXTO = (
-    "Volvemos al paso anterior. Ingresá el texto corregido para tu artículo:"
+    "Volvemos al paso anterior. Ingresá el **texto** corregido para tu artículo:"
 )
 MSG_VOLVER_TEXTO_ACTUALIZADO = (
-    "Volvemos al paso anterior. Ingresá el texto actualizado para tu artículo:"
+    "Volvemos al paso anterior. Ingresá el **texto actualizado** para tu artículo:"
 )
 MSG_VOLVER_PLANTILLA = (
-    "Volvemos a la selección de formato. ¿Qué plantilla preferís para este artículo?"
+    "Volvemos a la selección de formato. ¿Qué **tipo** de plantilla preferís para este artículo?"
 )
 MSG_VOLVER_METADATOS = (
     "Volvemos al paso anterior. Podés redefinir las etiquetas o tags para clasificar tu artículo:"
 )
 MSG_VOLVER_ENRIQUECER_O_DESCARTAR = (
-    "Volvemos al paso anterior. ¿Deseás enriquecer el artículo encontrado o descartarlo?"
+    "Volvemos al paso anterior. ¿Deseás **enriquecer** el artículo encontrado o **descartarlo**?"
 )
 MSG_OPERACION_CANCELADA = (
     "Operación cancelada. Mantenemos tu borrador intacto:\n\n"
@@ -110,12 +110,12 @@ MSG_ELEGIR_PLANTILLA = (
     "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta."
 )
 MSG_PEDIR_EDICION = (
-    "Escribí el campo que querés ajustar junto con su nuevo valor "
-    "(por ejemplo: titulo: Mi nuevo título o el texto actualizado) para actualizar el borrador."
+    "Podes ingresar los cambios que gustes! "
+    "."
 )
 MSG_RECHAZADO = (
     "Cancelamos el borrador y no se guardó ningún cambio. "
-    "Si querés comenzar otra redacción desde el principio, tocá 'reiniciar'."
+    "Si querés comenzar otra redacción desde el principio, tocá **reiniciar**."
 )
 MSG_SESION_EXPIRADA = (
     "Disculpá la interrupción: la sesión se cerró por inactividad para proteger tus datos. "
@@ -127,7 +127,7 @@ PREFIJO_CONTINUAR_PROPIO = " "
 PREFIJO_METADATOS_REGISTRADOS = " "
 PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
-PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
+PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque **hay puntos obligatorios pendientes**:\n"
 
 MSG_ANTES_DE_FINALIZAR = (
     "Revisá el borrador. Cuando termines, tocá **Finalizar**."
@@ -368,7 +368,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
         if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
             return (
                 "✅ El borrador superó las validaciones mínimas. Podés seguir editándolo o tocar **Continuar** "
-                "para completar la categoría y las etiquetas.",
+                "para completar la categoría y una o mas etiquetas tematicas.",
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (
