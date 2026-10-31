@@ -32,9 +32,9 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "continuar": {"accion": "continuar", "label": "Continuar con mi texto", "estilo": "btn-ghost"},
     "instructivo": {"accion": "instructivo", "label": "Instructivo", "estilo": "btn-dark"},
     "soluciones": {"accion": "soluciones", "label": "Soluciones", "estilo": "btn-dark"},
-    "conforme": {"accion": "conforme", "label": "Estoy conforme", "estilo": "btn-primary"},
+    "conforme": {"accion": "conforme", "label": "Continuar", "estilo": "btn-primary"},
     "continuar_revision": {"accion": "continuar_revision", "label": "Continuar", "estilo": "btn-primary"},
-    "aprobar": {"accion": "aprobar", "label": "Estoy conforme", "estilo": "btn-primary"},
+    "aprobar": {"accion": "aprobar", "label": "Continuar", "estilo": "btn-primary"},
     "editar": {"accion": "editar", "label": "Seguir editando", "estilo": "btn-ghost"},
     "seguir_editando": {"accion": "seguir_editando", "label": "Seguir editando", "estilo": "btn-ghost"},
     "copiar_borrador": {"accion": "copiar_borrador", "label": "Copiar borrador", "estilo": "btn-primary"},
@@ -129,7 +129,7 @@ PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n"
 
 MSG_ANTES_DE_CONFORME = (
-    "Revisá el borrador. Si estás conforme con el contenido, tocá **Estoy conforme**."
+    "Revisá el borrador. Si estás conforme con el contenido, tocá **Continuar**."
 )
 MSG_ANTES_DE_CONTINUAR = (
     "Revisá el borrador: podés editarlo y aplicar las skills. Cuando termines, tocá **Continuar** "
@@ -380,7 +380,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (
-            "✅ El borrador superó las validaciones mínimas. Si estás conforme con el contenido, tocá **Estoy conforme**.",
+            "✅ El borrador superó las validaciones mínimas. Si estás conforme con el contenido, tocá **Continuar**.",
             list(OPCIONES_REVISION_VALIDO),
         )
 
