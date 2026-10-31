@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import secrets
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -27,6 +27,10 @@ from baco.server.services.orquestador.recursos_service import (
     limpiar_archivos_temporales_sesion,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
+
+
+def clave_busqueda(tipo: str, texto: str) -> tuple[str, str]:
+    return (tipo, " ".join((texto or "").split()).casefold())
 
 
 @dataclass
@@ -60,6 +64,7 @@ class SesionChat:
     confirmando_rechazo: bool = False
     articulos_descartados_ids: List[int] = field(default_factory=list)
     descarto_serie: bool = False
+    busquedas_descartadas: Set[Tuple[str, str]] = field(default_factory=set)
 
     def registrar_fallo(self, estado_clave: Optional[str] = None) -> int:
         clave = estado_clave or self.estado.value

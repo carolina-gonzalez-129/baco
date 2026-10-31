@@ -81,7 +81,7 @@ from baco.server.services.orquestador.recursos_service import (
     procesar_recursos_y_marcadores,
     texto_efectivo_sin_marcadores,
 )
-from baco.server.services.orquestador.sesion import SesionChat
+from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
 from baco.server.services.orquestador.retroceso import retroceder
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
@@ -140,7 +140,12 @@ async def handle_esperando_titulo(
     sesion.titulo = titulo
     actualizar_metadatos_sesion(sesion, req)
 
-    res_tit = await run_in_threadpool(buscador.evaluar_titulo, titulo, 1)
+    clave_tit = clave_busqueda("titulo", titulo)
+    omitir_tit = clave_tit in sesion.busquedas_descartadas
+    if omitir_tit:
+        res_tit = None
+    else:
+        res_tit = await run_in_threadpool(buscador.evaluar_titulo, titulo, 1)
     if res_tit and res_tit.get("coincidencias"):
         es_serie = "serie" in (res_tit.get("mensaje") or "").lower()
         coincs = normalizar_coincidencias(
@@ -163,7 +168,7 @@ async def handle_esperando_titulo(
     sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
     return construir_respuesta(
         sesion,
-        MSG_SIN_COINCIDENCIAS_TITULO,
+        f"Omití las coincidencias que ya descartaste. {MSG_SIN_COINCIDENCIAS_TITULO.replace('No encontré nada similar', 'No encontré nada nuevo')}" if omitir_tit else MSG_SIN_COINCIDENCIAS_TITULO,
         ["confirmar_texto", "volver"],
         aviso_privacidad=aviso_priv,
     )
@@ -392,6 +397,8 @@ async def handle_decision_titulo(
 
     if opcion in ("descartar", "continuar"):
         sesion.limpiar_fallos("DECISION_TITULO")
+        if sesion.titulo:
+            sesion.busquedas_descartadas.add(clave_busqueda("titulo", sesion.titulo))
         for c in sesion.coincidencias:
             if c.tipo_coincidencia == "serie" or "serie" in getattr(c, "mensaje", "").lower():
                 sesion.descarto_serie = True
@@ -426,10 +433,14 @@ async def handle_decision_titulo(
                 ultimo_id_recurso=max_id,
             )
             texto_busqueda = texto_efectivo_sin_marcadores(sesion.texto_limpio)
-
-            res_txt = await run_in_threadpool(
-                buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1, sesion.descarto_serie
-            )
+            clave_txt = clave_busqueda("texto", texto_busqueda)
+            omitir_txt = clave_txt in sesion.busquedas_descartadas
+            if omitir_txt:
+                res_txt = None
+            else:
+                res_txt = await run_in_threadpool(
+                    buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1, sesion.descarto_serie
+                )
             if res_txt and res_txt.get("coincidencias"):
                 coincs = normalizar_coincidencias(
                     res_txt["coincidencias"], mensaje=res_txt.get("mensaje", ""), tipo_coincidencia="semantico"
@@ -459,8 +470,13 @@ async def handle_decision_titulo(
                 tags=list(req.tags or sesion.tags),
             )
             sesion.texto = sesion.borrador.texto_alineado_discourse
+            pref = (
+                f"Omití las coincidencias que ya descartaste. {PREFIJO_SIN_DUPLICADOS}"
+                if omitir_txt
+                else PREFIJO_SIN_DUPLICADOS
+            )
             return avanzar_a_metadatos_o_revision(
-                sesion, PREFIJO_SIN_DUPLICADOS, aviso_privacidad=aviso_privacidad
+                sesion, pref, aviso_privacidad=aviso_privacidad
             )
 
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
@@ -801,10 +817,14 @@ async def handle_esperando_texto(
         texto_editor=sanitizar_borrador(texto=req.texto)["texto_sanitizado"].strip() if req.texto is not None else None,
     )
     texto_busqueda = texto_efectivo_sin_marcadores(sesion.texto_limpio)
-
-    res_txt = await run_in_threadpool(
-        buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1, sesion.descarto_serie
-    )
+    clave_txt = clave_busqueda("texto", texto_busqueda)
+    omitir_txt = clave_txt in sesion.busquedas_descartadas
+    if omitir_txt:
+        res_txt = None
+    else:
+        res_txt = await run_in_threadpool(
+            buscador.evaluar_texto, texto_busqueda, True, sesion.titulo, 1, sesion.descarto_serie
+        )
     if res_txt and res_txt.get("coincidencias"):
         coincs = normalizar_coincidencias(
             res_txt["coincidencias"], mensaje=res_txt.get("mensaje", ""), tipo_coincidencia="semantico"
@@ -834,7 +854,8 @@ async def handle_esperando_texto(
         tags=list(sesion.tags),
     )
     sesion.texto = sesion.borrador.texto_alineado_discourse
-    pref_final = f"{prefijo_resultado_recursos}{PREFIJO_SIN_DUPLICADOS}"
+    pref_descarte = "Omití las coincidencias que ya descartaste. " if omitir_txt else ""
+    pref_final = f"{prefijo_resultado_recursos}{pref_descarte}{PREFIJO_SIN_DUPLICADOS}"
     return avanzar_a_metadatos_o_revision(
         sesion, pref_final, aviso_privacidad=aviso_privacidad
     )
@@ -978,6 +999,9 @@ async def handle_decision_texto(
 
     if opcion in ("continuar", "descartar"):
         sesion.limpiar_fallos("DECISION_TEXTO")
+        texto_buscado = texto_efectivo_sin_marcadores(sesion.texto_limpio or sesion.texto or "")
+        if texto_buscado:
+            sesion.busquedas_descartadas.add(clave_busqueda("texto", texto_buscado))
         for c in sesion.coincidencias:
             if c.id and c.id not in sesion.articulos_descartados_ids:
                 sesion.articulos_descartados_ids.append(c.id)
