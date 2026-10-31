@@ -67,6 +67,7 @@ BACO.SEVERIDAD = {
 
 /* Texto de cada botón de `opciones` que devuelve el backend */
 BACO.OPCIONES = {
+  finalizar:         { label: 'Finalizar',               estilo: 'btn-primary' },
   ver_articulo_final: { label: 'Ver artículo', estilo: 'btn-primary' },
   confirmar_texto:   { label: 'Confirmar texto',         estilo: 'btn-primary' },
   quitar_recursos:   { label: 'Quitar recursos (usar skills)',    estilo: 'btn-dark' },

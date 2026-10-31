@@ -229,6 +229,13 @@ def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: Optional[Sesi
     return borrador.model_copy(deep=True)
 
 
+def _invalidar_finalizado(sesion: SesionChat) -> None:
+    if sesion.borrador and sesion.borrador.finalizado:
+        sesion.borrador.finalizado = False
+        if sesion.estado == EstadoFlujo.FINALIZADO:
+            sesion.estado = EstadoFlujo.REVISION_BORRADOR
+
+
 class GestorSesiones:
     def __init__(self, ttl_minutos: int = 340) -> None:
         self.ttl = timedelta(minutes=ttl_minutos)
@@ -373,6 +380,7 @@ class GestorSesiones:
                 sesion.borrador.conforme_en = None
                 sesion.borrador.conformidad_invalidada = True
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
+                _invalidar_finalizado(sesion)
             sesion.borrador.bloques_texto = [texto_strip] if texto_strip else []
             sesion.bloques_texto = list(sesion.borrador.bloques_texto)
             sesion.texto_limpio = sesion.borrador.texto_limpio
@@ -412,6 +420,7 @@ class GestorSesiones:
         sesion.texto = b.texto_alineado_discourse
         if b.conformidad_invalidada and sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
             sesion.estado = EstadoFlujo.REVISION_BORRADOR
+        _invalidar_finalizado(sesion)
         return b.multimedia
 
     def _aplicar_cambio_multimedia(self, sesion: SesionChat, items_ordenados: List[Recurso]) -> List[Recurso]:
@@ -644,6 +653,8 @@ class GestorSesiones:
             if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
+        _invalidar_finalizado(sesion)
+
         # Invariante innegociable: texto_limpio y recursos NO cambian
         return nuevo_item
 
@@ -678,6 +689,8 @@ class GestorSesiones:
             sesion.borrador.conformidad_invalidada = True
             if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
+
+        _invalidar_finalizado(sesion)
 
         return True
 
@@ -716,6 +729,8 @@ class GestorSesiones:
             sesion.borrador.conformidad_invalidada = True
             if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
+
+        _invalidar_finalizado(sesion)
 
         return nuevos_items
 
@@ -759,6 +774,8 @@ class GestorSesiones:
             sesion.borrador.conformidad_invalidada = True
             if sesion.estado == EstadoFlujo.CONFORMIDAD_USUARIO:
                 sesion.estado = EstadoFlujo.REVISION_BORRADOR
+
+        _invalidar_finalizado(sesion)
 
         return item
 

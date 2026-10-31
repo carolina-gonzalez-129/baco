@@ -209,3 +209,52 @@ def test_turno_vacio_en_finalizado_devuelve_msg_borrador_finalizado(client):
     assert r["opciones"] == OPCIONES_FINALIZADO
     assert sesion.borrador.finalizado is True
 
+
+def test_desde_finalizado_agregar_item_lleva_a_revision_borrador_con_finalizado_false():
+    """Desde FINALIZADO, agregar un ítem de contenido adicional lleva a REVISION_BORRADOR con finalizado False."""
+    from baco.server.services.orquestador.sesion import gestor_sesiones
+
+    sid = "test-finalizar-agregar-item"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.FINALIZADO,
+        borrador=BorradorSesion(
+            modo="enriquecimiento",
+            articulo_original_id=101,
+            titulo="Configurar Punto de Venta Electrónico",
+            bloques_texto=[TEXTO_VALIDO],
+            finalizado=True,
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    gestor_sesiones.agregar_contenido_adicional(sid, "Nota complementaria agregada")
+
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
+
+
+def test_desde_finalizado_editar_texto_lleva_a_revision_borrador_con_finalizado_false():
+    """Desde FINALIZADO, editar el texto con actualizar_borrador_texto lleva a REVISION_BORRADOR con finalizado False."""
+    from baco.server.services.orquestador.sesion import gestor_sesiones
+
+    sid = "test-finalizar-editar-texto"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.FINALIZADO,
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Configurar Punto de Venta Electrónico",
+            bloques_texto=[TEXTO_VALIDO],
+            finalizado=True,
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    ok = gestor_sesiones.actualizar_borrador_texto(sid, "Texto nuevo editado que invalida el borrador.")
+
+    assert ok is True
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
+
+

@@ -362,24 +362,8 @@ input,textarea,select{font-family:inherit}
 .send:hover{background:var(--coral-600)}
 
 /* =============================================================
-   Modal y toast
+   Toast
    ============================================================= */
-.overlay{position:fixed;inset:0;background:rgba(11,15,38,.55);display:grid;place-items:center;z-index:50;padding:24px;backdrop-filter:blur(2px)}
-.overlay[hidden]{display:none}
-.modal{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-3);max-width:520px;width:100%;overflow:hidden;animation:pop .22s cubic-bezier(.34,1.3,.64,1)}
-@keyframes pop{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
-.modal .mh{padding:22px 24px 0;text-align:center}
-.modal .mi{width:46px;height:46px;border-radius:50%;background:var(--ok-soft);color:var(--ok);display:grid;place-items:center;margin:0 auto 14px}
-.modal h3{margin:0 0 7px;font-size:18px;font-weight:800;letter-spacing:-.015em}
-.modal .mh p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.55}
-.modal .mb{padding:20px 24px}
-.recap{border:1px solid var(--rule);border-radius:8px;overflow:hidden}
-.recap .r{display:grid;grid-template-columns:104px 1fr;gap:12px;padding:9px 13px;border-bottom:1px solid var(--rule);font-size:12.5px}
-.recap .r:last-child{border-bottom:0}
-.recap .k{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
-.recap .v{font-weight:600;min-width:0;word-break:break-word}
-.modal .mf{padding:0 24px 22px;display:flex;gap:9px}
-.modal .mf .btn{flex:1}
 
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy-900);color:#fff;padding:11px 18px;border-radius:8px;box-shadow:var(--shadow-3);font-size:13px;font-weight:600;z-index:60;opacity:0;transition:.28s cubic-bezier(.34,1.2,.64,1);pointer-events:none}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}

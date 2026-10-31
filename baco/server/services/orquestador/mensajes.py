@@ -137,8 +137,7 @@ MSG_ANTES_DE_CONTINUAR = (
     "Revisamos tu texto y no hay puntos obligatorios pendientes. Podés seguir editándolo o tocar **Continuar** para completar la categoría y las etiquetas."
 )
 MSG_USAR_CONTINUAR = (
-    "Todavía no se puede registrar la conformidad: primero tocá **Continuar** para completar "
-    "la categoría y las etiquetas. "
+    "Todavía faltan la categoría y las etiquetas: tocá **Continuar** para completarlas."
 )
 MSG_CONFORMIDAD_REGISTRADA = (
     "✅ Genial! Registramos tu conformidad. Tu borrador pasó las validaciones mínimas y quedo listo. "

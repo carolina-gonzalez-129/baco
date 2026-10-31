@@ -1056,17 +1056,8 @@
 
       const opcionesTurno = Array.isArray(r.opciones) ? r.opciones.slice() : [];
       const botonesTurno = Array.isArray(r.botones) ? r.botones.slice() : [];
-      if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO' || (r.borrador && r.borrador.conforme)) {
-        if (!opcionesTurno.includes('ver_articulo_final')) {
-          opcionesTurno.unshift('ver_articulo_final');
-        }
-        if (!botonesTurno.some((b) => b.accion === 'ver_articulo_final')) {
-          botonesTurno.unshift({ accion: 'ver_articulo_final', label: 'Ver artículo', estilo: 'btn-primary' });
-        }
-      }
       decir(nl2br(r.mensaje), opcionesTurno, false, botonesTurno);
 
-      if (r.estado === 'CONFORMIDAD_USUARIO' || r.estado === 'APROBADO') mostrarConforme();
       return r;
     } catch (e) {
       esperando.remove();
@@ -2449,23 +2440,6 @@
     invocarAgente('auditarSemantica', 'Auditar con el validador');
   }
 
-  /* ---- borrador en conformidad ---- */
-  async function mostrarConforme() {
-    const s = store.get();
-    try {
-      const b = (api.borradorConforme ? await api.borradorConforme() : await api.borradorAprobado());
-      const tagsFinales = (s.tags_acumulados && s.tags_acumulados.length)
-        ? s.tags_acumulados
-        : (b.tags || []);
-      $('#recap').innerHTML =
-        '<div class="r"><span class="k">Modo</span><span class="v">' + esc(b.modo) + '</span></div>' +
-        (b.articulo_original_id ? '<div class="r"><span class="k">Sobre</span><span class="v">#' + b.articulo_original_id + '</span></div>' : '') +
-        '<div class="r"><span class="k">Título</span><span class="v">' + esc(b.titulo) + '</span></div>' +
-        '<div class="r"><span class="k">Plantilla</span><span class="v">' + esc(b.tipo_plantilla || '—') + '</span></div>' +
-        '<div class="r"><span class="k">Categoría</span><span class="v">' + esc(nombreCategoria(s, b.categoria_id)) + '</span></div>' +
-        '<div class="r"><span class="k">Etiquetas</span><span class="v">' + tagsFinales.map(esc).join(' · ') + '</span></div>';
-      $('#overlay').hidden = false;
-    } catch (e) { mostrarError(e); }
   }
 
   async function copiarBorrador() {
@@ -2640,15 +2614,21 @@
     if (!b) return;
     const s = store.get();
     const teniaConformidad = Boolean(b.conforme);
+    const teniaFinalizado = Boolean(b.finalizado);
     if (teniaConformidad) {
       b.conforme = false;
       b.conforme_en = null;
       b.conformidad_invalidada = true;
     }
+    if (teniaFinalizado) {
+      b.finalizado = false;
+    }
     store.set({ borrador: b });
     renderVistaPreviaEditable();
 
-    if (teniaConformidad && s && s.flujo === 'CONFORMIDAD_USUARIO') {
+    const debeSincronizarTurno = (teniaConformidad && s && s.flujo === 'CONFORMIDAD_USUARIO') ||
+      (teniaFinalizado && s && s.flujo === 'FINALIZADO');
+    if (debeSincronizarTurno) {
       try {
         const res = await api.turno({});
         if (res) {
@@ -3631,9 +3611,7 @@
     if ($('#btnReiniciar')) $('#btnReiniciar').onclick = () => accionar('reiniciar', 'Empezar de nuevo');
     if ($('#btnEjemplo')) $('#btnEjemplo').onclick = cargarEjemplo;
 
-    if ($('#btnCerrar')) $('#btnCerrar').onclick = () => { if ($('#overlay')) $('#overlay').hidden = true; };
     if ($('#btnCopiarBorrador')) $('#btnCopiarBorrador').onclick = copiarBorrador;
-    if ($('#btnOtra')) $('#btnOtra').onclick = () => { if ($('#overlay')) $('#overlay').hidden = true; accionar('reiniciar', 'Empezar de nuevo'); };
 
     if ($('#swError')) {
       $('#swError').addEventListener('change', (e) => {
