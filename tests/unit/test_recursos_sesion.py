@@ -217,7 +217,7 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
     sid = "sesion-eliminar-recurso-test"
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo="Título de prueba",
         texto=reconstruir_texto_con_recursos(texto_limpio, recursos),
         texto_limpio=texto_limpio,
@@ -228,9 +228,7 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
             texto=reconstruir_texto_con_recursos(texto_limpio, recursos),
             texto_limpio=texto_limpio,
             recursos=recursos,
-            conforme=True,
-            conforme_en="2026-10-24T12:00:00Z",
-            texto_original_conforme=reconstruir_texto_con_recursos(texto_limpio, recursos),
+            finalizado=True,
             categoria_id=2,
             tags=["instructivo", "general"],
         ),
@@ -306,16 +304,14 @@ def test_subida_recurso_rechazada_en_fase_1(client):
     sid = "sesion-upload-fase1"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo="Título de prueba",
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título de prueba",
             texto="Contenido",
             texto_limpio="Contenido",
-            conforme=True,
-            conforme_en="2026-10-24T12:00:00Z",
-            texto_original_conforme="Contenido",
+            finalizado=True,
             categoria_id=1,
             tags=["instructivo"],
         ),
@@ -341,16 +337,14 @@ def test_subida_recursos_con_flag_activo(client):
     sid = "sesion-upload-valida"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo="Título con uploads",
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título con uploads",
             texto="Texto base",
             texto_limpio="Texto base",
-            conforme=True,
-            conforme_en="2026-10-24T12:00:00Z",
-            texto_original_conforme="Texto base",
+            finalizado=True,
             categoria_id=1,
             tags=["instructivo"],
         ),
@@ -564,8 +558,7 @@ def test_operaciones_atomicas_borrador_sesion():
         texto="T",
         texto_limpio="T [[recurso:r0]] [[recurso:r1]] [[recurso:r2]]",
         recursos={"r0": r0, "r1": r1, "r2": r2},
-        conforme=True,
-        conforme_en="2026-10-24T10:00:00Z",
+        finalizado=True,
     )
     assert borrador.orden_multimedia == [0, 1, 2]
     assert borrador.posiciones == [0, 0, 0]
@@ -576,16 +569,10 @@ def test_operaciones_atomicas_borrador_sesion():
     assert [r.orden for r in resultado] == [0, 1, 2]
     assert borrador.orden_multimedia == [0, 1, 2]
     assert borrador.posiciones == [0, 0, 0]
-    # Invalida conformidad
-    assert borrador.conforme is False
-    assert borrador.conforme_en is None
-    assert borrador.conformidad_invalidada is True
 
     # B. Reordenamiento por IDs explícitos
-    borrador.conforme = True
     borrador.reordenar_por_ids(["r0", "r1", "r2"])
     assert [r.id for r in borrador.multimedia] == ["r0", "r1", "r2"]
-    assert borrador.conforme is False
 
     # C. Reordenamiento por índices explícitos
     borrador.reordenar_por_indices([2, 0, 1])
@@ -649,9 +636,7 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
             texto=texto_con_recursos,
             texto_limpio=texto_limpio,
             recursos=recs,
-            conforme=True,
-            conforme_en="2026-10-24T12:00:00Z",
-            texto_original_conforme=texto_con_recursos,
+            finalizado=True,
         ),
     )
     SESIONES[sid] = sesion
@@ -670,8 +655,6 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
     assert sesion.borrador.orden_multimedia == [0, 1, 2]
     assert sesion.borrador.posiciones == [0, 1, 2]
     assert [r.id for r in sesion.borrador.multimedia] == ["rec_2", "rec_3", "rec_1"]
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conformidad_invalidada is True
 
     # 2. Agregar nuevo recurso en posición específica vía POST /chat/recursos/agregar
     resp_add = client.post(

@@ -30,14 +30,12 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_REVISION_VALIDO,
     msg_error_longitud_maxima,
     msg_error_longitud_minima,
-    msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
     componer_texto_publicable,
     extraer_recursos_y_texto_limpio,
-    fusionar_texto_y_recursos_sin_colision,
     texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
@@ -59,7 +57,6 @@ MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
     EstadoFlujo.ESPERANDO_METADATOS: (3, "Plantilla y etiquetas"),
     EstadoFlujo.REVISION_BORRADOR: (4, "Revisión"),
     EstadoFlujo.SUBSANANDO_BORRADOR: (4, "Revisión"),
-    EstadoFlujo.CONFORMIDAD_USUARIO: (5, "Conformidad"),
     EstadoFlujo.FINALIZADO: (5, "Conformidad"),
     EstadoFlujo.RECHAZADO: (5, "Conformidad"),
 }

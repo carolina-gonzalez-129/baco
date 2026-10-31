@@ -1,8 +1,9 @@
-import os
 import logging
+import os
 from pathlib import Path
-from dotenv import load_dotenv
+
 import psycopg
+from dotenv import load_dotenv
 from psycopg_pool import ConnectionPool
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from baco.server.services.orquestador import EstadoInvalidoError, SesionNoEncontradaError

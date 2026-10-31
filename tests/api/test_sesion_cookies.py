@@ -57,31 +57,27 @@ def test_prioridad_cookie_gana_sobre_header(client):
 
     SESIONES[sid_cookie] = SesionChat(
         session_id=sid_cookie,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo="Título Cookie",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título Cookie",
             texto=TEXTO_VALIDO,
-            texto_original_conforme=TEXTO_VALIDO,
-            conforme=True,
-            conforme_en="2026-10-24T12:00:00Z",
+            finalizado=True,
             tipo_plantilla="instructivo",
         ),
     )
     SESIONES[sid_header] = SesionChat(
         session_id=sid_header,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo="Título Header",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título Header",
             texto=TEXTO_VALIDO,
-            texto_original_conforme=TEXTO_VALIDO,
-            conforme=True,
-            conforme_en="2026-10-24T12:00:00Z",
+            finalizado=True,
             tipo_plantilla="instructivo",
         ),
     )
@@ -197,10 +193,10 @@ def test_estado_conformidad_mantiene_cookie_y_permite_get_borrador(client):
     )
 
     client.cookies.set("baco_session", sid)
-    resp = client.post("/chat", json={"accion": "conforme"})
+    resp = client.post("/chat", json={"accion": "finalizar"})
 
     assert resp.status_code == 200
-    assert resp.json()["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+    assert resp.json()["estado"] == EstadoFlujo.FINALIZADO
 
     set_cookie = resp.headers.get("set-cookie", "")
     assert f"Max-Age={TTL_SEGUNDOS}" in set_cookie

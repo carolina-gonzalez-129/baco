@@ -78,7 +78,6 @@ class EstadoFlujo(str, Enum):
     # SUBSANANDO_BORRADOR se preserva por compatibilidad de esquema OpenAPI/Front,
     # pero el flujo operativo gestiona la subsanación bloqueante dentro de REVISION_BORRADOR.
     SUBSANANDO_BORRADOR = "SUBSANANDO_BORRADOR"
-    CONFORMIDAD_USUARIO = "CONFORMIDAD_USUARIO"
     FINALIZADO = "FINALIZADO"
     RECHAZADO = "RECHAZADO"
 
@@ -162,10 +161,6 @@ class BorradorSesion(BaseModel):
         description="Sección aparte de contenido adicional para flujos de enriquecer o actualizar, separada de texto_limpio."
     )
     advertencias_recursos: List[str] = Field(default_factory=list)
-    texto_original_conforme: Optional[str] = None
-    conforme: bool = Field(default=False, description="Indica si el usuario prestó conformidad con el borrador.")
-    conforme_en: Optional[str] = Field(default=None, description="Timestamp ISO 8601 del momento en que se registró la conformidad.")
-    conformidad_invalidada: bool = Field(default=False, description="Indica si una conformidad previa fue invalidada por una modificación posterior.")
     finalizado: bool = Field(default=False, description="Indica si el usuario finalizó el borrador.")
     tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = None
     categoria_id: Optional[int] = None
@@ -620,18 +615,6 @@ class BorradorSesion(BaseModel):
         vec = list(range(len(ordenados)))
         super().__setattr__("orden_multimedia", list(vec))
         super().__setattr__("posiciones", [r.posicion for r in ordenados])
-        if invalidar_conformidad and self.conforme:
-            super().__setattr__("conforme", False)
-            super().__setattr__("conforme_en", None)
-            super().__setattr__("conformidad_invalidada", True)
-
-    @property
-    def texto_original_aprobado(self) -> Optional[str]:
-        return self.texto_original_conforme
-
-    @texto_original_aprobado.setter
-    def texto_original_aprobado(self, val: Optional[str]) -> None:
-        self.texto_original_conforme = val
 
 
 class ChatOrquestadorRequest(BaseModel):
@@ -645,7 +628,7 @@ class ChatOrquestadorRequest(BaseModel):
     )
     accion: Optional[str] = Field(
         default=None,
-        description="Atajo de botón ('confirmar_texto', 'enriquecer', 'descartar', 'continuar', 'editar', 'sanitizar', 'conforme', 'copiar_borrador', 'rechazar', 'reiniciar')."
+        description="Atajo de botón ('confirmar_texto', 'enriquecer', 'descartar', 'continuar', 'editar', 'sanitizar', 'finalizar', 'copiar_borrador', 'rechazar', 'reiniciar')."
     )
     titulo: Optional[str] = Field(
         default=None,

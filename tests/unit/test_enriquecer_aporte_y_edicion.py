@@ -144,11 +144,11 @@ def test_edicion_en_revision_con_metadatos_pendientes(client, mock_buscador):
     # Nuevo flujo: 'continuar_revision' cierra la revisión intermedia (metadatos heredados completos -> revisión final)
     r_cont = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r_cont["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "conforme" in r_cont["opciones"]
+    assert "finalizar" in r_cont["opciones"]
 
-    # Ahora sí permite conformidad
-    r_fin = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
-    assert r_fin["estado"] == EstadoFlujo.CONFORMIDAD_USUARIO
+    # Ahora sí permite finalizar
+    r_fin = client.post("/chat", json={"session_id": sid, "accion": "finalizar"}).json()
+    assert r_fin["estado"] == EstadoFlujo.FINALIZADO
 
 
 def test_volver_en_esperando_texto_restaura_decision_texto(client, mock_buscador):

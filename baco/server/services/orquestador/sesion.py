@@ -292,20 +292,10 @@ class GestorSesiones:
 
         sesion = self._sesiones[session_id]
         if (
-            sesion.estado != EstadoFlujo.CONFORMIDAD_USUARIO
+            sesion.estado != EstadoFlujo.FINALIZADO
             or sesion.borrador is None
-            or not sesion.borrador.conforme
+            or not sesion.borrador.finalizado
         ):
-            return None
-
-        # Invariante: no se puede quedar en CONFORMIDAD_USUARIO con texto distinto al confirmado
-        if (
-            sesion.borrador.texto_original_conforme is not None
-            and sesion.borrador.texto_alineado_discourse != sesion.borrador.texto_original_conforme
-        ):
-            sesion.borrador.conforme = False
-            sesion.borrador.conforme_en = None
-            sesion.estado = EstadoFlujo.REVISION_BORRADOR
             return None
 
         sesion.updated_at = ahora

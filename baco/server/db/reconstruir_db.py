@@ -1,7 +1,7 @@
-import sys
-import time
 import argparse
 import logging
+import sys
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -9,7 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import json
 import os
-from baco.server.db.config import get_conn, DB_NAME
+from baco.server.db.config import get_conn
 from baco.server.db.ingesta import normalizar_articulo, upsert_articulos
 
 RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))

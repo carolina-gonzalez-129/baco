@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(
         default=None,
-        description="ID de la sesión del orquestador. Si la sesión está en estado CONFORMIDAD_USUARIO, se inyecta automáticamente su borrador sanitizado."
+        description="ID de la sesión del orquestador. Si la sesión está en estado FINALIZADO, se inyecta automáticamente su borrador sanitizado."
     )
     prompt: str = Field(
         ...,

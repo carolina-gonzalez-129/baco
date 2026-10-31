@@ -23,10 +23,11 @@ import hashlib
 import logging
 import os
 import re
-import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
+
+import unicodedata
 
 logger = logging.getLogger(__name__)
 

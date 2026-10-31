@@ -456,9 +456,7 @@ def test_req8_skills_habilitadas_y_422_con_recursos_cargados(client):
         titulo="Emisión de Orden de Pago Electrónica",
         bloques_texto=["Paso 1: Configurar el módulo de tesorería.", "Paso 2: Emitir orden de pago electrónica."],
         recursos={"rec_1": r1},
-        conforme=True,
-        conforme_en="2026-10-26T12:00:00Z",
-        texto_original_conforme=f"Paso 1: Configurar el módulo de tesorería.\n\n![op.png](https://bc.finneg.com/op.png)\n\nPaso 2: Emitir orden de pago electrónica.",
+        finalizado=True,
         tipo_plantilla="instructivo",
         categoria_id=22,
         tags=["instructivo", "tesoreria"],
@@ -468,7 +466,7 @@ def test_req8_skills_habilitadas_y_422_con_recursos_cargados(client):
 
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo=borrador.titulo,
         bloques_texto=list(borrador.bloques_texto),
         recursos=dict(borrador.recursos),

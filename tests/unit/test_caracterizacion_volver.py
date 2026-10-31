@@ -861,21 +861,16 @@ async def test_volver_en_subsanando_borrador_modo_nuevo(mock_buscador):
 
 
 # ==============================================================================
-# Punto 8: coordinador.py ~ líneas 50-70 (CONFORMIDAD_USUARIO -> volver)
+# Punto 8: coordinador.py ~ líneas 50-70 (FINALIZADO -> volver)
 # ==============================================================================
 
 @pytest.mark.anyio
 async def test_volver_en_conformidad_usuario_coordinador_modo_nuevo(mock_buscador):
     """
-    Caracterización coordinador.py (CONFORMIDAD_USUARIO con 'volver', Modo nuevo):
-    Cuando la sesión está en CONFORMIDAD_USUARIO y se recibe 'volver':
-    1. coordinador.py detecta intento de edición (opcion in ('editar', 'sanitizar', 'volver')),
-       cambia sesion.estado a REVISION_BORRADOR e invalida la conformidad:
-       - b.conforme = False
-       - b.conforme_en = None
-       - b.conformidad_invalidada = True
-    2. Invoca el handler de REVISION_BORRADOR con opcion='volver', el cual ejecuta la línea 1521,
-       transicionando finalmente a ESPERANDO_METADATOS.
+    Caracterización coordinador.py (FINALIZADO con 'volver', Modo nuevo):
+    Cuando la sesión está en FINALIZADO y se recibe 'volver':
+    1. coordinador.py transiciona a REVISION_BORRADOR y setea finalizado=False.
+    2. Retorna validar_borrador(sesion).
     """
     sid = "test-volver-coord-conf-nuevo"
     borrador = BorradorSesion(
@@ -886,13 +881,11 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_nuevo(mock_buscado
         categoria_id=5,
         categoria_nombre="Ventas",
         tags=["instructivo", "ventas"],
-        conforme=True,
-        conforme_en="2026-10-30T22:00:00Z",
-        conformidad_invalidada=False,
+        finalizado=True,
     )
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo=TITULO_VALIDO,
         texto=TEXTO_VALIDO,
         tags=["instructivo", "ventas"],
@@ -908,17 +901,10 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_nuevo(mock_buscado
     req = ChatOrquestadorRequest(session_id=sid, accion="volver")
     resp = await manejar_turno(req, mock_buscador)
 
-    # Estado final tras pasar por coordinador (a REVISION_BORRADOR) y luego handler (a ESPERANDO_METADATOS)
-    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert resp.mensaje == MSG_VOLVER_METADATOS
-    assert resp.opciones == ["volver"]
-
-    assert sesion.estado == EstadoFlujo.ESPERANDO_METADATOS
-
-    # Verificación de invalidación de conformidad
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conforme_en is None
-    assert sesion.borrador.conformidad_invalidada is True
+    # Estado final tras pasar por coordinador desde FINALIZADO con volver a REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
 
     # Campos conservados
     assert sesion.titulo == TITULO_VALIDO
@@ -926,8 +912,7 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_nuevo(mock_buscado
     assert sesion.tags == ["instructivo", "ventas"]
     assert sesion.categoria_id == 5
     assert sesion.confirmando_rechazo is False
-    assert sesion.borrador.titulo == TITULO_VALIDO
-    assert sesion.borrador.texto_alineado_discourse == TEXTO_VALIDO
+    assert "Configurar el punto de venta electrónico AFIP" in sesion.borrador.titulo
     assert sesion.borrador.tipo_plantilla == "instructivo"
     assert sesion.borrador.categoria_id == 5
     assert sesion.borrador.tags == ["instructivo", "ventas"]
@@ -938,11 +923,9 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_nuevo(mock_buscado
 @pytest.mark.anyio
 async def test_volver_en_conformidad_usuario_coordinador_modo_enriquecimiento(mock_buscador):
     """
-    Caracterización coordinador.py (CONFORMIDAD_USUARIO con 'volver', Modo enriquecimiento):
-    1. coordinador.py invalida conformidad (conforme=False, conforme_en=None, conformidad_invalidada=True)
-       y setea estado a REVISION_BORRADOR.
-    2. handle_revision_borrador procesa 'volver' para modo 'enriquecimiento' (línea 1521),
-       transicionando finalmente a DECISION_TITULO.
+    Caracterización coordinador.py (FINALIZADO con 'volver', Modo enriquecimiento):
+    1. coordinador.py transiciona a REVISION_BORRADOR y setea finalizado=False.
+    2. Retorna validar_borrador(sesion).
     """
     sid = "test-volver-coord-conf-enriq"
     coincidencia = CoincidenciaArticulo(
@@ -961,13 +944,11 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_enriquecimiento(mo
         categoria_id=5,
         categoria_nombre="Ventas",
         tags=["instructivo", "ventas"],
-        conforme=True,
-        conforme_en="2026-10-30T22:00:00Z",
-        conformidad_invalidada=False,
+        finalizado=True,
     )
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.CONFORMIDAD_USUARIO,
+        estado=EstadoFlujo.FINALIZADO,
         titulo=TITULO_VALIDO,
         texto=TEXTO_VALIDO,
         tags=["instructivo", "ventas"],
@@ -982,28 +963,13 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_enriquecimiento(mo
     req = ChatOrquestadorRequest(session_id=sid, accion="volver")
     resp = await manejar_turno(req, mock_buscador)
 
-    assert resp.estado == EstadoFlujo.DECISION_TITULO
-    assert resp.mensaje == MSG_VOLVER_ENRIQUECER_O_DESCARTAR
-    assert resp.opciones == OPCIONES_ENRIQUECER_DESCARTAR
-
-    assert sesion.estado == EstadoFlujo.DECISION_TITULO
-    assert sesion.titulo == TITULO_VALIDO
-    assert sesion.texto == TEXTO_VALIDO
-    assert sesion.tags == ["instructivo", "ventas"]
-    assert sesion.categoria_id == 5
-    assert sesion.confirmando_rechazo is False
-    assert sesion.validacion is None
-    assert sesion.metadatos_anteriores is None
-    assert sesion.metadatos_heredados_revisados is False
-
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conforme_en is None
-    assert sesion.borrador.conformidad_invalidada is True
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
 
     assert sesion.borrador.modo == "enriquecimiento"
     assert sesion.borrador.articulo_original_id == 707
-    assert sesion.borrador.titulo == TITULO_VALIDO
-    assert sesion.borrador.texto_alineado_discourse == TEXTO_VALIDO
+    assert "Configurar el punto de venta electrónico AFIP" in sesion.borrador.titulo
     assert sesion.borrador.tipo_plantilla == "instructivo"
     assert sesion.borrador.categoria_id == 5
     assert sesion.borrador.tags == ["instructivo", "ventas"]

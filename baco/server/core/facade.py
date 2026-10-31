@@ -1,6 +1,7 @@
 import logging
 import sys
 from typing import List, Optional
+
 from psycopg.rows import dict_row
 from pydantic import ValidationError
 

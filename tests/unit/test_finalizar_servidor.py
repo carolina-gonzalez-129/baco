@@ -78,7 +78,6 @@ def test_finalizar_sin_bloqueantes_lleva_a_finalizado_y_etapa_actual_5(client):
     # Al consultar el turno sin acción para validar borrador
     r_check = client.post("/chat", headers={"X-Session-ID": sid}, json={}).json()
     assert "finalizar" in r_check["opciones"]
-    assert "conforme" in r_check["opciones"]
 
     # Ejecutar finalizar
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "finalizar"}).json()
@@ -116,7 +115,6 @@ def test_finalizar_no_se_ofrece_con_bloqueantes(client):
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={}).json()
     assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert "finalizar" not in r["opciones"]
-    assert "conforme" not in r["opciones"]
     assert "editar" in r["opciones"]
     assert "rechazar" in r["opciones"]
 
@@ -180,7 +178,6 @@ def test_volver_desde_finalizado_va_a_revision_borrador_sin_retroceder(client):
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
     assert sesion.borrador.finalizado is False
     assert "finalizar" in r["opciones"]
-    assert "conforme" in r["opciones"]
 
 
 def test_turno_vacio_en_finalizado_devuelve_msg_borrador_finalizado(client):

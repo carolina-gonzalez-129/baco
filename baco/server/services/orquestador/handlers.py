@@ -1287,8 +1287,6 @@ def _ejecutar_sanitizacion_borrador(
         recursos=recs_sanit_comb,
         ultimo_id_recurso=max_id,
     )
-    b.conforme = False
-    b.conforme_en = None
     sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
     prefijo = PREFIJO_DATOS_SANITIZADOS
@@ -1383,8 +1381,6 @@ def _aplicar_mutaciones_borrador(
         tipo_plantilla=plantilla_nueva,
     )
 
-    b.conforme = False
-    b.conforme_en = None
     sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
     prefijo = PREFIJO_BORRADOR_ACTUALIZADO

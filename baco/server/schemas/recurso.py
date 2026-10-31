@@ -1,7 +1,7 @@
-from pathlib import PurePosixPath
 import re
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from baco.server.config_limites import (

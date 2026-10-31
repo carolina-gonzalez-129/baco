@@ -1,9 +1,10 @@
 from fastapi import FastAPI
+
 from baco.server.app.api import router as api_router
-from baco.server.app.mcp_server import mcp_http_app
-from baco.server.app.lifespan import lifespan
-from baco.server.app.middleware import setup_middlewares
 from baco.server.app.exception_handlers import register_exception_handlers
+from baco.server.app.lifespan import lifespan
+from baco.server.app.mcp_server import mcp_http_app
+from baco.server.app.middleware import setup_middlewares
 
 app = FastAPI(
     title="BACO (api rest y mcp server)",

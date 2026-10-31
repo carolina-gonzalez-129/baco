@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
+
 from fastapi import APIRouter, Cookie, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
+from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
 from baco.server.config_limites import (
     PERMITIR_SUBIDA_RECURSOS,
     RECURSO_MAX_BYTES,
@@ -23,16 +25,13 @@ from baco.server.schemas.recurso import (
     ConfirmarBloquesRequest,
     ConfirmarBloquesResponse,
     EstadoRecursosResponse,
-    Recurso,
 )
 from baco.server.schemas.validacion import ValidarFormatoResponse
-from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
-from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.agente_service import (
     ejecutar_skill_plantillas,
     ejecutar_skill_validador,
 )
+from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador import (
     EstadoInvalidoError,
     TTL_SEGUNDOS,
@@ -40,7 +39,6 @@ from baco.server.services.orquestador import (
     manejar_turno,
     obtener_borrador_sesion_validado,
 )
-from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
 from baco.server.services.orquestador.recursos_service import (
     DIR_TEMP_SESIONES,
     RecursoDuplicadoError,
@@ -48,16 +46,15 @@ from baco.server.services.orquestador.recursos_service import (
     RecursoNoEncontradoEnSesionError,
     SubidaRecursosDeshabilitadaError,
     _max_num_recurso,
-    componer_texto_publicable,
     crear_recurso_desde_url,
     derivar_bloques_y_recursos,
-    derivar_desde_bloques,
-    extraer_recursos_y_texto_limpio,
     guardar_recurso_temporal_sesion,
     obtener_ruta_fisica_recurso,
     texto_efectivo_sin_marcadores,
 )
-from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento, validar_borrador
+from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
+from baco.server.services.orquestador.validaciones import validar_borrador
+from baco.server.services.validar_articulo import sanitizar_borrador
 
 router = APIRouter(tags=["API REST"])
 
@@ -764,7 +761,6 @@ def previsualizar_recurso_temporal(session_id: str, archivo: str):
     from fastapi.responses import FileResponse
     return FileResponse(str(ruta_archivo))
 
-from baco.server import config_limites
 ##ARREGLAR ESTO DESPUES DEL VIERNES PARA Q
 #1)ABARQUE LO DE SKILLS UN PERCENTIL RAZONABLE DEL 51 % (P 90, 95, 98?)
 ## 2) EL FRONT LO LEA DIRECTO DESDE ACA Y NO ESTE HARDCODEADO

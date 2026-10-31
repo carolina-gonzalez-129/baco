@@ -178,9 +178,9 @@ def test_endpoints_skills_devuelven_422_cuando_flag_es_false_por_recursos(client
         recursos={"rec_1": rec},
         tipo_plantilla="instructivo",
         tags=["instructivo", "ventas"],
-        conforme=True,
+        finalizado=True,
     )
-    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.CONFORMIDAD_USUARIO, borrador=borrador)
+    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.FINALIZADO, borrador=borrador)
     SESIONES[sid] = sesion
 
     # Probar aplicar-plantilla
@@ -203,9 +203,9 @@ def test_endpoints_skills_devuelven_422_cuando_flag_es_false_por_longitud(client
         recursos={},
         tipo_plantilla="instructivo",
         tags=["instructivo", "ventas"],
-        conforme=True,
+        finalizado=True,
     )
-    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.CONFORMIDAD_USUARIO, borrador=borrador)
+    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.FINALIZADO, borrador=borrador)
     SESIONES[sid] = sesion
 
     res_plantilla = client.post("/chat/aplicar-plantilla", headers={"X-Session-ID": sid})
@@ -223,13 +223,12 @@ def test_endpoints_skills_devuelven_200_cuando_flag_es_true(client):
         modo="nuevo",
         titulo="Configuración de listas de precios en Ventas",
         texto_limpio="Texto completamente válido sin recursos y dentro del límite de caracteres para skills.",
-        texto_original_conforme="Texto completamente válido sin recursos y dentro del límite de caracteres para skills.",
         recursos={},
         tipo_plantilla="instructivo",
         tags=["instructivo", "ventas"],
-        conforme=True,
+        finalizado=True,
     )
-    sesion1 = SesionChat(session_id=sid1, estado=EstadoFlujo.CONFORMIDAD_USUARIO, borrador=borrador1)
+    sesion1 = SesionChat(session_id=sid1, estado=EstadoFlujo.FINALIZADO, borrador=borrador1)
     SESIONES[sid1] = sesion1
 
     res_plantilla = client.post("/chat/aplicar-plantilla", headers={"X-Session-ID": sid1})
@@ -240,14 +239,13 @@ def test_endpoints_skills_devuelven_200_cuando_flag_es_true(client):
         modo="nuevo",
         titulo="Configuración de listas de precios en Ventas",
         texto_limpio="Texto completamente válido sin recursos y dentro del límite de caracteres para skills.",
-        texto_original_conforme="Texto completamente válido sin recursos y dentro del límite de caracteres para skills.",
         recursos={},
         tipo_plantilla="instructivo",
         categoria_id=20,  # la skill 'validador' exige categoría y >= 2 tags
         tags=["instructivo", "ventas"],
-        conforme=True,
+        finalizado=True,
     )
-    sesion2 = SesionChat(session_id=sid2, estado=EstadoFlujo.CONFORMIDAD_USUARIO, borrador=borrador2)
+    sesion2 = SesionChat(session_id=sid2, estado=EstadoFlujo.FINALIZADO, borrador=borrador2)
     SESIONES[sid2] = sesion2
 
     res_auditoria = client.post("/chat/auditar-semantica", headers={"X-Session-ID": sid2})

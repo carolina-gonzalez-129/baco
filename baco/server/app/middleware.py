@@ -1,12 +1,13 @@
-import os
 import base64
+import os
 import secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
-from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 for p in [Path(__file__).resolve().parent, *Path(__file__).resolve().parents]:
     if (p / ".env").exists():

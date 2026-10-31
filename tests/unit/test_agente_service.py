@@ -35,7 +35,7 @@ def test_skills_rechazan_si_borrador_tiene_recursos_o_marcadores_y_no_llaman_al_
         texto_limpio="Texto completamente limpio para configurar el sistema contable paso a paso.",
         recursos=recs,
         tipo_plantilla="instructivo",
-        conforme=True,
+        finalizado=True,
     )
 
     mock_baco = MagicMock()
@@ -58,7 +58,7 @@ def test_skills_rechazan_si_borrador_tiene_recursos_o_marcadores_y_no_llaman_al_
         titulo="Cómo configurar el sistema contable",
         bloques_texto=["Texto preliminar en el cuerpo."],
         tipo_plantilla="instructivo",
-        conforme=True,
+        finalizado=True,
     )
     object.__setattr__(
         borrador_con_marcador,
@@ -78,7 +78,7 @@ def test_skills_rechazan_si_borrador_tiene_recursos_o_marcadores_y_no_llaman_al_
         titulo="Cómo configurar el sistema contable",
         texto_limpio="Texto que contiene un tag <img src='https://ejemplo.com/foto.png'> en el cuerpo.",
         tipo_plantilla="instructivo",
-        conforme=True,
+        finalizado=True,
     )
 
     with pytest.raises(HTTPException) as exc4:
@@ -93,7 +93,7 @@ def test_skills_rechazan_si_borrador_tiene_recursos_o_marcadores_y_no_llaman_al_
         titulo="Cómo configurar el sistema contable",
         texto_limpio="Texto que contiene una imagen ![captura](https://ejemplo.com/foto.png) en Markdown.",
         tipo_plantilla="instructivo",
-        conforme=True,
+        finalizado=True,
     )
 
     with pytest.raises(HTTPException) as exc5:
@@ -120,7 +120,7 @@ def test_skills_aceptan_texto_puro_sin_recursos_y_permiten_marcadores_pii():
         titulo="Ingreso seguro al sistema",
         texto_limpio=texto_con_pii,
         tipo_plantilla="instructivo",
-        conforme=True,
+        finalizado=True,
     )
 
     prompts_recibidos = []
@@ -162,7 +162,7 @@ def test_agente_corta_con_error_claro_si_no_hay_texto():
         texto="",
         texto_limpio="",
         tipo_plantilla="instructivo",
-        conforme=True,
+        finalizado=True,
     )
     sesion.borrador = borrador
 
@@ -191,7 +191,7 @@ def test_borrador_texto_no_es_asignable_y_coincide_siempre_con_componer_texto_pu
         modo="nuevo",
         titulo="Título de prueba",
         bloques_texto=["Texto inicial de prueba para la composición de borrador."],
-        conforme=True,
+        finalizado=True,
     )
 
     # 1. borrador.texto_alineado_discourse coincide exactamente con componer_texto_publicable

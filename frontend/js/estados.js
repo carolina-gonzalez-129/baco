@@ -27,8 +27,6 @@ BACO.ESTADOS = {
                         ayuda: 'El borrador está validado. Podés editarlo, sanitizarlo, confirmar tu conformidad o rechazarlo.' },
   SUBSANANDO_BORRADOR:{ etiqueta: 'Corrigiendo',          tono: 'alerta',  paso: 4,
                         ayuda: 'Hay observaciones bloqueantes. Corregilas en el panel y guardá los cambios.' },
-  CONFORMIDAD_USUARIO:{ etiqueta: 'Continuar',            tono: 'ok',      paso: 5,
-                        ayuda: 'El artículo quedó con tu conformidad registrada y sanitizado.' },
   APROBADO:           { etiqueta: 'Continuar',            tono: 'ok',      paso: 5,
                         ayuda: 'El artículo quedó con tu conformidad registrada y sanitizado.' },
   RECHAZADO:          { etiqueta: 'Rechazado',           tono: 'alerta',  paso: 5,

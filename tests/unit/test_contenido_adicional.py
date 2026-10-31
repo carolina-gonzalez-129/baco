@@ -312,50 +312,39 @@ def test_eliminar_o_reordenar_invalida_conformidad():
     """Cualquier cambio (eliminar, reordenar o agregar) en contenido_adicional invalida la conformidad."""
     sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
     sid = sesion.session_id
-    sesion.estado = EstadoFlujo.CONFORMIDAD_USUARIO
+    sesion.estado = EstadoFlujo.FINALIZADO
     sesion.borrador = BorradorSesion(
         modo="enriquecimiento",
         articulo_original_id=123,
         titulo="Artículo",
         texto="Base",
         texto_limpio="Base",
-        conforme=True,
-        conforme_en="2026-10-24T12:00:00Z",
+        finalizado=True,
     )
 
     it1 = gestor_sesiones.agregar_contenido_adicional(sid, "Item 1")
     it2 = gestor_sesiones.agregar_contenido_adicional(sid, "Item 2")
 
-    # 1. Al agregar con conformidad activa, se invalida
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conforme_en is None
-    assert sesion.borrador.conformidad_invalidada is True
+    # 1. Al agregar con finalizado activo, se invalida
+    assert sesion.borrador.finalizado is False
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
 
-    # Restablecemos conformidad simulada
-    sesion.estado = EstadoFlujo.CONFORMIDAD_USUARIO
-    sesion.borrador.conforme = True
-    sesion.borrador.conforme_en = "2026-10-24T12:30:00Z"
-    sesion.borrador.conformidad_invalidada = False
+    # Restablecemos finalizado simulado
+    sesion.estado = EstadoFlujo.FINALIZADO
+    sesion.borrador.finalizado = True
 
     # 2. Al reordenar, se invalida
     gestor_sesiones.reordenar_contenido_adicional(sid, [it2.id, it1.id])
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conforme_en is None
-    assert sesion.borrador.conformidad_invalidada is True
+    assert sesion.borrador.finalizado is False
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
 
-    # Restablecemos conformidad simulada
-    sesion.estado = EstadoFlujo.CONFORMIDAD_USUARIO
-    sesion.borrador.conforme = True
-    sesion.borrador.conforme_en = "2026-10-24T12:45:00Z"
-    sesion.borrador.conformidad_invalidada = False
+    # Restablecemos finalizado simulado
+    sesion.estado = EstadoFlujo.FINALIZADO
+    sesion.borrador.finalizado = True
 
     # 3. Al eliminar, se invalida
     gestor_sesiones.eliminar_item_contenido_adicional(sid, it1.id)
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conforme_en is None
-    assert sesion.borrador.conformidad_invalidada is True
+    assert sesion.borrador.finalizado is False
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
 
 
@@ -524,15 +513,14 @@ def test_modificar_item_contenido_adicional_actualiza_y_invalida_conformidad():
     """Modificar un ítem actualiza su contenido, invalida la conformidad y no toca texto_limpio."""
     sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
     sid = sesion.session_id
-    sesion.estado = EstadoFlujo.CONFORMIDAD_USUARIO
+    sesion.estado = EstadoFlujo.FINALIZADO
     sesion.borrador = BorradorSesion(
         modo="enriquecimiento",
         articulo_original_id=888,
         titulo="Enriquecer con notas",
         texto="Texto base limpio",
         texto_limpio="Texto base limpio",
-        conforme=True,
-        conforme_en="2026-10-24T12:00:00Z",
+        finalizado=True,
     )
     item = gestor_sesiones.agregar_contenido_adicional(sid, "Texto inicial")
 
@@ -545,10 +533,8 @@ def test_modificar_item_contenido_adicional_actualiza_y_invalida_conformidad():
     assert item_mod.contenido == "Texto modificado y corregido"
     assert item_mod.tipo == "nota"
 
-    # La conformidad debe invalidarse
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conforme_en is None
-    assert sesion.borrador.conformidad_invalidada is True
+    # El finalizado debe invalidarse
+    assert sesion.borrador.finalizado is False
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
 
     # El texto limpio no debe ser modificado

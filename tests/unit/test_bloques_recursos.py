@@ -445,8 +445,7 @@ def test_endpoint_post_chat_bloques(client):
             modo="nuevo",
             titulo="Artículo desde Bloques",
             texto_limpio="Texto previo",
-            conforme=True,
-            conforme_en="2026-10-25T10:00:00Z",
+            finalizado=True,
         ),
     )
     SESIONES[sid] = sesion
@@ -487,9 +486,8 @@ def test_endpoint_post_chat_bloques(client):
     assert "token=secret123" not in rec["referencia"]
     assert "1 imagen" in data["aviso"]
 
-    # Verifica que la conformidad previa fue invalidada debido al cambio de contenido
-    assert sesion.borrador.conforme is False
-    assert sesion.borrador.conformidad_invalidada is True
+    # Verifica que el borrador no queda finalizado debido al cambio de contenido
+    assert sesion.borrador.finalizado is False
 
 
 def test_endpoint_post_chat_bloques_autosanitiza_pii_y_avisa(client):

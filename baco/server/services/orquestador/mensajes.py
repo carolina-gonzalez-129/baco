@@ -377,7 +377,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
         )
 
 
-    if est in (EstadoFlujo.CONFORMIDAD_USUARIO, EstadoFlujo.RECHAZADO):
+    if est in (EstadoFlujo.FINALIZADO, EstadoFlujo.RECHAZADO):
         return (
             msg_sesion_finalizada(est.value),
             OPCIONES_REINICIAR,
