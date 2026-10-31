@@ -1065,7 +1065,7 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     obs = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in sugerencias)
     detalle_sug = f"\nSugerencias:\n{obs}\n\n" if obs else "\n\n"
     return (
-        f"{prefijo}El borrador fue validado ({res['status']}).{detalle_sug}{msg_cierre}",
+        f"{prefijo}El borrador superó las validaciones.{detalle_sug}{msg_cierre}",
         ops_validas,
     )
 

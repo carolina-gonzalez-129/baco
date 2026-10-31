@@ -780,10 +780,30 @@ BACO.apiMock = (function () {
                 sesion.articulos_descartados_ids.push(sesion.borrador.articulo_original_id);
               }
             }
+            if (Array.isArray(sesion.coincidencias)) {
+              sesion.articulos_descartados_ids = sesion.articulos_descartados_ids || [];
+              sesion.coincidencias.forEach(function (c) {
+                if (c && c.id && !sesion.articulos_descartados_ids.includes(c.id)) {
+                  sesion.articulos_descartados_ids.push(c.id);
+                }
+              });
+            }
+            const esEnriq = Boolean(sesion.borrador && sesion.borrador.modo === 'enriquecimiento');
+            const textoPropio = esEnriq
+              ? ((req.texto && String(req.texto).trim()) ||
+                 (sesion.texto_en_edicion && String(sesion.texto_en_edicion).trim()) ||
+                 (sesion.borrador && sesion.borrador.texto_editor && String(sesion.borrador.texto_editor).trim()) || '')
+              : ((req.texto && String(req.texto).trim()) ||
+                 (sesion.texto_limpio && String(sesion.texto_limpio).trim()) ||
+                 (sesion.texto_en_edicion && String(sesion.texto_en_edicion).trim()) ||
+                 (sesion.texto && String(sesion.texto).trim()) || '');
             sesion.borrador = null;
-            sesion.texto = '';
-            sesion.texto_limpio = '';
-            sesion.texto_en_edicion = '';
+            sesion.coincidencias = [];
+            if (textoPropio) {
+              sesion.texto = textoPropio;
+              sesion.texto_limpio = textoPropio;
+              sesion.texto_en_edicion = textoPropio;
+            }
           }
 
           const opsTexto = (sesion.borrador && sesion.borrador.modo === 'enriquecimiento')

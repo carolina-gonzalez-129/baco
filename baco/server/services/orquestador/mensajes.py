@@ -132,8 +132,7 @@ MSG_ANTES_DE_CONFORME = (
     "Revisá el borrador. Si estás conforme con el contenido, tocá **Continuar**."
 )
 MSG_ANTES_DE_CONTINUAR = (
-    "Revisá el borrador: podés editarlo y aplicar las skills. Cuando termines, tocá **Continuar** "
-    "para completar la categoría y las etiquetas."
+    "Revisamos tu texto y no hay puntos obligatorios pendientes. Podés seguir editándolo o tocar **Continuar** para completar la categoría y las etiquetas."
 )
 MSG_USAR_CONTINUAR = (
     "Todavía no se puede registrar la conformidad: primero tocá **Continuar** para completar "
@@ -375,8 +374,8 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             )
         if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
             return (
-                "✅ El borrador superó las validaciones mínimas. Podés editarlo y aplicar las skills; "
-                "cuando termines, tocá **Continuar** para completar la categoría y las etiquetas.",
+                "✅ El borrador superó las validaciones mínimas. Podés seguir editándolo o tocar **Continuar** "
+                "para completar la categoría y las etiquetas.",
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (

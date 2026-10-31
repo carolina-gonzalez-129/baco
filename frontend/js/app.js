@@ -2415,7 +2415,7 @@
       const labelBotonTransf = '↖ Transferido al panel de carga (clic para volver a transferir)';
       const msgHtml = '<div class="respuesta-agente">' + nl2br(textoChat) + '</div>' +
         '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">' + labelBotonTransf + '</button></div>';
-      const bubbleEl = decir(msgHtml, ['ver_articulo_final'], true);
+      const bubbleEl = decir(msgHtml, [], true);
       if (bubbleEl) {
         const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
         if (btnTransf) {
@@ -2636,7 +2636,7 @@
     tToast = setTimeout(() => t.classList.remove('show'), 2400);
   }
 
-  function sincronizarConformidadContenidoAdicional(b) {
+  async function sincronizarConformidadContenidoAdicional(b) {
     if (!b) return;
     const s = store.get();
     const teniaConformidad = Boolean(b.conforme);
@@ -2645,19 +2645,25 @@
       b.conforme_en = null;
       b.conformidad_invalidada = true;
     }
-    const cambios = { borrador: b };
+    store.set({ borrador: b });
+    renderVistaPreviaEditable();
+
     if (teniaConformidad && s && s.flujo === 'CONFORMIDAD_USUARIO') {
-      cambios.flujo = 'REVISION_BORRADOR';
-      cambios.opciones = ['conforme', 'editar', 'rechazar'];
-      if (s.etapa && s.etapa.actual === 5) {
-        cambios.etapa = Object.assign({}, s.etapa, {
-          actual: 4,
-          nombre: (s.etapa.etapas && s.etapa.etapas[3]) || 'Revisión'
-        });
+      try {
+        const res = await api.turno({});
+        if (res) {
+          store.aplicarTurno(res);
+          renderVistaPreviaEditable();
+          if (res.mensaje) {
+            const opcionesTurno = Array.isArray(res.opciones) ? res.opciones.slice() : [];
+            const botonesTurno = Array.isArray(res.botones) ? res.botones.slice() : [];
+            decir(nl2br(res.mensaje), opcionesTurno, false, botonesTurno);
+          }
+        }
+      } catch (err) {
+        mostrarError(err);
       }
     }
-    store.set(cambios);
-    renderVistaPreviaEditable();
   }
 
   function pintarRecursosDetectados(s) {
@@ -2765,7 +2771,7 @@
         if (b) {
           b.contenido_adicional = b.contenido_adicional || [];
           b.contenido_adicional.push(item);
-          sincronizarConformidadContenidoAdicional(b);
+          await sincronizarConformidadContenidoAdicional(b);
         }
         toast('Contenido nuevo agregado a la sección aparte');
       } catch (err) {
@@ -2843,7 +2849,7 @@
         if (b && b.contenido_adicional) {
           const it = b.contenido_adicional.find((x) => x.id === id);
           if (it) it.contenido = (itemMod && itemMod.contenido) || nuevoTexto;
-          sincronizarConformidadContenidoAdicional(b);
+          await sincronizarConformidadContenidoAdicional(b);
         }
         toast('Contenido modificado correctamente');
       } catch (err) {
@@ -2888,7 +2894,7 @@
           if (b && b.contenido_adicional) {
             b.contenido_adicional = b.contenido_adicional.filter((it) => it.id !== id);
             b.contenido_adicional.forEach((it, idx) => { it.posicion = idx; });
-            sincronizarConformidadContenidoAdicional(b);
+            await sincronizarConformidadContenidoAdicional(b);
           }
           toast('Ítem eliminado del borrador');
         } catch (err) {
@@ -2922,7 +2928,7 @@
           if (Array.isArray(itemsReordenados) && itemsReordenados.length) {
             b.contenido_adicional = itemsReordenados;
           }
-          sincronizarConformidadContenidoAdicional(b);
+          await sincronizarConformidadContenidoAdicional(b);
           toast('Orden de contenido actualizado');
         } catch (err) {
           toast('Error al reordenar: ' + (err.message || err));

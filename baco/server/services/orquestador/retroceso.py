@@ -53,6 +53,9 @@ def _restaurar_decision_titulo(sesion: SesionChat) -> None:
 def _restaurar_esperando_texto(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("ESPERANDO_TEXTO")
     sesion.texto_en_edicion = ""
+    sesion.texto = ""
+    sesion.texto_limpio = ""
+    sesion.articulos_descartados_ids = []
 
 
 def _restaurar_decision_texto(sesion: SesionChat) -> None:
