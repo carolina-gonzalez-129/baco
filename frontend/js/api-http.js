@@ -106,6 +106,10 @@ BACO.apiHttp = (function () {
     async turno(payload) {
       const cuerpo = Object.assign({}, payload || {});
       delete cuerpo.session_id;            // deprecado, el backend lo ignora
+      delete cuerpo.prompt;                // esquema viejo no admitido
+      delete cuerpo.skill;
+      delete cuerpo.tipo_plantilla;
+      delete cuerpo.borrador;
       const r = await pedir('POST', '/chat', cuerpo);
       /* Al rechazar, el backend borra la cookie: se descarta la sesión */
       if (r && r.estado === 'RECHAZADO') sessionId = null;
@@ -121,14 +125,19 @@ BACO.apiHttp = (function () {
     },
 
     /* Skill 'plantillas': reestructura el borrador en su formato oficial.
-       El backend toma el borrador de la sesión, no hace falta mandarlo. */
+       El backend toma el borrador de la sesión, no envía body. */
     aplicarPlantilla() {
-      return pedir('POST', '/chat/aplicar-plantilla', {});
+      return pedir('POST', '/chat/aplicar-plantilla');
     },
 
-    /* Skill 'validador': auditoría semántica y de estilo */
+    /* Skill 'validador': auditoría semántica y de estilo (sin body) */
     auditarSemantica() {
-      return pedir('POST', '/chat/auditar-semantica', {});
+      return pedir('POST', '/chat/auditar-semantica');
+    },
+
+    /* Revalida el borrador de sesión tras la aplicación de skills (sin body) */
+    revalidarPostSkill() {
+      return pedir('POST', '/chat/revalidar-post-skill');
     },
 
     /* Contenido adicional para flujo enriquecer / actualizar */
@@ -171,6 +180,11 @@ BACO.apiHttp = (function () {
       return pedir('POST', '/chat/recursos/agregar', recurso);
     },
     async subirRecursoMultimedia(file, posicion, bloquesTexto) {
+      if (!BACO.config.API_KEY) {
+        const e = new Error('Falta la API_KEY en js/config.js. Pedísela a Caro (es el API_KEY_SERVIDOR del .env).');
+        e.codigo = 'SIN_API_KEY';
+        throw e;
+      }
       const fd = new FormData();
       fd.append('file', file);
       if (typeof posicion === 'number') {

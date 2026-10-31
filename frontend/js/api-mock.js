@@ -113,16 +113,14 @@ BACO.apiMock = (function () {
     if (!Array.isArray(b.bloques_texto) || !b.bloques_texto.length) {
       b.bloques_texto = [String(b.texto_limpio != null ? b.texto_limpio : (b.texto || ''))];
     }
-    const recsRaw = Array.isArray(b.multimedia) && b.multimedia.length
-      ? b.multimedia
-      : Object.values(b.recursos || {});
+    const recsRaw = Array.isArray(b.recursos)
+      ? b.recursos
+      : (Array.isArray(b.multimedia) && b.multimedia.length ? b.multimedia : Object.values(b.recursos || {}));
     const recsOrd = ordenarRecursosInvariante(recsRaw, b.bloques_texto.length);
-    const mapa = {};
     recsOrd.forEach((r, idx) => {
       if (!r.id) r.id = 'rec_' + (idx + 1);
-      mapa[r.id] = r;
     });
-    b.recursos = mapa;
+    b.recursos = recsOrd;
     b.multimedia = recsOrd;
     b.orden_multimedia = recsOrd.map((_, i) => i);
     b.posiciones = recsOrd.map((r) => r.posicion);
@@ -149,10 +147,7 @@ BACO.apiMock = (function () {
     }
     b.texto_alineado_discourse = partes.join('\n\n').trim();
 
-    if (recsOrd.length > 0) {
-      b.skills_habilitadas = false;
-      b.skills_motivo = 'El artículo contiene recursos multimedia cargados. Quitá los recursos si querés aplicar la plantilla o el validador automático.';
-    } else if (cpLen(b.texto_limpio) > MAX_SKILLS_CHARS) {
+    if (cpLen(b.texto_limpio) > MAX_SKILLS_CHARS) {
       b.skills_habilitadas = false;
       b.skills_motivo = 'El texto supera el máximo de ' + MAX_SKILLS_CHARS + ' caracteres para las skills del agente.';
     } else {
@@ -175,7 +170,9 @@ BACO.apiMock = (function () {
         texto_limpio: '',
         multimedia_habilitada: false,
         skills_habilitadas: true,
-        skills_motivo: null
+        skills_motivo: null,
+        estado: sesion ? sesion.estado : null,
+        borrador: null
       };
     }
     sincronizarBorrador(sesion.borrador);
@@ -185,7 +182,9 @@ BACO.apiMock = (function () {
       texto_limpio: sesion.borrador.texto_limpio,
       multimedia_habilitada: multimediaHabilitadaActual(),
       skills_habilitadas: sesion.borrador.skills_habilitadas,
-      skills_motivo: sesion.borrador.skills_motivo
+      skills_motivo: sesion.borrador.skills_motivo,
+      estado: sesion.estado,
+      borrador: JSON.parse(JSON.stringify(sesion.borrador))
     };
   }
 
@@ -507,6 +506,11 @@ BACO.apiMock = (function () {
     }));
     const tagsDisp = ((BACO.datos && BACO.datos.etiquetas) || []).map((e) => e.tag);
     const multiHab = multimediaHabilitadaActual();
+    const bts = (opciones || []).map((op) => {
+      if (typeof op === 'object' && op !== null) return op;
+      const def = (BACO.OPCIONES && BACO.OPCIONES[op]) || {};
+      return { accion: op, label: def.label || op, estilo: def.estilo || 'btn-ghost' };
+    });
     return {
       session_id: s.session_id,
       estado: s.estado,
@@ -517,7 +521,8 @@ BACO.apiMock = (function () {
         etapas: ETAPAS_FLUJO.slice()
       },
       mensaje: mensaje,
-      opciones: opciones || [],
+      opciones: bts,
+      botones: bts,
       tags_acumulados: tagsAcum,
       categorias_disponibles: catsDisp,
       tags_disponibles: tagsDisp,
@@ -1158,6 +1163,14 @@ BACO.apiMock = (function () {
           bloques_texto: sesion.borrador.bloques_texto.slice()
         };
       }, cfg().LATENCIA_AGENTE_MS);
+    },
+
+    revalidarPostSkill() {
+      return responder(() => {
+        if (!sesion || !sesion.borrador) throw err('SIN_SESION', 'No hay un borrador activo en la sesión.');
+        sincronizarBorrador(sesion.borrador);
+        return validar(sesion.borrador);
+      });
     },
 
     agregarContenidoAdicional(contenido, tipo = 'texto') {

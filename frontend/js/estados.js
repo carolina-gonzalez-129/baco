@@ -66,6 +66,9 @@ BACO.SEVERIDAD = {
 /* Texto de cada botón de `opciones` que devuelve el backend */
 BACO.OPCIONES = {
   finalizar:         { label: 'Finalizar',               estilo: 'btn-primary' },
+  aceptar:           { label: 'Aceptar',                 estilo: 'btn-primary' },
+  aceptar_metadatos: { label: 'Aceptar metadatos heredados', estilo: 'btn-primary' },
+  rechazar_metadatos:{ label: 'Rechazar metadatos heredados', estilo: 'btn-secondary' },
   ver_articulo_final: { label: 'Ver artículo', estilo: 'btn-primary' },
   confirmar_texto:   { label: 'Confirmar texto',         estilo: 'btn-primary' },
   quitar_recursos:   { label: 'Quitar recursos (usar skills)',    estilo: 'btn-dark' },
@@ -172,17 +175,12 @@ BACO.store = (function () {
 
   function sincronizarEstructuraBorrador(b) {
     if (!b) return;
-    const recsRaw = Array.isArray(b.multimedia)
-      ? b.multimedia
-      : (Array.isArray(b.recursos) ? b.recursos : Object.values(b.recursos || {}));
+    const recsRaw = Array.isArray(b.recursos)
+      ? b.recursos
+      : (Array.isArray(b.multimedia) ? b.multimedia : Object.values(b.recursos || {}));
     const ordenados = ordenarRecursos(recsRaw);
     b.multimedia = ordenados;
-    const mapa = {};
-    ordenados.forEach((r, idx) => {
-      const id = r.id || ('rec_' + (idx + 1));
-      mapa[id] = r;
-    });
-    b.recursos = mapa;
+    b.recursos = ordenados;
     if (!Array.isArray(b.bloques_texto) || !b.bloques_texto.length) {
       b.bloques_texto = [b.texto_limpio || ''];
     }
@@ -220,8 +218,26 @@ BACO.store = (function () {
           etapas: ETAPAS_DEFAULT.slice()
         };
       }
-      estado.opciones = r.opciones || [];
-      estado.botones = Array.isArray(r.botones) ? r.botones.slice() : [];
+      const normalizarBoton = (b) => {
+        if (typeof b === 'object' && b !== null) {
+          return {
+            accion: b.accion,
+            label: b.label || (BACO.OPCIONES[b.accion] || {}).label || b.accion,
+            estilo: b.estilo || (BACO.OPCIONES[b.accion] || {}).estilo || 'btn-ghost'
+          };
+        }
+        const def = BACO.OPCIONES[b] || {};
+        return { accion: b, label: def.label || b, estilo: def.estilo || 'btn-ghost' };
+      };
+      const rawOpciones = Array.isArray(r.opciones) ? r.opciones : [];
+      if (Array.isArray(r.botones) && r.botones.length) {
+        estado.botones = r.botones.map(normalizarBoton);
+      } else if (rawOpciones.length) {
+        estado.botones = rawOpciones.map(normalizarBoton);
+      } else {
+        estado.botones = [];
+      }
+      estado.opciones = rawOpciones.map(normalizarBoton);
       estado.tags_acumulados = Array.isArray(r.tags_acumulados)
         ? r.tags_acumulados.slice()
         : ((r.borrador && r.borrador.tags) ? r.borrador.tags.slice() : []);
@@ -281,19 +297,22 @@ BACO.store = (function () {
 
     /* Aplica el EstadoRecursosResponse unificado (o una lista directa por compatibilidad) */
     actualizarRecursos(res) {
+      if (!res) return;
+      if (res.borrador) {
+        estado.borrador = res.borrador;
+        sincronizarEstructuraBorrador(estado.borrador);
+      }
+      if (res.estado) {
+        estado.flujo = res.estado;
+      }
       if (!estado.borrador) return;
-      const esObjetoEstado = res && !Array.isArray(res) && typeof res === 'object' &&
+      const esObjetoEstado = !Array.isArray(res) && typeof res === 'object' &&
         (Array.isArray(res.recursos) || Array.isArray(res.bloques_texto));
 
       if (esObjetoEstado) {
-        const recsOrdenados = ordenarRecursos(res.recursos || []);
-        const mapa = {};
-        recsOrdenados.forEach((r, i) => {
-          const id = r.id || ('rec_' + (i + 1));
-          mapa[id] = r;
-        });
-        estado.borrador.recursos = mapa;
-        estado.borrador.multimedia = recsOrdenados;
+        const recsOrdenados = ordenarRecursos(Array.isArray(res.recursos) ? res.recursos : []);
+        estado.borrador.recursos = recsOrdenados.slice();
+        estado.borrador.multimedia = recsOrdenados.slice();
         estado.borrador.orden_multimedia = recsOrdenados.map((_, i) => i);
         estado.borrador.posiciones = recsOrdenados.map((r) => (typeof r.posicion === 'number' ? r.posicion : 0));
         if (Array.isArray(res.bloques_texto) && res.bloques_texto.length) {

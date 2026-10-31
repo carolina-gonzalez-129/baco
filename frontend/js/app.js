@@ -1258,21 +1258,9 @@
     const railAviso = $('#avisoSkillsRail');
     const bannerSkills = $('#bannerSkills');
 
-    const tieneRecursos = Boolean(
-      b && (
-        (Array.isArray(b.multimedia) && b.multimedia.length > 0) ||
-        (b.recursos && Object.keys(b.recursos).length > 0)
-      )
-    ) || (Array.isArray(estadoEditor.recursos) && estadoEditor.recursos.length > 0);
-
-    const deshabilitadas = Boolean((b && b.skills_habilitadas === false) || tieneRecursos);
-    const motivoBase = (b && b.skills_motivo) ||
-      (tieneRecursos
-        ? 'El artículo contiene recursos multimedia cargados. Quitá los recursos si querés aplicar la plantilla o el validador automático.'
-        : 'Las skills de asistencia del agente están deshabilitadas para este borrador.');
-    const motivo = (tieneRecursos && !/quit[aá]/i.test(motivoBase))
-      ? (motivoBase + ' Quitá los recursos cargados para poder aplicar las skills.')
-      : motivoBase;
+    const deshabilitadas = Boolean(b && b.skills_habilitadas === false);
+    const motivo = (b && b.skills_motivo) ||
+      'Las skills de asistencia del agente están deshabilitadas para este borrador.';
 
     if (btnPl) {
       btnPl.disabled = deshabilitadas;
@@ -2097,18 +2085,29 @@
     const botones = (Array.isArray(s.botones) && s.botones.length)
       ? s.botones
       : (s.opciones || []).map((op) => {
+          if (typeof op === 'object' && op !== null) {
+            return {
+              accion: op.accion,
+              label: op.label || (BACO.OPCIONES[op.accion] || {}).label || op.accion,
+              estilo: op.estilo || (BACO.OPCIONES[op.accion] || {}).estilo || 'btn-ghost'
+            };
+          }
           const def = BACO.OPCIONES[op] || {};
           return { accion: op, label: def.label || op, estilo: def.estilo || 'btn-ghost' };
         });
     if (!botones.length) return;
 
     botones.forEach((btnDef) => {
-      const accion = btnDef.accion || btnDef;
+      const accion = typeof btnDef === 'object' && btnDef !== null ? btnDef.accion : btnDef;
       if (accion === 'confirmar_texto' && BACO.ACCION_PRINCIPAL[s.flujo] && BACO.ACCION_PRINCIPAL[s.flujo].campo === 'texto') {
         return;
       }
-      const label = btnDef.label || (BACO.OPCIONES[accion] || {}).label || accion;
-      const estilo = btnDef.estilo || (BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost';
+      const label = (typeof btnDef === 'object' && btnDef !== null && btnDef.label)
+        ? btnDef.label
+        : ((BACO.OPCIONES[accion] || {}).label || accion);
+      const estilo = (typeof btnDef === 'object' && btnDef !== null && btnDef.estilo)
+        ? btnDef.estilo
+        : ((BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost');
       const b = el('button', 'btn btn-sm ' + estilo, esc(label));
       b.disabled = s.enviando;
       b.onclick = () => accionar(accion, label);
@@ -2192,7 +2191,7 @@
         const tieneBloqueantes = Boolean(
           (resGuardar.validacion && resGuardar.validacion.valido === false) ||
           (resGuardar.validacion && Array.isArray(resGuardar.validacion.findings) && resGuardar.validacion.findings.some((f) => f.severity === 'Bloqueante')) ||
-          (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.includes(accionFinal)) ||
+          (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)) ||
           (sPost.validacion && sPost.validacion.valido === false)
         );
         const estadoNoRevision = (resGuardar.estado || sPost.flujo) !== 'REVISION_BORRADOR';
@@ -2387,7 +2386,7 @@
     try {
       const r = typeof metodo === 'string'
         ? await api[metodo]()
-        : (api.chat ? await api.chat(metodo.prompt) : await api.prompt(metodo));
+        : await api.turno({ mensaje: (metodo && (metodo.mensaje || metodo.prompt)) || '' });
       esperando.remove();
       estadoEditor.enviando = false;
       renderBloques();
@@ -2395,19 +2394,19 @@
 
       const textoRespuesta = (r && (r.texto_resultante || r.response)) || '';
 
-      if (textoRespuesta) {
+      if (textoRespuesta && metodo === 'aplicarPlantilla') {
         transferirTextoAlPanelIzquierdo(textoRespuesta, true);
       }
 
-      const textoChat = (metodo === 'aplicarPlantilla' || metodo === 'auditarSemantica')
+      const textoChat = (metodo === 'aplicarPlantilla')
         ? '🤖 Apliqué la **skill** y los resultados fueron transferidos al panel de carga'
-        : r.response;
+        : (r && r.response ? r.response : (r && r.mensaje ? r.mensaje : ''));
 
       const labelBotonTransf = '↖ Transferido al panel de carga (clic para volver a transferir)';
       const msgHtml = '<div class="respuesta-agente">' + nl2br(textoChat) + '</div>' +
-        '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">' + labelBotonTransf + '</button></div>';
+        (metodo === 'aplicarPlantilla' ? '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">' + labelBotonTransf + '</button></div>' : '');
       const bubbleEl = decir(msgHtml, [], true);
-      if (bubbleEl) {
+      if (bubbleEl && metodo === 'aplicarPlantilla') {
         const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
         if (btnTransf) {
           btnTransf.onclick = () => {
@@ -2438,8 +2437,6 @@
 
   function auditar() {
     invocarAgente('auditarSemantica', 'Auditar con el validador');
-  }
-
   }
 
   async function copiarBorrador() {
@@ -2495,26 +2492,37 @@
     if (ancho) b.querySelector('.bubble').classList.add('ancha');
 
     /* En el panel derecho (BACO Companion) nunca se muestra el botón "Confirmar texto" */
-    const opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto');
-
-    const sActual = store.get();
     const listaBotones = (Array.isArray(botones) && botones.length)
       ? botones
-      : (Array.isArray(sActual.botones) && sActual.botones.length)
-        ? sActual.botones
-        : (opcionesCompanion || []).map((op) => {
+      : (Array.isArray(store.get().botones) && store.get().botones.length)
+        ? store.get().botones
+        : (opciones || []).map((op) => {
+            if (typeof op === 'object' && op !== null) {
+              return {
+                accion: op.accion,
+                label: op.label || (BACO.OPCIONES[op.accion] || {}).label || op.accion,
+                estilo: op.estilo || (BACO.OPCIONES[op.accion] || {}).estilo || 'btn-ghost'
+              };
+            }
             const def = BACO.OPCIONES[op] || {};
             return { accion: op, label: def.label || op, estilo: def.estilo || 'btn-ghost' };
           });
 
-    const botonesCompanion = listaBotones.filter((btnDef) => (btnDef.accion || btnDef) !== 'confirmar_texto');
+    const botonesCompanion = listaBotones.filter((btnDef) => {
+      const accion = (typeof btnDef === 'object' && btnDef !== null) ? btnDef.accion : btnDef;
+      return accion !== 'confirmar_texto';
+    });
 
     if (botonesCompanion.length) {
       const cont = el('div', 'acciones');
       botonesCompanion.forEach((btnDef) => {
-        const accion = btnDef.accion || btnDef;
-        const label = btnDef.label || (BACO.OPCIONES[accion] || {}).label || accion;
-        const estilo = btnDef.estilo || (BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost';
+        const accion = (typeof btnDef === 'object' && btnDef !== null) ? btnDef.accion : btnDef;
+        const label = (typeof btnDef === 'object' && btnDef !== null && btnDef.label)
+          ? btnDef.label
+          : ((BACO.OPCIONES[accion] || {}).label || accion);
+        const estilo = (typeof btnDef === 'object' && btnDef !== null && btnDef.estilo)
+          ? btnDef.estilo
+          : ((BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost');
         const btn = el('button', 'btn btn-sm ' + estilo, esc(label));
         if (accion === 'ver_articulo_final') btn.id = 'btnVerArticuloFinal';
         btn.onclick = () => accionar(accion, label);
@@ -2552,11 +2560,7 @@
     if (s.flujo === 'ESPERANDO_METADATOS') {
       return enviarTurno({ mensaje: v, categoria_id: s.form.categoria_id }, v);
     }
-    if (s.flujo === 'ESPERANDO_PLANTILLA' ||
-        s.flujo === 'DECISION_TITULO' || s.flujo === 'DECISION_TEXTO') {
-      return enviarTurno({ mensaje: v }, v);
-    }
-    invocarAgente({ prompt: v }, v);
+    return enviarTurno({ mensaje: v }, v);
   }
 
   /* =========================================================
