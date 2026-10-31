@@ -254,4 +254,139 @@ def test_desde_finalizado_editar_texto_lleva_a_revision_borrador_con_finalizado_
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
     assert sesion.borrador.finalizado is False
 
+def test_misma_edicion_sin_cambios_no_invalida_finalizado(client):
+    """Verifica que enviar una edición idéntica (sin cambios) desde FINALIZADO no invalida la finalización."""
+    sid = "test-misma-edicion-sin-cambios"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.FINALIZADO,
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Configurar Punto de Venta Electrónico",
+            bloques_texto=[TEXTO_VALIDO],
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            categoria_nombre="General",
+            tags=["instructivo", "ventas"],
+            finalizado=True,
+            revision_intermedia=False,
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    # Enviamos edición con el mismo texto y título
+    r = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={
+            "accion": "editar",
+            "texto": TEXTO_VALIDO,
+            "titulo": "Configurar Punto de Venta Electrónico",
+        },
+    ).json()
+
+    assert r["estado"] == EstadoFlujo.FINALIZADO
+    assert r["mensaje"] == MSG_BORRADOR_FINALIZADO
+    assert sesion.estado == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.finalizado is True
+
+
+def test_edicion_con_cambio_real_invalida_finalizado(client):
+    """Verifica que una edición con cambios reales desde FINALIZADO invalida la finalización y vuelve a REVISION_BORRADOR."""
+    sid = "test-edicion-cambio-real"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.FINALIZADO,
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Configurar Punto de Venta Electrónico",
+            bloques_texto=[TEXTO_VALIDO],
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            categoria_nombre="General",
+            tags=["instructivo", "ventas"],
+            finalizado=True,
+            revision_intermedia=False,
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    nuevo_texto = (
+        TEXTO_VALIDO + "\n\nSe agrega información adicional sustancial para verificar "
+        "que el cambio real en el contenido invalida el estado de finalización del borrador."
+    )
+
+    r = client.post(
+        "/chat",
+        headers={"X-Session-ID": sid},
+        json={"accion": "editar", "texto": nuevo_texto},
+    ).json()
+
+    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
+
+
+def test_actualizar_borrador_mismo_texto_no_invalida():
+    """Verifica que actualizar_borrador_texto con el mismo texto no invalida finalizado."""
+    from baco.server.services.orquestador.sesion import gestor_sesiones
+
+    sid = "test-mismo-texto-no-invalida"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.FINALIZADO,
+        borrador=BorradorSesion(
+            modo="nuevo",
+            titulo="Configurar Punto de Venta Electrónico",
+            bloques_texto=[TEXTO_VALIDO],
+            finalizado=True,
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    ok = gestor_sesiones.actualizar_borrador_texto(sid, TEXTO_VALIDO)
+
+    assert ok is True
+    assert sesion.estado == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.finalizado is True
+
+
+def test_contenido_adicional_misma_modificacion_no_invalida_y_cambio_real_si():
+    """Verifica que modificar un ítem de contenido adicional sin cambios no invalida, pero un cambio real sí."""
+    from baco.server.services.orquestador.sesion import gestor_sesiones
+
+    sid = "test-ca-mismo-contenido"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.FINALIZADO,
+        borrador=BorradorSesion(
+            modo="enriquecimiento",
+            articulo_original_id=101,
+            titulo="Artículo Enriquecido",
+            bloques_texto=[TEXTO_VALIDO],
+            finalizado=True,
+        ),
+    )
+    SESIONES[sid] = sesion
+    it = gestor_sesiones.agregar_contenido_adicional(sid, "Contenido base del ítem")
+
+    # Restauramos finalizado y huella
+    sesion.estado = EstadoFlujo.FINALIZADO
+    sesion.borrador.finalizado = True
+    sesion.guardar_huella()
+
+    # 1. Modificar con el mismo contenido no invalida
+    gestor_sesiones.modificar_item_contenido_adicional(sid, it.id, "Contenido base del ítem")
+    assert sesion.estado == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.finalizado is True
+
+    # 2. Reordenar con el mismo orden no invalida
+    gestor_sesiones.reordenar_contenido_adicional(sid, [it.id])
+    assert sesion.estado == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.finalizado is True
+
+    # 3. Modificar con contenido diferente sí invalida
+    gestor_sesiones.modificar_item_contenido_adicional(sid, it.id, "Contenido modificado y diferente")
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
 

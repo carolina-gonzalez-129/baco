@@ -64,9 +64,31 @@ async def manejar_turno(
             or opcion in ("editar", "sanitizar")
         )
         if hubo_intento_edicion:
-            sesion.estado = EstadoFlujo.REVISION_BORRADOR
-            if sesion.borrador:
-                sesion.borrador.finalizado = False
+            txt_edicion = req.texto
+            if txt_edicion is None and opcion == "editar" and req.mensaje and req.mensaje.strip().lower() != "editar":
+                txt_edicion = req.mensaje
+
+            tiene_datos_edicion = any(v is not None for v in (req.titulo, txt_edicion, req.categoria_id, req.tags))
+            if tiene_datos_edicion:
+                if sesion.huella_difiere(
+                    titulo=req.titulo,
+                    texto=txt_edicion,
+                    categoria_id=req.categoria_id,
+                    tags=req.tags,
+                ):
+                    sesion.estado = EstadoFlujo.REVISION_BORRADOR
+                    if sesion.borrador:
+                        sesion.borrador.finalizado = False
+                else:
+                    return construir_respuesta(
+                        sesion,
+                        MSG_BORRADOR_FINALIZADO,
+                        OPCIONES_FINALIZADO,
+                    )
+            else:
+                sesion.estado = EstadoFlujo.REVISION_BORRADOR
+                if sesion.borrador:
+                    sesion.borrador.finalizado = False
         elif opcion == "copiar_borrador" or (not hubo_intento_edicion and not opcion):
             return construir_respuesta(
                 sesion,

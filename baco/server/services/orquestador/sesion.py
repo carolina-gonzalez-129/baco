@@ -1,3 +1,4 @@
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,45 @@ def clave_busqueda(tipo: str, texto: str) -> tuple[str, str]:
     return (tipo, " ".join((texto or "").split()).casefold())
 
 
+def calcular_huella_contenido(
+    titulo: Optional[str] = None,
+    texto_limpio: Optional[str] = None,
+    categoria: Any = None,
+    tags: Optional[List[str]] = None,
+    contenido_adicional: Optional[List[Any]] = None,
+) -> str:
+    tit = (titulo or "").strip()
+    txt = (texto_limpio or "").strip()
+    if isinstance(categoria, tuple):
+        cat = categoria
+    elif isinstance(categoria, int):
+        cat = (categoria, "")
+    else:
+        cat = (None, str(categoria) if categoria is not None else "")
+    t_list = tuple(t.strip() for t in (tags or []) if t and t.strip())
+    ca_list = []
+    for it in (contenido_adicional or []):
+        if hasattr(it, "id"):
+            ca_list.append((
+                str(getattr(it, "id", "")),
+                str(getattr(it, "tipo", "")),
+                str(getattr(it, "contenido", "")).strip(),
+                int(getattr(it, "posicion", 0)),
+            ))
+        elif isinstance(it, dict):
+            ca_list.append((
+                str(it.get("id", "")),
+                str(it.get("tipo", "")),
+                str(it.get("contenido", "")).strip(),
+                int(it.get("posicion", 0)),
+            ))
+        else:
+            ca_list.append(str(it))
+    tupla = (tit, txt, cat, t_list, tuple(ca_list))
+    return hashlib.sha256(str(tupla).encode("utf-8")).hexdigest()
+
+
+
 @dataclass
 class SesionChat:
     session_id: str
@@ -65,6 +105,110 @@ class SesionChat:
     articulos_descartados_ids: List[int] = field(default_factory=list)
     descarto_serie: bool = False
     busquedas_descartadas: Set[Tuple[str, str]] = field(default_factory=set)
+    huella_validacion: Optional[str] = None
+
+    @property
+    def huella(self) -> Optional[str]:
+        return self.huella_validacion
+
+    @huella.setter
+    def huella(self, valor: Optional[str]) -> None:
+        self.huella_validacion = valor
+
+    def calcular_huella(self) -> str:
+        b = getattr(self, "borrador", None)
+        titulo = (b.titulo if b else getattr(self, "titulo", "")) or ""
+        texto_limpio = (b.texto_limpio if b else getattr(self, "texto_limpio", "")) or ""
+        categoria = (b.categoria_id if b else getattr(self, "categoria_id", None))
+        tags = (b.tags if b else getattr(self, "tags", [])) or []
+        ca = (b.contenido_adicional if b else getattr(self, "contenido_adicional", [])) or []
+        return calcular_huella_contenido(
+            titulo=titulo,
+            texto_limpio=texto_limpio,
+            categoria=categoria,
+            tags=tags,
+            contenido_adicional=ca,
+        )
+
+    def guardar_huella(self) -> str:
+        h = self.calcular_huella()
+        super().__setattr__("huella_validacion", h)
+        return h
+
+    def calcular_huella_con(
+        self,
+        *,
+        titulo: Optional[str] = None,
+        texto: Optional[str] = None,
+        categoria_id: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        contenido_adicional: Optional[List[Any]] = None,
+    ) -> str:
+        b = getattr(self, "borrador", None)
+        tit_act = (b.titulo if b else getattr(self, "titulo", "")) or ""
+        txt_act = (b.texto_limpio if b else getattr(self, "texto_limpio", "")) or ""
+        cat_act = (b.categoria_id if b else getattr(self, "categoria_id", None))
+        tags_act = (b.tags if b else getattr(self, "tags", [])) or []
+        ca_act = (b.contenido_adicional if b else getattr(self, "contenido_adicional", [])) or []
+
+        tit = titulo if titulo is not None else tit_act
+        txt = texto if texto is not None else txt_act
+        cat = categoria_id if categoria_id is not None else cat_act
+        t = tags if tags is not None else tags_act
+        ca = contenido_adicional if contenido_adicional is not None else ca_act
+
+        return calcular_huella_contenido(
+            titulo=tit,
+            texto_limpio=txt,
+            categoria=cat,
+            tags=t,
+            contenido_adicional=ca,
+        )
+
+    def huella_difiere(
+        self,
+        *,
+        titulo: Optional[str] = None,
+        texto: Optional[str] = None,
+        categoria_id: Optional[int] = None,
+        tags: Optional[List[str]] = None,
+        contenido_adicional: Optional[List[Any]] = None,
+    ) -> bool:
+        if self.huella_validacion is None:
+            b = getattr(self, "borrador", None)
+            est = getattr(self, "estado", None)
+            if (b and getattr(b, "finalizado", False)) or est == EstadoFlujo.FINALIZADO:
+                super().__setattr__("huella_validacion", self.calcular_huella())
+            else:
+                return True
+        huella_eval = self.calcular_huella_con(
+            titulo=titulo,
+            texto=texto,
+            categoria_id=categoria_id,
+            tags=tags,
+            contenido_adicional=contenido_adicional,
+        )
+        return huella_eval != self.huella_validacion
+
+    def __post_init__(self) -> None:
+        super().__setattr__("_initialized", True)
+        if self.huella_validacion is None:
+            b = getattr(self, "borrador", None)
+            est = getattr(self, "estado", None)
+            val = getattr(self, "validacion", None)
+            if val is not None or (b is not None and getattr(b, "finalizado", False)) or est == EstadoFlujo.FINALIZADO:
+                super().__setattr__("huella_validacion", self.calcular_huella())
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
+        if not getattr(self, "_initialized", False):
+            return
+        if name == "validacion" and value is not None:
+            super().__setattr__("huella_validacion", self.calcular_huella())
+        elif name == "estado" and value == EstadoFlujo.FINALIZADO:
+            super().__setattr__("huella_validacion", self.calcular_huella())
+        elif name == "borrador" and value is not None and getattr(value, "finalizado", False):
+            super().__setattr__("huella_validacion", self.calcular_huella())
 
     def registrar_fallo(self, estado_clave: Optional[str] = None) -> int:
         clave = estado_clave or self.estado.value
@@ -179,6 +323,9 @@ class SesionChat:
         if tipo_plantilla is not None and self.borrador is not None:
             self.borrador.tipo_plantilla = tipo_plantilla
 
+        if self.borrador and getattr(self.borrador, "finalizado", False):
+            _invalidar_finalizado(self)
+
 
 # Estados en los que todavía se está resolviendo la deduplicación (o no empezó)
 _ESTADOS_PREVIOS_A_DEDUPLICACION = frozenset({
@@ -231,9 +378,10 @@ def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: Optional[Sesi
 
 def _invalidar_finalizado(sesion: SesionChat) -> None:
     if sesion.borrador and sesion.borrador.finalizado:
-        sesion.borrador.finalizado = False
-        if sesion.estado == EstadoFlujo.FINALIZADO:
-            sesion.estado = EstadoFlujo.REVISION_BORRADOR
+        if sesion.huella_difiere():
+            sesion.borrador.finalizado = False
+            if sesion.estado == EstadoFlujo.FINALIZADO:
+                sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
 
 class GestorSesiones:
@@ -348,12 +496,11 @@ class GestorSesiones:
         sesion = self._sesiones[session_id]
         if sesion.borrador is not None:
             texto_strip = (nuevo_texto or "").strip()
-            if sesion.borrador.texto_limpio != texto_strip:
-                _invalidar_finalizado(sesion)
             sesion.borrador.bloques_texto = [texto_strip] if texto_strip else []
             sesion.bloques_texto = list(sesion.borrador.bloques_texto)
             sesion.texto_limpio = sesion.borrador.texto_limpio
             sesion.texto = sesion.borrador.texto_alineado_discourse
+            _invalidar_finalizado(sesion)
             sesion.updated_at = ahora
             return True
         return False
@@ -744,3 +891,4 @@ reordenar_contenido_adicional = gestor_sesiones.reordenar_contenido_adicional
 modificar_item_contenido_adicional = gestor_sesiones.modificar_item_contenido_adicional
 obtener_contenido_adicional = gestor_sesiones.obtener_contenido_adicional
 descartar_borrador = gestor_sesiones.descartar_borrador
+calcular_huella_contenido = calcular_huella_contenido
