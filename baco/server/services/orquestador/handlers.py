@@ -1367,8 +1367,13 @@ def _aplicar_mutaciones_borrador(
     tags_nuevos = None
     plantilla_nueva = None
     if req.tags is not None:
-        plantilla_nueva = extraer_tipo_plantilla(req.tags) or b.tipo_plantilla
-        tags_nuevos = combinar_tags(plantilla_nueva, req.tags)
+        plantilla_nueva = b.tipo_plantilla or extraer_tipo_plantilla(req.tags)
+        tags_filtrados = [
+            t
+            for t in req.tags
+            if extraer_tipo_plantilla([t]) is None or extraer_tipo_plantilla([t]) == plantilla_nueva
+        ]
+        tags_nuevos = combinar_tags(plantilla_nueva, tags_filtrados)
 
     categoria_id_nueva = None
     categoria_nombre_nuevo = None
