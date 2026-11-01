@@ -1,5 +1,3 @@
-import pytest
-
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.services.validar_articulo import (
     sanitizar_borrador,

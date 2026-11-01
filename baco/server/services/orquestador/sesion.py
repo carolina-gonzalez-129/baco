@@ -1,5 +1,4 @@
 import hashlib
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -24,7 +23,6 @@ from baco.server.services.orquestador.recursos_service import (
     eliminar_recurso_borrador as servicio_eliminar_recurso,
     componer_texto_publicable,
     extraer_recursos_y_bloques_texto,
-    fusionar_bloques_y_recursos_sin_colision,
     limpiar_archivos_temporales_sesion,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
