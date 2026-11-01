@@ -843,8 +843,7 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
         "continuar_revision": "continuar_revision", "continuar revision": "continuar_revision", "continuar revisión": "continuar_revision",
         "confirmar_texto": "confirmar_texto", "confirmar texto": "confirmar_texto",
-        "conforme": "conforme", "estoy conforme": "conforme", "estoy_conforme": "conforme", "aprobar": "conforme", "apruebo": "conforme", "confirmar": "conforme", "confirmado": "conforme", "omitir": "conforme",
-        "aceptar": "aceptar_metadatos", "acepto": "aceptar_metadatos", "aceptar_metadatos": "aceptar_metadatos", "aceptar metadatos": "aceptar_metadatos", "conservar": "aceptar_metadatos", "conservar metadatos": "aceptar_metadatos",
+        "aceptar_metadatos": "aceptar_metadatos", "aceptar metadatos": "aceptar_metadatos", "conservar": "aceptar_metadatos", "conservar metadatos": "aceptar_metadatos",
         "rechazar_metadatos": "rechazar_metadatos", "rechazar metadatos": "rechazar_metadatos",
         "copiar borrador": "copiar_borrador", "copiar_borrador": "copiar_borrador", "copiar": "copiar_borrador",
         "rechazar": "rechazar", "rechazo": "rechazar", "cancelar": "rechazar",
@@ -855,6 +854,8 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "ayuda": "ayuda", "opciones": "ayuda", "que hago": "ayuda", "qué hago": "ayuda", "?": "ayuda", "instrucciones": "ayuda",
         "instructivo": "instructivo", "instructivos": "instructivo",
         "soluciones": "soluciones", "solucion": "soluciones", "solución": "soluciones",
+        "aplicar_plantilla": "aplicar_plantilla", "aplicar plantilla": "aplicar_plantilla",
+        "auditar": "auditar", "auditoria": "auditar", "auditar calidad": "auditar", "auditar_calidad": "auditar",
     }
     return mapa.get(bruto, bruto)
 
@@ -926,8 +927,12 @@ def construir_respuesta(
 
     opciones_finales = list(opciones)
     if tiene_meta_pendiente:
-        if "aceptar" not in opciones_finales and "aceptar_metadatos" not in opciones_finales:
-            opciones_finales = ["aceptar", "rechazar"] + [o for o in opciones_finales if o not in ("aceptar", "rechazar")]
+        if "aceptar_metadatos" not in opciones_finales:
+            opciones_finales = ["aceptar_metadatos", "rechazar_metadatos"] + [
+                o for o in opciones_finales if o not in ("aceptar_metadatos", "rechazar_metadatos")
+            ]
+
+    sesion.ultimas_opciones = list(opciones_finales)
 
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
@@ -1059,9 +1064,9 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         )
 
     obs = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in sugerencias)
-    detalle_sug = f"\nSugerencias:\n{obs}\n\n" if obs else "\n\n"
+    detalle_sug = f"Sugerencias:\n{obs}\n\n" if obs else ""
     return (
-        f"{prefijo}El borrador superó las validaciones.{detalle_sug}{msg_cierre}",
+        f"{prefijo.strip() + chr(10) + chr(10) if prefijo.strip() else ''}{detalle_sug}{msg_cierre}".strip(),
         ops_validas,
     )
 
@@ -1089,7 +1094,9 @@ def avanzar_a_metadatos_o_revision(
         )
         msg_val, ops_val = validar_borrador(sesion, prefijo)
         mensaje_espera = f"{prefijo}Esperando confirmación o rechazo de los metadatos heredados en el panel izquierdo."
-        ops = ["aceptar", "rechazar"] + [o for o in ops_val if o not in ("aceptar", "rechazar")]
+        ops = ["aceptar_metadatos", "rechazar_metadatos"] + [
+            o for o in ops_val if o not in ("aceptar_metadatos", "rechazar_metadatos")
+        ]
         return construir_respuesta(
             sesion,
             mensaje_espera,

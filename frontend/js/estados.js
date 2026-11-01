@@ -79,6 +79,8 @@ BACO.OPCIONES = {
   continuar:         { label: 'Continuar con mi texto',  estilo: 'btn-ghost' },
   instructivo:       { label: 'Instructivo',             estilo: 'btn-dark' },
   soluciones:        { label: 'Soluciones',              estilo: 'btn-dark' },
+  aplicar_plantilla: { label: 'Aplicar plantilla',       estilo: 'btn-dark' },
+  auditar:           { label: 'Auditar',                 estilo: 'btn-dark' },
   conforme:          { label: 'Continuar',          estilo: 'btn-primary' },
   continuar_revision: { label: 'Continuar',               estilo: 'btn-primary' },
   aprobar:           { label: 'Continuar',          estilo: 'btn-primary' },

@@ -1367,7 +1367,7 @@ def test_mensajes_flujo_conformidad(client):
     ).json()
     assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert (
-        "Revisá el borrador. Cuando termines, tocá **Finalizar**."
+        "podés auditar la calidad editorial del contenido"
     ) in r_meta["mensaje"]
 
     # 2. Al finalizar (tocá Finalizar / accion: finalizar)
@@ -1400,7 +1400,7 @@ def test_mensajes_flujo_conformidad(client):
     ).json()
     assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert (
-        "Revisá el borrador. Cuando termines, tocá **Finalizar**."
+        "podés auditar la calidad editorial del contenido"
     ) in r_edit["mensaje"]
 
 

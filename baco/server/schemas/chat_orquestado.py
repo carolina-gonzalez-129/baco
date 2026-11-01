@@ -185,6 +185,34 @@ class BorradorSesion(BaseModel):
         default=False,
         description="Indica si el usuario ya revisó o confirmó los metadatos heredados.",
     )
+    resultado_skill_pendiente: bool = Field(
+        default=False,
+        description="Indica si hay un resultado de skill (plantilla o auditor) visible en la Vista previa.",
+    )
+    resultado_skill_desactualizado: bool = Field(
+        default=False,
+        description="Indica si el resultado de la skill en la Vista previa quedó desactualizado tras editar el texto del Editor.",
+    )
+    skill_pendiente: Optional[str] = Field(
+        default=None,
+        description="Identifica la skill pendiente en la Vista previa ('plantilla' o 'auditor').",
+    )
+
+    @property
+    def skill_desactualizada(self) -> bool:
+        return self.resultado_skill_desactualizado
+
+    @skill_desactualizada.setter
+    def skill_desactualizada(self, val: bool) -> None:
+        self.resultado_skill_desactualizado = val
+
+    @property
+    def resultado_desactualizado(self) -> bool:
+        return self.resultado_skill_desactualizado
+
+    @resultado_desactualizado.setter
+    def resultado_desactualizado(self, val: bool) -> None:
+        self.resultado_skill_desactualizado = val
 
     @model_validator(mode="before")
     @classmethod
@@ -800,6 +828,9 @@ class ChatOrquestadorResponse(BaseModel):
                 bts = []
                 for op in ops:
                     if isinstance(op, str):
+                        if op == "continuar" and data.get("estado") == EstadoFlujo.DECISION_TEXTO:
+                            bts.append({"accion": "continuar", "label": "Continuar con mi texto", "estilo": "btn-ghost"})
+                            continue
                         desc = DESCRIPTORES_BOTONES.get(
                             op,
                             {"accion": op, "label": op.replace("_", " ").capitalize(), "estilo": "btn-ghost"},

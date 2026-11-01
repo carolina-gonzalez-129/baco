@@ -13,10 +13,10 @@ OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
 OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
 OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
-OPCIONES_REVISION_VALIDO = ["finalizar", "editar", "rechazar"]
+OPCIONES_REVISION_VALIDO = ["auditar", "continuar", "volver"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 # Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
-OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar", "volver"]
+OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador", "volver"]
 
@@ -26,21 +26,20 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "enriquecer": {"accion": "enriquecer", "label": "Enriquecer el existente", "estilo": "btn-dark"},
     "actualizar": {"accion": "actualizar", "label": "Actualizar el existente", "estilo": "btn-dark"},
     "descartar": {"accion": "descartar", "label": "Es un tema distinto", "estilo": "btn-ghost"},
-    "continuar": {"accion": "continuar", "label": "Continuar con mi texto", "estilo": "btn-ghost"},
+    "continuar": {"accion": "continuar", "label": "Continuar", "estilo": "btn-primary"},
     "instructivo": {"accion": "instructivo", "label": "Instructivo", "estilo": "btn-dark"},
     "soluciones": {"accion": "soluciones", "label": "Soluciones", "estilo": "btn-dark"},
-    "conforme": {"accion": "conforme", "label": "Continuar", "estilo": "btn-primary"},
     "continuar_revision": {"accion": "continuar_revision", "label": "Continuar", "estilo": "btn-primary"},
-    "aprobar": {"accion": "aprobar", "label": "Continuar", "estilo": "btn-primary"},
+    "aplicar_plantilla": {"accion": "aplicar_plantilla", "label": "Aplicar plantilla", "estilo": "btn-dark"},
+    "auditar": {"accion": "auditar", "label": "Auditar", "estilo": "btn-dark"},
     "editar": {"accion": "editar", "label": "Seguir editando", "estilo": "btn-ghost"},
     "seguir_editando": {"accion": "seguir_editando", "label": "Seguir editando", "estilo": "btn-ghost"},
     "copiar_borrador": {"accion": "copiar_borrador", "label": "Copiar borrador", "estilo": "btn-primary"},
-    "sanitizar": {"accion": "sanitizar", "label": "Sanitizar", "estilo": "btn-ghost"},
+    "sanitizar": {"accion": "sanitizar", "label": "Quitar datos sensibles", "estilo": "btn-ghost"},
     "rechazar": {"accion": "rechazar", "label": "Descartar borrador", "estilo": "btn-ghost"},
     "confirmar_rechazo": {"accion": "confirmar_rechazo", "label": "Sí, descartar", "estilo": "btn-peligro"},
-    "aceptar": {"accion": "aceptar", "label": "Aceptar", "estilo": "btn-primary"},
-    "aceptar_metadatos": {"accion": "aceptar_metadatos", "label": "Aceptar metadatos heredados", "estilo": "btn-primary"},
-    "rechazar_metadatos": {"accion": "rechazar_metadatos", "label": "Rechazar metadatos heredados", "estilo": "btn-secondary"},
+    "aceptar_metadatos": {"accion": "aceptar_metadatos", "label": "Mantener categoría y tags", "estilo": "btn-primary"},
+    "rechazar_metadatos": {"accion": "rechazar_metadatos", "label": "Elegir otros", "estilo": "btn-secondary"},
     "ayuda": {"accion": "ayuda", "label": "¿Qué hago acá?", "estilo": "btn-ghost"},
     "reiniciar": {"accion": "reiniciar", "label": "Empezar de nuevo", "estilo": "btn-ghost"},
     "ver_articulo_final": {"accion": "ver_articulo_final", "label": "Ver artículo", "estilo": "btn-primary"},
@@ -116,22 +115,24 @@ MSG_SESION_EXPIRADA = (
 
 PREFIJO_SIN_DUPLICADOS = " "
 PREFIJO_CONTINUAR_PROPIO = " "
-PREFIJO_METADATOS_REGISTRADOS = " "
+PREFIJO_METADATOS_REGISTRADOS = ""
 PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque **hay puntos obligatorios pendientes**:\n"
 
-MSG_ANTES_DE_FINALIZAR = (
-    "Revisá el borrador. Cuando termines, tocá **Finalizar**."
+MSG_CATEGORIA_TAGS_COMPLETOS = (
+    "¡Perfecto! Si querés, podés auditar la calidad editorial del contenido, o podés **Continuar** si ya la tiene."
 )
-MSG_ANTES_DE_CONTINUAR = (
-    "Revisamos tu texto y no hay puntos obligatorios pendientes. Podés seguir editándolo o tocar **Continuar** para completar la categoría y las etiquetas."
+MSG_PLANTILLA_VALIDADA = (
+    "¡Perfecto! Si querés, podés aplicar la plantilla para estandarizar el contenido, o podés **Continuar** si ya la tiene."
 )
+MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
+MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
 MSG_USAR_CONTINUAR = (
     "Todavía faltan la categoría y las etiquetas: tocá **Continuar** para completarlas."
 )
 MSG_BORRADOR_FINALIZADO = (
-    "✅ Registramos tu borrador. Pasó las validaciones mínimas. Todavía no está publicado: "
+    "✅ Registramos tu borrador. Todavía no está publicado: "
     "la aprobación y publicación final las hace un moderador."
 )
 
@@ -359,7 +360,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             )
         if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
             return (
-                "¿Querés darle formato estándar a tu texto? Usá Aplicar plantilla en el panel, o seguí editando.",
+                "¿Querés darle formato estándar a tu texto? Usá **Aplicar plantilla** en el panel, o seguí editando.",
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (

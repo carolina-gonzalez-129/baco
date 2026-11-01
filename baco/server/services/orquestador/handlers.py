@@ -1455,6 +1455,10 @@ async def handle_revision_borrador(
     if opcion == "volver":
         return retroceder(sesion)
 
+    if opcion in ("aplicar_plantilla", "auditar"):
+        msg, ops = validar_borrador(sesion)
+        return construir_respuesta(sesion, msg, ops)
+
     if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
         return _continuar_a_metadatos(sesion)
 
@@ -1462,7 +1466,7 @@ async def handle_revision_borrador(
         msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
         return construir_respuesta(sesion, msg, ops)
 
-    if opcion == "finalizar":
+    if opcion in ("finalizar", "continuar", "continuar_revision"):
         return _registrar_finalizado(sesion)
 
     if opcion == "rechazar":
