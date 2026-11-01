@@ -134,6 +134,10 @@ class ChatResponse(BaseModel):
         ...,
         description="Respuesta textual devuelta por el agente (artículo formateado en markdown según la plantilla elegida, dictamen de validación o respuesta conversacional)."
     )
+    texto_corregido: Optional[str] = Field(
+        default=None,
+        description="Texto completo corregido delimitado por el auditor semántico, o None si no corresponde o no hubo match."
+    )
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

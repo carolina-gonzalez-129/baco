@@ -19,13 +19,10 @@ OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador", "volver"]
-OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
 
 DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
     "confirmar_texto": {"accion": "confirmar_texto", "label": "Confirmar texto", "estilo": "btn-primary"},
-    "quitar_recursos": {"accion": "quitar_recursos", "label": "Quitar recursos (usar skills)", "estilo": "btn-dark"},
-    "seguir_con_recursos": {"accion": "seguir_con_recursos", "label": "Seguir con recursos (sin skills)", "estilo": "btn-ghost"},
     "enriquecer": {"accion": "enriquecer", "label": "Enriquecer el existente", "estilo": "btn-dark"},
     "actualizar": {"accion": "actualizar", "label": "Actualizar el existente", "estilo": "btn-dark"},
     "descartar": {"accion": "descartar", "label": "Es un tema distinto", "estilo": "btn-ghost"},
@@ -49,11 +46,6 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "ver_articulo_final": {"accion": "ver_articulo_final", "label": "Ver artículo", "estilo": "btn-primary"},
     "finalizar": {"accion": "finalizar", "label": "Finalizar", "estilo": "btn-primary"},
 }
-
-MSG_OPCIONES_RECURSOS_SKILLS = (
-    " El texto ingresado contiene recursos multimedia (imágenes o enlaces a archivos). "
-    "Las skills de asistencia de IA (aplicación de plantilla y auditoría semántica) solo admiten texto plano sin recursos.\n\n"
-)
 
 MSG_VOLVER_TITULO = (
     "Volvemos al paso anterior. Ingresá un nuevo **título** para tu artículo:"

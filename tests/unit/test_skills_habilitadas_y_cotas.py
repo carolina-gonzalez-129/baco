@@ -93,7 +93,7 @@ def test_rechazo_mas_alla_de_texto_max_percentil_99():
 # 3. Tests con y sin recursos
 # ==============================================================================
 
-def test_skills_deshabilitadas_cuando_tiene_recursos_aunque_texto_sea_corto():
+def test_skills_habilitadas_cuando_tiene_recursos_si_texto_es_corto():
     rec = Recurso(
         id="rec_1",
         tipo="imagen",
@@ -107,12 +107,11 @@ def test_skills_deshabilitadas_cuando_tiene_recursos_aunque_texto_sea_corto():
         texto_limpio="Texto breve de prueba [[recurso:rec_1]] con contenido.",
         recursos={"rec_1": rec},
     )
-    assert borrador.skills_habilitadas is False
-    assert borrador.skills_motivo is not None
-    assert "recursos multimedia" in borrador.skills_motivo
+    assert borrador.skills_habilitadas is True
+    assert borrador.skills_motivo is None
 
 
-def test_skills_deshabilitadas_con_recursos_y_texto_excedido_informa_ambos():
+def test_skills_deshabilitadas_cuando_texto_excedido_con_recursos():
     rec = Recurso(
         id="rec_1",
         tipo="imagen",
@@ -129,14 +128,13 @@ def test_skills_deshabilitadas_con_recursos_y_texto_excedido_informa_ambos():
     assert borrador.skills_habilitadas is False
     assert borrador.skills_motivo is not None
     assert "supera el límite" in borrador.skills_motivo
-    assert "recursos multimedia" in borrador.skills_motivo
 
 
 # ==============================================================================
 # 4. El cliente no puede forzar el flag (seguridad del servidor)
 # ==============================================================================
 
-def test_cliente_no_puede_forzar_skills_habilitadas():
+def test_cliente_no_puede_forzar_skills_habilitadas_si_supera_texto_max():
     rec = Recurso(
         id="rec_1",
         tipo="imagen",
@@ -144,11 +142,11 @@ def test_cliente_no_puede_forzar_skills_habilitadas():
         referencia="https://example.com/foto.png",
         orden=0,
     )
-    # Intento malicioso de inyectar skills_habilitadas=True en el diccionario
+    # Intento de inyectar skills_habilitadas=True superando TEXTO_MAX
     data = {
         "modo": "nuevo",
         "titulo": "Título de prueba para artículo",
-        "texto_limpio": "Texto con imagen [[recurso:rec_1]]",
+        "texto_limpio": "A" * (TEXTO_MAX + 50),
         "recursos": {"rec_1": rec},
         "skills_habilitadas": True,
         "skills_motivo": None,
@@ -161,38 +159,6 @@ def test_cliente_no_puede_forzar_skills_habilitadas():
 # ==============================================================================
 # 5. POST /chat/aplicar-plantilla y POST /chat/auditar-semantica devuelven 422
 # ==============================================================================
-
-def test_endpoints_skills_devuelven_422_cuando_flag_es_false_por_recursos(client):
-    sid = "test-session-skills-recursos"
-    rec = Recurso(
-        id="rec_1",
-        tipo="imagen",
-        nombre="Captura",
-        referencia="https://example.com/foto.png",
-        orden=0,
-    )
-    borrador = BorradorSesion(
-        modo="nuevo",
-        titulo="Configuración de prueba en Ventas",
-        texto_limpio="Contenido válido para el borrador [[recurso:rec_1]] con suficientes caracteres de prueba.",
-        recursos={"rec_1": rec},
-        tipo_plantilla="instructivo",
-        tags=["instructivo", "ventas"],
-        finalizado=True,
-    )
-    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.FINALIZADO, borrador=borrador)
-    SESIONES[sid] = sesion
-
-    # Probar aplicar-plantilla
-    res_plantilla = client.post("/chat/aplicar-plantilla", headers={"X-Session-ID": sid})
-    assert res_plantilla.status_code == 422
-    assert "recursos multimedia" in res_plantilla.json()["detail"]
-
-    # Probar auditar-semantica
-    res_auditoria = client.post("/chat/auditar-semantica", headers={"X-Session-ID": sid})
-    assert res_auditoria.status_code == 422
-    assert "recursos multimedia" in res_auditoria.json()["detail"]
-
 
 def test_endpoints_skills_devuelven_422_cuando_flag_es_false_por_longitud(client):
     sid = "test-session-skills-largo"
@@ -274,47 +240,6 @@ async def test_orquestador_flujo_normal_al_pegar_texto_con_recursos(mock_buscado
     req_conf = ChatOrquestadorRequest(session_id=sid, accion="confirmar_texto")
     resp_conf = await manejar_turno(req_conf, mock_buscador)
     assert resp_conf.borrador is not None
-    assert resp_conf.borrador.skills_habilitadas is False
-    assert "recursos" in resp_conf.borrador.skills_motivo.lower()
-
-
-@pytest.mark.anyio
-async def test_orquestador_quitar_recursos_habilita_skills(mock_buscador):
-    sid = "test-orq-quitar-recursos"
-    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.ESPERANDO_TEXTO, titulo="Configuración del módulo")
-    SESIONES[sid] = sesion
-
-    # Paso 1: Pega texto con imagen
-    texto_con_foto = "Pasos para ingresar al módulo: ![captura](https://finneg.com/img/screen.png) y guardar."
-    req1 = ChatOrquestadorRequest(session_id=sid, texto=texto_con_foto)
-    await manejar_turno(req1, mock_buscador)
-
-    # Paso 2: Elige quitar recursos
-    req2 = ChatOrquestadorRequest(session_id=sid, accion="quitar_recursos")
-    resp2 = await manejar_turno(req2, mock_buscador)
-
-    assert resp2.borrador is not None
-    assert len(resp2.borrador.recursos) == 0
-    assert resp2.borrador.skills_habilitadas is True
-    assert resp2.borrador.skills_motivo is None
-
-
-@pytest.mark.anyio
-async def test_orquestador_seguir_con_recursos_deshabilita_skills(mock_buscador):
-    sid = "test-orq-seguir-recursos"
-    sesion = SesionChat(session_id=sid, estado=EstadoFlujo.ESPERANDO_TEXTO, titulo="Configuración del módulo")
-    SESIONES[sid] = sesion
-
-    # Paso 1: Pega texto con imagen
-    texto_con_foto = "Pasos para ingresar al módulo: ![captura](https://finneg.com/img/screen.png) y guardar."
-    req1 = ChatOrquestadorRequest(session_id=sid, texto=texto_con_foto)
-    await manejar_turno(req1, mock_buscador)
-
-    # Paso 2: Elige seguir con recursos
-    req2 = ChatOrquestadorRequest(session_id=sid, accion="seguir_con_recursos")
-    resp2 = await manejar_turno(req2, mock_buscador)
-
-    assert resp2.borrador is not None
-    assert len(resp2.borrador.recursos) == 1
-    assert resp2.borrador.skills_habilitadas is False
-    assert "recursos multimedia" in resp2.borrador.skills_motivo
+    assert resp_conf.borrador.skills_habilitadas is True
+    assert resp_conf.borrador.skills_motivo is None
+    assert len(resp_conf.borrador.recursos) == 1

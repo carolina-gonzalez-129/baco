@@ -269,8 +269,8 @@ def auditar_semantica(
                 "asigná una categoría y al menos 2 etiquetas."
             ),
         )
-    dictamen = ejecutar_skill_validador(borrador, baco)
-    return ChatResponse(response=dictamen)
+    dictamen, texto_corregido = ejecutar_skill_validador(borrador, baco)
+    return ChatResponse(response=dictamen, texto_corregido=texto_corregido)
 
 
 @router.post(

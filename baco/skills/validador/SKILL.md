@@ -7,7 +7,7 @@ description: Audita y perfecciona artículos de la Base de Conocimiento Finnegan
 
 Usa esta skill para auditar cualitativamente, corregir o enriquecer el contenido de un artículo destinado a la Base de Conocimiento. 
 
-> **División de Responsabilidades:** La integridad estructural básica (existencia de título, asignación de categoría, cantidad mínima de tags y longitud mínima de caracteres), así como la sanitización determinista previa (detección de CUITs, direcciones de correo, tickets internos explícitos, URLs de prueba privadas y sintaxis inicial de títulos con "Cómo..." o "Error") son garantizadas previamente por el servidor (`validar_articulo.py`). Esta skill interviene en el **análisis semántico profundo, la coherencia de negocio, la detección de entidades no estructuradas y la excelencia editorial**.
+> **División de Responsabilidades:** La integridad estructural básica (existencia de título, asignación de categoría, cantidad mínima de tags y longitud mínima de caracteres), así como la sanitización determinista previa (detección de CUITs, direcciones de correo, tickets internos explícitos y URLs de prueba privadas) son garantizadas previamente por el servidor (`validar_articulo.py`). Esta skill interviene en el **análisis semántico profundo, la coherencia de negocio, la detección de entidades no estructuradas y la excelencia editorial**.
 
 ---
 
@@ -21,7 +21,6 @@ Evaluar el texto para evitar filtración de información confidencial hacia la b
 * **Internismos contextuales:** Señalar referencias internas a incidentes de desarrollo, parches de base de datos o fallas internas que no posean un código de ticket explícito, transformándolos en explicaciones genéricas orientadas al usuario final.
 
 ### 2. Calidad Semántica del Título
-*(Nota: Las fórmulas iniciales como "Cómo..." o "Pasos para..." y el control sintáctico de la palabra "Error" sin comillas ya son observados por la capa determinista).*
 Auditar el valor comunicativo y pertinencia del título:
 * **Acción y Contexto:** Verificar que describa con precisión el proceso o pantalla dentro del ERP Finnegans (ej. *"Configurar alícuotas de retención en comprobantes de venta"* en lugar de títulos vagos como *"Retenciones"*).
 * **Relevancia en Soluciones:** Constatar que el título refleje con claridad el síntoma o causa concreta que el usuario experimenta en el sistema.
@@ -60,5 +59,7 @@ Hallazgos Semánticos y Editoriales:
   Descripción: [Diagnóstico semántico claro del hallazgo]
   Acción recomendada: [Propuesta concreta de corrección]
 
-Versión corregida sugerida: [Solo si el usuario solicitó explícitamente reescribir/rewrite o si el estado es 'Listo con ajustes']
+<<<VERSION_CORREGIDA>>>
+[Texto completo corregido en Markdown (siempre presente salvo estado Pendiente, limitado estrictamente a ortografía, gramática, redacción, estructura y título, sin inventar datos ni hechos técnicos que el original no tenga)]
+<<<FIN_VERSION>>>
 ```

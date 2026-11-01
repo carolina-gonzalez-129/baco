@@ -501,32 +501,11 @@ async def handle_esperando_texto(
         if (sesion.borrador and sesion.borrador.modo == "enriquecimiento")
         else ["confirmar_texto", "volver"]
     )
-    prefijo_resultado_recursos = ""
-    if opcion == "quitar_recursos":
-        sesion.recursos = {}
-        sesion.orden_multimedia = []
-        sesion.posiciones = []
-        if sesion.texto_en_edicion:
-            sesion.texto_en_edicion = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", sesion.texto_en_edicion).strip()
-        if sesion.texto_limpio:
-            sesion.texto_limpio = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", sesion.texto_limpio).strip()
-        if sesion.borrador is not None:
-            sesion.borrador.recursos = {}
-            sesion.borrador.orden_multimedia = []
-            sesion.borrador.posiciones = []
-            if sesion.borrador.texto_limpio:
-                sesion.borrador.texto_limpio = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", sesion.borrador.texto_limpio).strip()
-        prefijo_resultado_recursos = "Se quitaron los recursos multimedia. Las skills del agente quedan habilitadas para este borrador.\n\n"
-        es_confirmacion = True
-    elif opcion == "seguir_con_recursos":
-        prefijo_resultado_recursos = "Continuamos conservando los recursos multimedia en el borrador (las skills de asistencia quedan deshabilitadas).\n\n"
-        es_confirmacion = True
-    else:
-        es_confirmacion = (
-            opcion == "confirmar_texto"
-            or (req.accion and req.accion.strip().lower() in ("confirmar_texto", "confirmar texto", "confirmar"))
-            or (opcion in ("descartar", "continuar") and bool(req.texto and req.texto.strip()))
-        )
+    es_confirmacion = (
+        opcion == "confirmar_texto"
+        or (req.accion and req.accion.strip().lower() in ("confirmar_texto", "confirmar texto", "confirmar"))
+        or (opcion in ("descartar", "continuar") and bool(req.texto and req.texto.strip()))
+    )
 
     if not es_confirmacion:
         fragmento = (req.texto if req.texto is not None else (req.mensaje or "")).strip()
@@ -617,16 +596,12 @@ async def handle_esperando_texto(
         texto_raw = req.texto.strip()
     elif req.mensaje is not None and req.mensaje.strip().lower() not in (
         "confirmar_texto", "confirmar texto", "confirmar",
-        "quitar_recursos", "quitar recursos", "seguir_con_recursos", "seguir con recursos"
     ):
         texto_raw = req.mensaje.strip()
         if sesion.texto_en_edicion and req.mensaje.strip() != sesion.texto_en_edicion.strip():
             texto_raw = f"{sesion.texto_en_edicion}\n\n{req.mensaje.strip()}".strip()
     else:
         texto_raw = (sesion.texto_limpio or sesion.texto_en_edicion or "").strip()
-
-    if opcion == "quitar_recursos":
-        texto_raw = re.sub(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]\s*", "", texto_raw).strip()
 
     if not texto_raw:
         intento = sesion.registrar_fallo("ESPERANDO_TEXTO")
@@ -732,7 +707,7 @@ async def handle_esperando_texto(
             tags=req.tags,
             texto_editor=sanitizar_borrador(texto=req.texto)["texto_sanitizado"].strip() if req.texto is not None else None,
         )
-        pref_enriq = f"{prefijo_resultado_recursos}{prefijo_borrador_creado(sesion.borrador.articulo_original_id)}"
+        pref_enriq = prefijo_borrador_creado(sesion.borrador.articulo_original_id)
         return avanzar_a_metadatos_o_revision(
             sesion, pref_enriq, aviso_privacidad=aviso_priv
         )
@@ -831,7 +806,7 @@ async def handle_esperando_texto(
     )
     sesion.texto = sesion.borrador.texto_alineado_discourse
     pref_descarte = "Omití las coincidencias que ya descartaste. " if omitir_txt else ""
-    pref_final = f"{prefijo_resultado_recursos}{pref_descarte}{PREFIJO_SIN_DUPLICADOS}"
+    pref_final = f"{pref_descarte}{PREFIJO_SIN_DUPLICADOS}"
     return avanzar_a_metadatos_o_revision(
         sesion, pref_final, aviso_privacidad=aviso_privacidad
     )
