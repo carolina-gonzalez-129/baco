@@ -154,6 +154,7 @@ async def handle_esperando_titulo(
             mensaje=res_tit.get("mensaje", ""),
             tipo_coincidencia="serie" if es_serie else "duplicado",
         )
+        coincs = [c for c in coincs if c.id not in sesion.articulos_descartados_ids and not (sesion.descarto_serie and c.tipo_coincidencia == "serie")]
         if coincs:
             sesion.coincidencias = coincs
             sesion.estado = EstadoFlujo.DECISION_TITULO

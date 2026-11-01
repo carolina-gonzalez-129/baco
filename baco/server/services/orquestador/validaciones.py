@@ -699,9 +699,11 @@ def resolver_categoria(
             if c.id == cid:
                 nom = c.nombre
                 break
-        if not nom:
-            nom = DICCIONARIO_OFICIAL_CATEGORIAS.get(cid, f"Categoría {cid}")
-        return ResultadoCategoria(categoria_id=cid, categoria_nombre=nom, estado="asignado")
+        if not nom and cid in DICCIONARIO_OFICIAL_CATEGORIAS:
+            nom = DICCIONARIO_OFICIAL_CATEGORIAS[cid]
+        if nom:
+            return ResultadoCategoria(categoria_id=cid, categoria_nombre=nom, estado="asignado")
+        return ResultadoCategoria(categoria_id=None, categoria_nombre=None, estado="no_encontrado")
 
     raw = str(entrada).strip()
     if not raw:

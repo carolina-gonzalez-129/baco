@@ -869,6 +869,7 @@ class GestorSesiones:
         sesion = self._sesiones[session_id]
         sesion.borrador = None
         sesion.contenido_adicional = []
+        sesion.articulos_descartados_ids = []
         sesion.updated_at = ahora
 
 

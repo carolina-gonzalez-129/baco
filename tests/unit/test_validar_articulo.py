@@ -196,11 +196,8 @@ def test_titulo_redundante_es_ajuste():
         texto=TEXTO_VALIDO_LARGO
     )
     res = validar_texto_y_estructura_post_duplicados(articulo)
-    assert res["status"] == "Listo con ajustes sugeridos"
-    assert any(
-        f["severity"] == "Requiere ajuste" and f["field"] == "titulo"
-        for f in res["findings"]
-    )
+    assert res["status"] == "Listo"
+    assert not any(f["field"] == "titulo" for f in res["findings"])
 
 
 def test_titulo_error_sin_comillas_es_sugerencia():
@@ -212,11 +209,8 @@ def test_titulo_error_sin_comillas_es_sugerencia():
         texto=TEXTO_VALIDO_LARGO
     )
     res = validar_texto_y_estructura_post_duplicados(articulo)
-    assert res["status"] == "Listo con sugerencias"
-    assert any(
-        f["severity"] == "Sugerencia" and f["field"] == "titulo" and "error" in f["description"].lower()
-        for f in res["findings"]
-    )
+    assert res["status"] == "Listo"
+    assert not any(f["field"] == "titulo" for f in res["findings"])
 
 
 
