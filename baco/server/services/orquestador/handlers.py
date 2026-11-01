@@ -1,10 +1,9 @@
-from datetime import datetime, timezone
 import re
 from typing import Callable, Coroutine, Dict, Optional, Tuple
+
 from starlette.concurrency import run_in_threadpool
 
 from baco.server.config_limites import (
-    TEXTO_MAX,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,
@@ -17,24 +16,15 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.mensajes import (
     MSG_DESCARTAR_COINCIDENCIA_TITULO,
     MSG_ELEGIR_PLANTILLA,
     MSG_OPERACION_CANCELADA,
-    MSG_OPCIONES_RECURSOS_SKILLS,
-    OPCIONES_RECURSOS_SKILLS,
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
     MSG_SIN_COINCIDENCIAS_TITULO,
     MSG_TEXTO_EN_EDICION,
     MSG_USAR_CONTINUAR,
-    MSG_VOLVER_ENRIQUECER_O_DESCARTAR,
-    MSG_VOLVER_METADATOS,
-    MSG_VOLVER_PLANTILLA,
-    MSG_VOLVER_TEXTO,
-    MSG_VOLVER_TEXTO_ACTUALIZADO,
-    MSG_VOLVER_TITULO,
     OPCIONES_ENRIQUECER_CONTINUAR,
     OPCIONES_ENRIQUECER_DESCARTAR,
     OPCIONES_SERIE_DECISION,
@@ -65,25 +55,19 @@ from baco.server.services.orquestador.mensajes import (
     msg_pedir_tags_y_categoria,
     msg_texto_vacio,
     prefijo_borrador_creado,
-    prefijo_borrador_enriquecido,
 )
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
-    componer_texto_publicable,
     extraer_recursos_y_bloques_texto,
-    extraer_recursos_y_texto_limpio,
     fusionar_bloques_y_recursos_sin_colision,
-    fusionar_recursos,
-    fusionar_texto_y_recursos_sin_colision,
     procesar_recursos_y_bloques,
-    procesar_recursos_y_marcadores,
     texto_efectivo_sin_marcadores,
 )
-from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
 from baco.server.services.orquestador.retroceso import (
     resetear_enriquecimiento_descartado,
     retroceder,
 )
+from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     actualizar_metadatos_sesion,
@@ -100,6 +84,7 @@ from baco.server.services.orquestador.validaciones import (
     validar_longitud,
     validar_longitud_maxima,
 )
+from baco.server.services.validar_articulo import sanitizar_borrador
 
 
 async def handle_esperando_titulo(
@@ -1055,7 +1040,17 @@ async def handle_esperando_plantilla(
         return construir_respuesta(sesion, MSG_ELEGIR_PLANTILLA, OPCIONES_PLANTILLAS)
 
     b.tipo_plantilla = plantilla
-    b.tags = combinar_tags(plantilla, b.tags, req.tags or [])
+    tags_previos = [
+        t
+        for t in b.tags
+        if extraer_tipo_plantilla([t]) is None or extraer_tipo_plantilla([t]) == plantilla
+    ]
+    tags_req = [
+        t
+        for t in (req.tags or [])
+        if extraer_tipo_plantilla([t]) is None or extraer_tipo_plantilla([t]) == plantilla
+    ]
+    b.tags = combinar_tags(plantilla, tags_previos, tags_req)
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
     return avanzar_a_metadatos_o_revision(sesion)

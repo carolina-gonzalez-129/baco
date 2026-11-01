@@ -16,7 +16,7 @@ OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
 OPCIONES_REVISION_VALIDO = ["finalizar", "editar", "rechazar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 # Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
-OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar"]
+OPCIONES_REVISION_INTERMEDIA_VALIDO = ["continuar_revision", "editar", "rechazar", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador", "volver"]
 OPCIONES_RECURSOS_SKILLS = ["quitar_recursos", "seguir_con_recursos", "volver"]
@@ -367,8 +367,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             )
         if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
             return (
-                "✅ El borrador cumple las validaciones mínimas. Podés seguir editándolo o tocar **Continuar** "
-                "para completar la categoría y una o mas etiquetas tematicas.",
+                "¿Querés darle formato estándar a tu texto? Usá Aplicar plantilla en el panel, o seguí editando.",
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (
