@@ -675,7 +675,7 @@ async def ejecutar_skill(
         ]
         if not b.categoria_id or not tags_tematicos:
             msg_falta_meta = (
-                "Para auditar el artículo, primero es necesario definir la categoría y al menos una etiqueta temática."
+                "Para auditar el artículo, primero es necesario definir la **categoría** y al menos una **etiqueta** temática."
             )
             return construir_respuesta(sesion, msg_falta_meta, sesion.ultimas_opciones)
 
