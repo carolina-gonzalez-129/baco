@@ -945,16 +945,12 @@ def construir_respuesta(
             skills_hab = True
             skills_mot = None
 
+    # La decisión sobre metadatos heredados pertenece solo al paso de tags y categoría.
     tiene_meta_pendiente = bool(
         sesion.borrador
         and sesion.borrador.metadatos_anteriores
         and not sesion.borrador.metadatos_heredados_revisados
-        and sesion.estado not in (
-            EstadoFlujo.ESPERANDO_TITULO,
-            EstadoFlujo.DECISION_TITULO,
-            EstadoFlujo.ESPERANDO_TEXTO,
-            EstadoFlujo.DECISION_TEXTO,
-        )
+        and sesion.estado == EstadoFlujo.ESPERANDO_METADATOS
     )
     meta_aviso_final = aviso_metadatos_heredados
     if tiene_meta_pendiente and not meta_aviso_final:

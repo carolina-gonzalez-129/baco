@@ -56,15 +56,11 @@ class ReglaContinuar:
 # Funciones de responsabilidad única por paso del troncal
 # ==============================================================================
 
-# --- Paso 1: Pedir plantilla (o aviso de metadatos heredados al inicio) ---
+# --- Paso 1: Pedir tipo de plantilla (siempre, en todos los flujos) ---
 
 def _destino_paso_plantilla(sesion: SesionChat) -> EstadoFlujo:
-    b = sesion.borrador
-    if b and b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return EstadoFlujo.REVISION_BORRADOR
-    plantilla = (b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags)) if b else None
-    if plantilla:
-        return EstadoFlujo.REVISION_BORRADOR
+    # Convergencia: nuevo, enriquecer, actualizar y "Es un tema distinto" siempre
+    # piden primero el tipo de plantilla, aunque venga heredado o en los tags.
     return EstadoFlujo.ESPERANDO_PLANTILLA
 
 
@@ -74,57 +70,46 @@ def _avanzar_paso_plantilla(sesion: SesionChat) -> None:
         return
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        b.revision_intermedia = True
-        b.texto_base_revision_final = None
-        return
-    plantilla = b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags)
-    if plantilla:
-        b.tipo_plantilla = plantilla
-        sesion.tipo_plantilla = plantilla
-        b.tags = combinar_tags(plantilla, b.tags)
-        sesion.tags = list(b.tags)
-        b.revision_intermedia = True
-        b.texto_base_revision_final = None
 
 
 def _resp_paso_plantilla(
     sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
 ) -> ChatOrquestadorResponse:
+    return construir_respuesta(
+        sesion,
+        msg_pedir_plantilla(prefijo),
+        OPCIONES_PLANTILLAS,
+        aviso_privacidad=aviso_privacidad,
+    )
+
+
+def _heredados_pendientes(sesion: SesionChat) -> bool:
     b = sesion.borrador
-    if b and b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
-            DICCIONARIO_OFICIAL_CATEGORIAS.get(
-                b.metadatos_anteriores.get("categoria_id"),
-                f"Categoría {b.metadatos_anteriores.get('categoria_id')}",
-            )
-            if b.metadatos_anteriores.get("categoria_id")
-            else "Sin categoría"
-        )
-        tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
-        validar_borrador(sesion, prefijo)
-        aviso_meta = f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
-        # El detalle de los metadatos heredados se muestra solo en el banner (aviso_metadatos_heredados).
-        mensaje_espera = f"{prefijo}Revisá arriba la categoría y las etiquetas del artículo original. ¿Querés mantenerlas?".strip()
-        ops = ["aceptar_metadatos", "rechazar_metadatos", "volver"]
-        return construir_respuesta(
-            sesion,
-            mensaje_espera,
-            ops,
-            aviso_privacidad=aviso_privacidad,
-            aviso_metadatos_heredados=aviso_meta,
-        )
+    return bool(b and b.metadatos_anteriores and not b.metadatos_heredados_revisados)
 
-    if b and not b.tipo_plantilla:
-        return construir_respuesta(
-            sesion,
-            msg_pedir_plantilla(prefijo),
-            OPCIONES_PLANTILLAS,
-            aviso_privacidad=aviso_privacidad,
-        )
 
-    msg, ops = validar_borrador(sesion, prefijo)
-    return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
+def _resp_metadatos_heredados(
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+) -> ChatOrquestadorResponse:
+    """Paso 3 en enriquecer/actualizar: ¿mantener la categoría y etiquetas del artículo original?"""
+    b = sesion.borrador
+    ant = b.metadatos_anteriores or {}
+    cat_nom = ant.get("categoria_nombre") or (
+        DICCIONARIO_OFICIAL_CATEGORIAS.get(ant.get("categoria_id"), f"Categoría {ant.get('categoria_id')}")
+        if ant.get("categoria_id")
+        else "Sin categoría"
+    )
+    tags_str = ", ".join(ant.get("tags") or []) or "ninguna"
+    aviso_meta = f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
+    # El detalle va solo en el banner (aviso_metadatos_heredados), no repetido en el chat.
+    mensaje = f"{prefijo}Revisá arriba la categoría y las etiquetas del artículo original. ¿Querés mantenerlas?".strip()
+    return construir_respuesta(
+        sesion,
+        mensaje,
+        ["aceptar_metadatos", "rechazar_metadatos", "volver"],
+        aviso_privacidad=aviso_privacidad,
+        aviso_metadatos_heredados=aviso_meta,
+    )
 
 
 # --- Paso 2: Ofrecer la skill de plantillas (opcional) ---
@@ -157,6 +142,8 @@ def _resp_paso_revision_intermedia(
 
 def _destino_paso_metadatos(sesion: SesionChat) -> EstadoFlujo:
     b = sesion.borrador
+    if _heredados_pendientes(sesion):
+        return EstadoFlujo.ESPERANDO_METADATOS
     if b and (b.categoria_id is None or len(b.tags) < 2):
         return EstadoFlujo.ESPERANDO_METADATOS
     return EstadoFlujo.REVISION_BORRADOR
@@ -177,7 +164,9 @@ def _resp_paso_metadatos(
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
     if sesion.estado == EstadoFlujo.ESPERANDO_METADATOS:
-        return construir_respuesta(sesion, msg_pedir_metadatos(b.tipo_plantilla or ""), ["volver"])
+        if _heredados_pendientes(sesion):
+            return _resp_metadatos_heredados(sesion, prefijo, aviso_privacidad)
+        return construir_respuesta(sesion, msg_pedir_metadatos(b.tipo_plantilla or "", prefijo), ["volver"])
     msg, ops = validar_borrador(sesion, prefijo or PREFIJO_METADATOS_REGISTRADOS)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
 
@@ -272,10 +261,11 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     if b is None:
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        # Sin recursión: se vuelve a pedir la decisión sobre los metadatos heredados.
-        return _resp_paso_plantilla(
-            sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. "
+    if _heredados_pendientes(sesion):
+        # Sin recursión: se vuelve al paso de tags y categoría a decidir sobre los heredados.
+        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
+        return _resp_metadatos_heredados(
+            sesion, prefijo="Antes de finalizar, decidí si mantenés los metadatos heredados. "
         )
 
     if sesion.estado == EstadoFlujo.EDICION_FINAL:
@@ -294,39 +284,48 @@ def gestionar_metadatos_heredados(
     sesion: SesionChat, opcion: str
 ) -> Optional[ChatOrquestadorResponse]:
     """
-    Aísla y gestiona la resolución de aceptar_metadatos / rechazar_metadatos
-    en los flujos de enriquecer o actualizar.
+    Resuelve aceptar_metadatos / rechazar_metadatos (enriquecer o actualizar) en el
+    paso de tags y categoría. Conserva el tipo de plantilla elegido en el paso 1.
     """
     b = sesion.borrador
     if not b or not b.metadatos_anteriores:
         return None
 
-    if opcion in ("aceptar", "aceptar_metadatos"):
-        b.metadatos_heredados_revisados = True
-        sesion.metadatos_heredados_revisados = True
-        _avanzar_paso_plantilla(sesion)
-        destino = _destino_paso_plantilla(sesion)
-        sesion.estado = destino
-        return _resp_paso_plantilla(sesion, prefijo="Se confirmaron los metadatos de la versión anterior. ")
-
-    if opcion in ("rechazar_metadatos",) or (
+    acepta = opcion in ("aceptar", "aceptar_metadatos")
+    rechaza = opcion == "rechazar_metadatos" or (
         opcion == "rechazar" and not b.metadatos_heredados_revisados
-    ):
-        b.metadatos_heredados_revisados = True
-        sesion.metadatos_heredados_revisados = True
-        b.tipo_plantilla = None
+    )
+    if not (acepta or rechaza):
+        return None
+
+    b.metadatos_heredados_revisados = True
+    sesion.metadatos_heredados_revisados = True
+    plantilla = b.tipo_plantilla or sesion.tipo_plantilla
+    ant = b.metadatos_anteriores
+    if acepta:
+        tematicos = [t for t in (ant.get("tags") or []) if extraer_tipo_plantilla([t]) is None]
+        b.tags = combinar_tags(plantilla, tematicos)
+        b.categoria_id = ant.get("categoria_id")
+        b.categoria_nombre = ant.get("categoria_nombre") or (
+            DICCIONARIO_OFICIAL_CATEGORIAS.get(b.categoria_id) if b.categoria_id else None
+        )
+        prefijo = "Se confirmaron los metadatos de la versión anterior. "
+    else:
+        b.tags = combinar_tags(plantilla, [])
         b.categoria_id = None
         b.categoria_nombre = None
-        b.tags = []
-        sesion.categoria_id = None
-        sesion.categoria_nombre = None
-        sesion.tags = []
-        _avanzar_paso_plantilla(sesion)
-        destino = _destino_paso_plantilla(sesion)
-        sesion.estado = destino
-        return _resp_paso_plantilla(sesion, prefijo="Se descartaron los metadatos heredados. ")
+        prefijo = "Se descartaron los metadatos heredados. "
+    sesion.tags = list(b.tags)
+    sesion.categoria_id = b.categoria_id
+    sesion.categoria_nombre = b.categoria_nombre
 
-    return None
+    sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
+    destino = _destino_paso_metadatos(sesion)
+    if destino == EstadoFlujo.REVISION_BORRADOR:
+        _avanzar_paso_revision_final(sesion)
+        sesion.estado = destino
+        return _resp_paso_revision_final(sesion, prefijo)
+    return _resp_paso_metadatos(sesion, prefijo)
 
 
 # ==============================================================================
@@ -422,20 +421,16 @@ def continuar(
 
     # Compuerta previa al avance desde revisión
     if sesion.estado == EstadoFlujo.REVISION_BORRADOR and variante == "intermedia":
-        if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-            # Sin recursión: continuar() en este mismo estado volvería a entrar acá.
-            return _resp_paso_plantilla(
-                sesion,
-                prefijo="Debés aceptar o rechazar los metadatos heredados antes de continuar. ",
-            )
+        # Los metadatos heredados se resuelven en el paso siguiente (tags y categoría).
         comp = verificar_compuerta_avance(sesion)
         if comp is not None:
             return comp
     elif sesion.estado == EstadoFlujo.REVISION_BORRADOR:
-        if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-            return _resp_paso_revision_final(
+        if _heredados_pendientes(sesion):
+            sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
+            return _resp_metadatos_heredados(
                 sesion,
-                prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ",
+                prefijo="Antes de seguir, decidí si mantenés los metadatos heredados. ",
             )
         comp = verificar_compuerta_avance(sesion)
         if comp is not None:

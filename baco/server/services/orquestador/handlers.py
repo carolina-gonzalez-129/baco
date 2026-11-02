@@ -1078,6 +1078,16 @@ async def handle_esperando_metadatos(
     if opcion == "volver":
         return retroceder(sesion)
 
+    # Si la persona edita tags o categoría directamente, eso resuelve los metadatos heredados.
+    if (
+        b is not None
+        and b.metadatos_anteriores
+        and not b.metadatos_heredados_revisados
+        and (req.tags is not None or req.categoria_id is not None)
+    ):
+        b.metadatos_heredados_revisados = True
+        sesion.metadatos_heredados_revisados = True
+
     plantilla_guardada = (
         (b.tipo_plantilla if b else sesion.tipo_plantilla)
         or extraer_tipo_plantilla((b.tags if b else sesion.tags) or [])

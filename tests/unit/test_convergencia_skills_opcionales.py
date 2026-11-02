@@ -106,49 +106,100 @@ async def test_metadatos_completos_ofrecen_auditar_sin_ejecutarlo():
     assert "continuar" in resp.opciones
 
 
-def test_continuar_con_metadatos_heredados_pendientes_no_recursa():
-    sesion = _sesion(
-        "conv-heredados-sin-recursion",
-        EstadoFlujo.REVISION_BORRADOR,
+HEREDADOS = {"categoria_id": 20, "categoria_nombre": "Ventas", "tags": ["instructivo", "ventas", "facturacion"]}
+
+
+def _sesion_enriquecer(sid: str, estado: EstadoFlujo, **extra) -> SesionChat:
+    datos = dict(
         modo="enriquecimiento",
         tipo_plantilla="instructivo",
-        tags=["instructivo", "ventas"],
+        tags=list(HEREDADOS["tags"]),
         categoria_id=20,
-        revision_intermedia=True,
-        metadatos_anteriores={"categoria_id": 20, "tags": ["instructivo", "ventas"]},
+        metadatos_anteriores=dict(HEREDADOS),
     )
+    datos.update(extra)
+    sesion = _sesion(sid, estado, **datos)
     sesion.borrador.metadatos_heredados_revisados = False
+    return sesion
 
-    resp = continuar(sesion)  # antes: RecursionError
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+def test_enriquecer_pide_primero_el_tipo_de_plantilla_aunque_venga_heredado():
+    sesion = _sesion_enriquecer("conv-enriq-plantilla-primero", EstadoFlujo.ESPERANDO_TEXTO)
+
+    resp = continuar(sesion)
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert resp.opciones == ["instructivo", "soluciones", "volver"]
+    assert not resp.aviso_metadatos_heredados
+
+
+def test_heredados_se_deciden_en_el_paso_de_tags_y_categoria_sin_recursion():
+    sesion = _sesion_enriquecer(
+        "conv-heredados-paso3", EstadoFlujo.REVISION_BORRADOR, revision_intermedia=True
+    )
+
+    resp = continuar(sesion)  # Continuar sin aplicar plantilla
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
     assert resp.opciones == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
-    # El detalle de los heredados va solo en el banner, no repetido en el chat
     assert resp.aviso_metadatos_heredados
-    assert "ventas" not in resp.mensaje.lower()
-
-    resp_fin = _registrar_finalizado(sesion)
-    assert resp_fin.opciones == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+    assert "ventas" not in resp.mensaje.lower()  # el detalle va solo en el banner
 
 
-def test_aceptar_heredados_converge_al_paso_de_aplicar_plantilla():
-    sesion = _sesion(
-        "conv-heredados-aceptar",
-        EstadoFlujo.REVISION_BORRADOR,
-        modo="enriquecimiento",
-        tipo_plantilla="instructivo",
-        tags=["instructivo", "ventas"],
-        categoria_id=20,
-        revision_intermedia=True,
-        metadatos_anteriores={"categoria_id": 20, "tags": ["instructivo", "ventas"]},
+def test_registrar_finalizado_con_heredados_pendientes_no_recursa():
+    sesion = _sesion_enriquecer(
+        "conv-heredados-finalizar", EstadoFlujo.REVISION_BORRADOR, revision_intermedia=False
     )
-    sesion.borrador.metadatos_heredados_revisados = False
+
+    resp = _registrar_finalizado(sesion)  # antes: RecursionError
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert resp.opciones == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+
+
+def test_aceptar_heredados_conserva_la_plantilla_elegida_y_ofrece_auditar():
+    sesion = _sesion_enriquecer(
+        "conv-heredados-aceptar",
+        EstadoFlujo.ESPERANDO_METADATOS,
+        tipo_plantilla="soluciones",
+        tags=["soluciones", "ventas", "facturacion"],
+    )
 
     resp = continuar(sesion, opcion="aceptar_metadatos")
 
+    assert sesion.borrador.tipo_plantilla == "soluciones"
+    assert "soluciones" in sesion.borrador.tags and "instructivo" not in sesion.borrador.tags
+    assert sesion.borrador.categoria_id == 20
     assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.revision_intermedia is True
-    assert "aplicar_plantilla" in resp.opciones
+    assert sesion.borrador.revision_intermedia is False
+    assert "auditar" in resp.opciones
+
+
+def test_rechazar_heredados_pide_tags_y_categoria_conservando_la_plantilla():
+    sesion = _sesion_enriquecer(
+        "conv-heredados-rechazar",
+        EstadoFlujo.ESPERANDO_METADATOS,
+        tipo_plantilla="soluciones",
+        tags=["soluciones", "ventas", "facturacion"],
+    )
+
+    resp = continuar(sesion, opcion="rechazar_metadatos")
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert sesion.borrador.tags == ["soluciones"]
+    assert sesion.borrador.categoria_id is None
+    assert resp.opciones == ["volver"]
+
+
+def test_volver_desde_plantilla_en_enriquecer_vuelve_al_texto():
+    from baco.server.services.orquestador.retroceso import retroceder
+
+    sesion = _sesion_enriquecer("conv-volver-plantilla-enriq", EstadoFlujo.ESPERANDO_PLANTILLA)
+
+    resp = retroceder(sesion)
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_TEXTO
+    assert "confirmar_texto" in resp.opciones
 
 
 def test_compuerta_llama_una_sola_vez_a_validar_borrador():

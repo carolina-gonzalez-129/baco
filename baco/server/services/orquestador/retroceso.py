@@ -233,16 +233,16 @@ def _resp_decision_texto(sesion: SesionChat) -> ChatOrquestadorResponse:
 
 
 def _destino_esperando_plantilla(sesion: SesionChat) -> EstadoFlujo:
-    b = sesion.borrador
-    if b and b.metadatos_anteriores:
-        return EstadoFlujo.REVISION_BORRADOR
+    # Convergencia: desde el paso 1 del troncal se vuelve al paso de texto, en todos los flujos.
     return EstadoFlujo.ESPERANDO_TEXTO
 
 
 def _resp_esperando_plantilla(sesion: SesionChat) -> ChatOrquestadorResponse:
     b = sesion.borrador
-    if b and b.metadatos_anteriores:
-        return _resp_revision_borrador_nuevo(sesion)
+    if b and b.modo == "enriquecimiento":
+        from baco.server.services.orquestador.mensajes import obtener_ayuda_contextual
+        msg, ops = obtener_ayuda_contextual(sesion)
+        return construir_respuesta(sesion, msg, ops)
     return construir_respuesta(
         sesion,
         MSG_VOLVER_TEXTO_ACTUALIZADO,
@@ -367,9 +367,9 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
 
     # REVISION_BORRADOR (enriquecimiento): vuelve a DECISION_TEXTO (semántico) o DECISION_TITULO
     (EstadoFlujo.REVISION_BORRADOR, "enriquecimiento"): ReglaRetroceso(
-        estado_destino=_destino_esperando_texto_enriquecimiento,
-        restaurar=_restaurar_revision_borrador,
-        construir_respuesta=_resp_revision_borrador_enriquecimiento,
+        estado_destino=_destino_revision_borrador_nuevo,
+        restaurar=_restaurar_revision_borrador_nuevo,
+        construir_respuesta=_resp_revision_borrador_nuevo,
     ),
     (EstadoFlujo.REVISION_BORRADOR, "actualizar"): ReglaRetroceso(
         estado_destino=_destino_revision_borrador_nuevo,
@@ -389,9 +389,9 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_revision_borrador_nuevo,
     ),
     (EstadoFlujo.SUBSANANDO_BORRADOR, "enriquecimiento"): ReglaRetroceso(
-        estado_destino=_destino_esperando_texto_enriquecimiento,
-        restaurar=_restaurar_revision_borrador,
-        construir_respuesta=_resp_revision_borrador_enriquecimiento,
+        estado_destino=_destino_revision_borrador_nuevo,
+        restaurar=_restaurar_revision_borrador_nuevo,
+        construir_respuesta=_resp_revision_borrador_nuevo,
     ),
     (EstadoFlujo.SUBSANANDO_BORRADOR, "actualizar"): ReglaRetroceso(
         estado_destino=_destino_revision_borrador_nuevo,
