@@ -92,6 +92,7 @@ from baco.server.services.orquestador.validaciones import (
 from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.edicion import (
     _sanitizar_tags_tematicos,
+    adoptar_resultado_skill_pendiente,
     aplicar_edicion_campos,
     categoria_difiere,
     plantilla_difiere,
@@ -1581,11 +1582,13 @@ async def handle_edicion_final(
         from baco.server.services.orquestador.edicion import ejecutar_skill
         resp_skill = await ejecutar_skill(sesion, req, skill=skill_nombre, es_reaplicacion=True)
         if opcion == "finalizar":
+            adoptar_resultado_skill_pendiente(sesion)
             return _registrar_finalizado(sesion)
         return resp_skill
 
     # 4. Solo "Finalizar" de EDICION_FINAL llama a _registrar_finalizado
     if opcion == "finalizar":
+        adoptar_resultado_skill_pendiente(sesion)
         return _registrar_finalizado(sesion)
 
     # 5. Edición u otra interacción en EDICION_FINAL:

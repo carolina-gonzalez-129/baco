@@ -2,11 +2,16 @@
 Módulo de avance unificado para el orquestador.
 
 Define la tabla de transiciones declaradas, la compuerta de validación previa
-al avance y las funciones de respuesta para el troncal del flujo:
+al avance y las funciones de respuesta para el troncal convergente del flujo
+(igual para nuevo, enriquecer, actualizar y "Es un tema distinto"):
   Paso 1: Pedir tipo de plantilla (ESPERANDO_PLANTILLA).
-  Paso 2: Aplicar plantilla y revisión intermedia (REVISION_BORRADOR, revision_intermedia=True).
+  Paso 2: Ofrecer la skill de plantillas, opcional (REVISION_BORRADOR, revision_intermedia=True).
   Paso 3: Pedir tags y categoría (ESPERANDO_METADATOS).
-  Paso 4: Aplicar validador y revisión final (REVISION_BORRADOR, revision_intermedia=False).
+  Paso 4: Ofrecer el auditor, opcional (REVISION_BORRADOR, revision_intermedia=False).
+  Paso 5: Edición final (EDICION_FINAL) y Finalizar.
+
+Este módulo NO ejecuta skills: las skills solo corren cuando la persona toca
+"Aplicar plantilla" o "Auditar" (handlers.py -> edicion.ejecutar_skill).
 """
 
 from dataclasses import dataclass
@@ -29,7 +34,6 @@ from baco.server.services.orquestador.mensajes import (
 )
 from baco.server.services.orquestador.sesion import SesionChat
 from baco.server.services.validar_articulo import sanitizar_borrador
-from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     combinar_tags,
@@ -100,7 +104,8 @@ def _resp_paso_plantilla(
         tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
         validar_borrador(sesion, prefijo)
         aviso_meta = f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
-        mensaje_espera = f"{prefijo}{aviso_meta}".strip()
+        # El detalle de los metadatos heredados se muestra solo en el banner (aviso_metadatos_heredados).
+        mensaje_espera = f"{prefijo}Revisá arriba la categoría y las etiquetas del artículo original. ¿Querés mantenerlas?".strip()
         ops = ["aceptar_metadatos", "rechazar_metadatos", "volver"]
         return construir_respuesta(
             sesion,
@@ -122,7 +127,7 @@ def _resp_paso_plantilla(
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
 
 
-# --- Paso 2: Revisión intermedia tras aplicar plantilla ---
+# --- Paso 2: Ofrecer la skill de plantillas (opcional) ---
 
 def _avanzar_paso_revision_intermedia(sesion: SesionChat) -> None:
     b = sesion.borrador
@@ -139,86 +144,12 @@ def _avanzar_paso_revision_intermedia(sesion: SesionChat) -> None:
     b.revision_intermedia = True
     b.texto_base_revision_final = None
 
-    texto_vigente = (
-        b.texto_editor
-        or sesion.texto_editor
-        or b.texto_original
-        or sesion.texto_original
-        or b.texto_limpio
-        or sesion.texto_limpio
-        or b.texto_base_limpio
-        or sesion.texto
-        or ""
-    ).strip()
-    texto_origen = texto_efectivo_sin_marcadores(texto_vigente)
-    sesion.texto_original = texto_origen
-    b.texto_original = texto_origen
-    b.texto_editor = texto_origen
-    sesion.texto_editor = texto_origen
-    b.texto_base_limpio = texto_origen
-    sesion.texto_limpio = texto_origen
-
-    import os
-    baco = getattr(sesion, "_baco_agent", None)
-    if baco is None:
-        try:
-            from baco.server.app.main import app
-            from baco.server.app.dependencies import get_baco_agent
-            override = app.dependency_overrides.get(get_baco_agent)
-            if override:
-                baco = override()
-        except Exception:
-            pass
-    if baco is None and "PYTEST_CURRENT_TEST" not in os.environ:
-        try:
-            from baco.server.app.dependencies import get_baco_agent
-            baco = get_baco_agent()
-        except Exception:
-            baco = None
-
-    if baco is not None and callable(baco):
-        resultado_plantilla = None
-        try:
-            from baco.server.services.agente_service import (
-                ejecutar_skill_plantillas,
-                ejecutar_skill_validador,
-            )
-            b.bloques_texto = [texto_origen] if texto_origen else []
-            resultado_plantilla = (
-                ejecutar_skill_plantillas(sesion.session_id, b, baco) or ""
-            ).strip()
-            if resultado_plantilla:
-                b.bloques_texto = [resultado_plantilla]
-                sesion.bloques_texto = [resultado_plantilla]
-        except Exception:
-            resultado_plantilla = None
-
-        if resultado_plantilla:
-            try:
-                dictamen, texto_corr = ejecutar_skill_validador(b, baco)
-                resultado_final = (texto_corr or resultado_plantilla).strip()
-                if resultado_final:
-                    b.bloques_texto = [resultado_final]
-                    sesion.bloques_texto = [resultado_final]
-            except Exception:
-                pass
-
-            b.resultado_skill_desactualizado = False
-            b.resultado_skill_pendiente = True
-            b.skill_pendiente = "plantilla"
-            b.skill_aplicada = "plantilla"
-            sesion.skill_aplicada = "plantilla"
 
 
 def _resp_paso_revision_intermedia(
     sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
 ) -> ChatOrquestadorResponse:
-    b = sesion.borrador
     msg, ops = validar_borrador(sesion, prefijo)
-    ops = [op for op in ops if op != "aplicar_plantilla"]
-    if b and getattr(b, "resultado_skill_pendiente", False):
-        if sesion.validacion and sesion.validacion.valido:
-            msg = f"{prefijo}Listo, apliqué la plantilla. Revisá el resultado y tocá **Continuar**.".strip()
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
 
 
@@ -251,7 +182,7 @@ def _resp_paso_metadatos(
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
 
 
-# --- Paso 4: Revisión final tras definir metadatos con validador ---
+# --- Paso 4: Ofrecer el auditor (opcional) ---
 
 def _avanzar_paso_revision_final(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("ESPERANDO_METADATOS")
@@ -292,14 +223,7 @@ def _resp_paso_edicion_final(
 
 
 def continuar_desde_revision(sesion: SesionChat) -> ChatOrquestadorResponse:
-    """
-    Decide la acción de 'continuar' o 'continuar_revision' desde el estado de revisión:
-    - Si es revisión intermedia: avanza al siguiente paso del troncal con continuar().
-    - Si es revisión final: registra la finalización del borrador con _registrar_finalizado().
-    """
-    b = sesion.borrador
-    if b is not None and b.revision_intermedia:
-        return continuar(sesion)
+    """Avanza desde REVISION_BORRADOR (intermedia o final) al próximo paso del troncal."""
     return continuar(sesion)
 
 
@@ -307,8 +231,7 @@ def _avanzar_paso_finalizado(sesion: SesionChat) -> None:
     b = sesion.borrador
     if b is None:
         return
-    from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
-    adoptar_resultado_skill_pendiente(sesion)
+    # La adopción del resultado de skill pendiente la hace handlers.py antes de finalizar.
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
     limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
@@ -350,7 +273,10 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
     if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return continuar(sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
+        # Sin recursión: se vuelve a pedir la decisión sobre los metadatos heredados.
+        return _resp_paso_plantilla(
+            sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. "
+        )
 
     if sesion.estado == EstadoFlujo.EDICION_FINAL:
         return continuar(sesion)
@@ -497,7 +423,8 @@ def continuar(
     # Compuerta previa al avance desde revisión
     if sesion.estado == EstadoFlujo.REVISION_BORRADOR and variante == "intermedia":
         if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-            return continuar(
+            # Sin recursión: continuar() en este mismo estado volvería a entrar acá.
+            return _resp_paso_plantilla(
                 sesion,
                 prefijo="Debés aceptar o rechazar los metadatos heredados antes de continuar. ",
             )

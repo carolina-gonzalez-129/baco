@@ -1091,7 +1091,11 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in ajustes)
         return (
             f"{prefijo}El borrador está completo, pero hay {len(ajustes)} sugerencia(s) para mejorarlo:\n{detalle}\n\n"
-            "Podés corregirlas en el Editor, Auditar el texto o tocar Continuar para dejarlo así.",
+            + (
+                "Podés corregirlas en el Editor, Aplicar plantilla o tocar Continuar para dejarlo así."
+                if b.revision_intermedia
+                else "Podés corregirlas en el Editor, Auditar el texto o tocar Continuar para dejarlo así."
+            ),
             ops_validas,
         )
 
@@ -1112,9 +1116,9 @@ def verificar_compuerta_avance(
     construye la respuesta correspondiente. Si es válido, retorna None.
     Usada tanto por continuar() como por _registrar_finalizado().
     """
+    # Una sola llamada a validar_borrador por turno (antes se llamaba dos veces y mutaba el borrador dos veces).
     if not sesion.validacion or not sesion.validacion.valido or sesion.huella_difiere():
-        validar_borrador(sesion)
-    if not sesion.validacion or not sesion.validacion.valido:
         msg, ops = validar_borrador(sesion, prefijo_error)
-        return construir_respuesta(sesion, msg, ops)
+        if not sesion.validacion or not sesion.validacion.valido:
+            return construir_respuesta(sesion, msg, ops)
     return None
