@@ -874,7 +874,10 @@ async def test_volver_en_revision_borrador_linea_1521_modo_enriquecimiento(mock_
     assert sesion.confirmando_rechazo is False
     assert sesion.validacion is None
     assert sesion.metadatos_anteriores == {"categoria_id": 4, "tags": ["soluciones", "afip"]}
-    assert sesion.metadatos_heredados_revisados is True
+    # Cambio intencional de comportamiento (Punto 3): se resetea metadatos_heredados_revisados a False
+    # para que si el usuario vuelve a enriquecer se le pregunte de nuevo por los metadatos heredados.
+    assert sesion.metadatos_heredados_revisados is False
+    assert sesion.borrador.metadatos_heredados_revisados is False
 
     assert sesion.borrador.modo == "enriquecimiento"
     assert sesion.borrador.articulo_original_id == 606
@@ -1020,6 +1023,79 @@ async def test_volver_en_subsanando_borrador_modo_enriquecimiento_por_titulo(moc
     assert resp.mensaje == MSG_VOLVER_ENRIQUECER_O_DESCARTAR
     assert sesion.estado == EstadoFlujo.DECISION_TITULO
     assert "SUBSANANDO_BORRADOR" not in sesion.intentos_fallidos_por_estado
+
+
+@pytest.mark.anyio
+async def test_volver_en_revision_borrador_enriquecimiento_pregunta_metadatos_al_re_enriquecer(mock_buscador):
+    """
+    Punto 3: Al volver desde REVISION_BORRADOR en modo enriquecimiento, se resetea
+    metadatos_heredados_revisados (borrador y sesión) a False. Si luego se vuelve a
+    avanzar/enriquecer, el flujo vuelve a solicitar confirmación de metadatos heredados.
+    """
+    sid = "test-volver-reenriquecer-meta"
+    coincidencia = CoincidenciaArticulo(
+        id=610,
+        titulo="Artículo para Re-enriquecer",
+        url="https://bc.finneg.com/t/610",
+        score=0.93,
+        tipo_coincidencia="exacto",
+    )
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 610,
+        "titulo": "Artículo para Re-enriquecer",
+        "texto": TEXTO_VALIDO,
+        "categoria_id": 4,
+        "categoria_nombre": "Impuestos",
+        "tags": ["soluciones", "afip"],
+        "url": "https://bc.finneg.com/t/610",
+    }
+    borrador = BorradorSesion(
+        modo="enriquecimiento",
+        articulo_original_id=610,
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla="soluciones",
+        categoria_id=4,
+        categoria_nombre="Impuestos",
+        tags=["soluciones", "afip"],
+        metadatos_anteriores={"categoria_id": 4, "tags": ["soluciones", "afip"]},
+        metadatos_heredados_revisados=True,
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.REVISION_BORRADOR,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        tags=["soluciones", "afip"],
+        categoria_id=4,
+        coincidencias=[coincidencia],
+        borrador=borrador,
+        metadatos_anteriores={"categoria_id": 4, "tags": ["soluciones", "afip"]},
+        metadatos_heredados_revisados=True,
+    )
+    SESIONES[sid] = sesion
+
+    # 1. Retroceder a DECISION_TITULO
+    req_volver = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp_volver = await manejar_turno(req_volver, mock_buscador)
+
+    assert resp_volver.estado == EstadoFlujo.DECISION_TITULO
+    assert sesion.metadatos_heredados_revisados is False
+    assert sesion.borrador.metadatos_heredados_revisados is False
+
+    # 2. Re-enriquecer: desde DECISION_TITULO pasa a ESPERANDO_TEXTO
+    req_enriquecer = ChatOrquestadorRequest(session_id=sid, accion="enriquecer")
+    resp_enriquecer = await manejar_turno(req_enriquecer, mock_buscador)
+
+    assert resp_enriquecer.estado == EstadoFlujo.ESPERANDO_TEXTO
+
+    # 3. Al confirmar texto, avanza a REVISION_BORRADOR y debe pedir confirmación de metadatos heredados
+    req_texto = ChatOrquestadorRequest(session_id=sid, accion="confirmar_texto", texto=TEXTO_VALIDO)
+    resp_texto = await manejar_turno(req_texto, mock_buscador)
+
+    assert resp_texto.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "aceptar_metadatos" in resp_texto.opciones or "aceptar" in resp_texto.opciones
+    assert sesion.borrador.metadatos_heredados_revisados is False
 
 
 @pytest.mark.anyio

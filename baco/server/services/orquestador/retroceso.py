@@ -152,6 +152,9 @@ def _restaurar_esperando_metadatos(sesion: SesionChat) -> None:
 def _restaurar_revision_borrador(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("REVISION_BORRADOR")
     sesion.limpiar_fallos("SUBSANANDO_BORRADOR")
+    sesion.metadatos_heredados_revisados = False
+    if sesion.borrador is not None:
+        sesion.borrador.metadatos_heredados_revisados = False
 
 
 def _restaurar_revision_borrador_nuevo(sesion: SesionChat) -> None:
