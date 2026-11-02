@@ -717,9 +717,9 @@ async def ejecutar_skill(
 
     if baco is None or not callable(baco):
         msg_sin_agente = (
-            "No pudimos aplicar la plantilla en este momento. Por favor, intentá nuevamente."
+            "No pudimos **aplicar la plantilla** en este momento. Por favor, intentá nuevamente."
             if not es_auditor
-            else "No pudimos auditar el artículo en este momento. Por favor, intentá nuevamente."
+            else "No pudimos **auditar el artículo** en este momento. Por favor, intentá nuevamente."
         )
         return construir_respuesta(sesion, msg_sin_agente, sesion.ultimas_opciones)
 
@@ -802,7 +802,7 @@ async def handle_reaplicar_skill(
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
     if not getattr(b, "resultado_skill_pendiente", False) or not getattr(b, "skill_pendiente", None):
-        return construir_respuesta(sesion, "", sesion.ultimas_opciones)
+        return construir_respuesta(sesion, "- Reaplicar skill?", sesion.ultimas_opciones)
 
     skill = (b.skill_pendiente or "plantilla").lower()
     return await ejecutar_skill(sesion, req, skill=skill, es_reaplicacion=True)
