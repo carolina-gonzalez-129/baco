@@ -882,6 +882,147 @@ async def test_volver_en_revision_borrador_linea_1521_modo_enriquecimiento(mock_
 
 
 @pytest.mark.anyio
+async def test_volver_en_revision_borrador_modo_enriquecimiento_semantico(mock_buscador):
+    """
+    Punto 2: En REVISION_BORRADOR modo enriquecimiento con coincidencia semántica,
+    'volver' redirige a DECISION_TEXTO con opciones OPCIONES_ENRIQUECER_CONTINUAR.
+    """
+    sid = "test-volver-rev-enriq-semantico"
+    coincidencia = CoincidenciaArticulo(
+        id=607,
+        titulo="Artículo Semántico Existente",
+        url="https://bc.finneg.com/t/607",
+        score=0.88,
+        tipo_coincidencia="semantico",
+        mensaje="Coincidencia semántica encontrada",
+    )
+    borrador = BorradorSesion(
+        modo="enriquecimiento",
+        articulo_original_id=607,
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla="soluciones",
+        categoria_id=4,
+        categoria_nombre="Impuestos",
+        tags=["soluciones", "afip"],
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.REVISION_BORRADOR,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        tags=["soluciones", "afip"],
+        categoria_id=4,
+        coincidencias=[coincidencia],
+        borrador=borrador,
+    )
+    sesion.registrar_fallo("REVISION_BORRADOR")
+    SESIONES[sid] = sesion
+
+    req = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp = await manejar_turno(req, mock_buscador)
+
+    assert resp.estado == EstadoFlujo.DECISION_TEXTO
+    assert resp.opciones == OPCIONES_ENRIQUECER_CONTINUAR
+    assert sesion.estado == EstadoFlujo.DECISION_TEXTO
+    assert "REVISION_BORRADOR" not in sesion.intentos_fallidos_por_estado
+
+
+@pytest.mark.anyio
+async def test_volver_en_subsanando_borrador_modo_enriquecimiento_semantico(mock_buscador):
+    """
+    Punto 2: En SUBSANANDO_BORRADOR modo enriquecimiento con coincidencia semántica,
+    'volver' redirige a DECISION_TEXTO con opciones OPCIONES_ENRIQUECER_CONTINUAR.
+    """
+    sid = "test-volver-subsanando-enriq-semantico"
+    coincidencia = CoincidenciaArticulo(
+        id=608,
+        titulo="Artículo Semántico Subsanando",
+        url="https://bc.finneg.com/t/608",
+        score=0.85,
+        tipo_coincidencia="semantico",
+        mensaje="Coincidencia semántica para subsanar",
+    )
+    borrador = BorradorSesion(
+        modo="enriquecimiento",
+        articulo_original_id=608,
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla="instructivo",
+        categoria_id=5,
+        categoria_nombre="Ventas",
+        tags=["instructivo", "ventas"],
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.SUBSANANDO_BORRADOR,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        tags=["instructivo", "ventas"],
+        categoria_id=5,
+        coincidencias=[coincidencia],
+        borrador=borrador,
+    )
+    sesion.registrar_fallo("SUBSANANDO_BORRADOR")
+    SESIONES[sid] = sesion
+
+    req = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp = await manejar_turno(req, mock_buscador)
+
+    assert resp.estado == EstadoFlujo.DECISION_TEXTO
+    assert resp.opciones == OPCIONES_ENRIQUECER_CONTINUAR
+    assert sesion.estado == EstadoFlujo.DECISION_TEXTO
+    assert "SUBSANANDO_BORRADOR" not in sesion.intentos_fallidos_por_estado
+
+
+@pytest.mark.anyio
+async def test_volver_en_subsanando_borrador_modo_enriquecimiento_por_titulo(mock_buscador):
+    """
+    Punto 2: En SUBSANANDO_BORRADOR modo enriquecimiento con coincidencia por título,
+    'volver' redirige a DECISION_TITULO con opciones OPCIONES_ENRIQUECER_DESCARTAR.
+    """
+    sid = "test-volver-subsanando-enriq-titulo"
+    coincidencia = CoincidenciaArticulo(
+        id=609,
+        titulo="Artículo Título Subsanando",
+        url="https://bc.finneg.com/t/609",
+        score=0.95,
+        tipo_coincidencia="exacto",
+    )
+    borrador = BorradorSesion(
+        modo="enriquecimiento",
+        articulo_original_id=609,
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla="instructivo",
+        categoria_id=5,
+        categoria_nombre="Ventas",
+        tags=["instructivo", "ventas"],
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.SUBSANANDO_BORRADOR,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        tags=["instructivo", "ventas"],
+        categoria_id=5,
+        coincidencias=[coincidencia],
+        borrador=borrador,
+    )
+    sesion.registrar_fallo("SUBSANANDO_BORRADOR")
+    SESIONES[sid] = sesion
+
+    req = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp = await manejar_turno(req, mock_buscador)
+
+    assert resp.estado == EstadoFlujo.DECISION_TITULO
+    assert resp.opciones == OPCIONES_ENRIQUECER_DESCARTAR
+    assert resp.mensaje == MSG_VOLVER_ENRIQUECER_O_DESCARTAR
+    assert sesion.estado == EstadoFlujo.DECISION_TITULO
+    assert "SUBSANANDO_BORRADOR" not in sesion.intentos_fallidos_por_estado
+
+
+@pytest.mark.anyio
 async def test_volver_en_subsanando_borrador_modo_nuevo(mock_buscador):
     """
     Caracterización SUBSANANDO_BORRADOR (Modo nuevo):
