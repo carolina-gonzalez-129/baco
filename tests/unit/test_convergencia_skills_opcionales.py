@@ -141,9 +141,10 @@ def test_heredados_se_deciden_en_el_paso_de_tags_y_categoria_sin_recursion():
     resp = continuar(sesion)  # Continuar sin aplicar plantilla
 
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert resp.opciones == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
-    assert resp.aviso_metadatos_heredados
-    assert "ventas" not in resp.mensaje.lower()  # el detalle va solo en el banner
+    # Heredados precargados en el panel, sin banner; se confirman con Enviar datos.
+    assert resp.opciones == ["enviar_datos", "volver"]
+    assert resp.aviso_metadatos_heredados is None
+    assert "Enviar datos" in resp.mensaje
 
 
 def test_registrar_finalizado_con_heredados_pendientes_no_recursa():
@@ -154,7 +155,7 @@ def test_registrar_finalizado_con_heredados_pendientes_no_recursa():
     resp = _registrar_finalizado(sesion)  # antes: RecursionError
 
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert resp.opciones == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+    assert resp.opciones == ["enviar_datos", "volver"]
 
 
 def test_aceptar_heredados_conserva_la_plantilla_elegida_y_ofrece_auditar():

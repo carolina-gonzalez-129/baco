@@ -24,6 +24,7 @@ from baco.server.schemas.chat_orquestado import (
 from baco.server.services.orquestador.mensajes import (
     MSG_BORRADOR_FINALIZADO,
     MSG_RECHAZADO,
+    OPCIONES_CONFIRMAR_METADATOS,
     OPCIONES_FINALIZADO,
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
@@ -88,27 +89,41 @@ def _heredados_pendientes(sesion: SesionChat) -> bool:
     return bool(b and b.metadatos_anteriores and not b.metadatos_heredados_revisados)
 
 
+def _cargar_metadatos_heredados(sesion: SesionChat) -> None:
+    """Carga en el borrador la categoría y las etiquetas del artículo original."""
+    b = sesion.borrador
+    ant = b.metadatos_anteriores or {}
+    plantilla = b.tipo_plantilla or sesion.tipo_plantilla
+    tematicos = [t for t in (ant.get("tags") or []) if extraer_tipo_plantilla([t]) is None]
+    b.tags = combinar_tags(plantilla, tematicos)
+    b.categoria_id = ant.get("categoria_id")
+    b.categoria_nombre = ant.get("categoria_nombre") or (
+        DICCIONARIO_OFICIAL_CATEGORIAS.get(b.categoria_id) if b.categoria_id else None
+    )
+    sesion.tags = list(b.tags)
+    sesion.categoria_id = b.categoria_id
+    sesion.categoria_nombre = b.categoria_nombre
+
+
 def _resp_metadatos_heredados(
     sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
 ) -> ChatOrquestadorResponse:
-    """Paso 3 en enriquecer/actualizar: ¿mantener la categoría y etiquetas del artículo original?"""
+    """Paso 3 en enriquecer/actualizar: la categoría y las etiquetas del artículo original
+    se cargan en el panel, editables. Se confirma con Enviar datos, igual que la carga manual
+    (sin banner ni botones Mantener / Elegir otros).
+    """
+    _cargar_metadatos_heredados(sesion)
     b = sesion.borrador
-    ant = b.metadatos_anteriores or {}
-    cat_nom = ant.get("categoria_nombre") or (
-        DICCIONARIO_OFICIAL_CATEGORIAS.get(ant.get("categoria_id"), f"Categoría {ant.get('categoria_id')}")
-        if ant.get("categoria_id")
-        else "Sin categoría"
-    )
-    tags_str = ", ".join(ant.get("tags") or []) or "ninguna"
-    aviso_meta = f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
-    # El detalle va solo en el banner (aviso_metadatos_heredados), no repetido en el chat.
-    mensaje = f"{prefijo}Revisá arriba la categoría y las etiquetas del artículo original. ¿Querés mantenerlas?".strip()
+    b.metadatos_heredados_revisados = True
+    sesion.metadatos_heredados_revisados = True
+    tematicos = [t for t in b.tags if extraer_tipo_plantilla([t]) is None]
+    mensaje = (
+        f"{prefijo}Cargué en el panel la categoría **{b.categoria_nombre or 'sin categoría'}** "
+        f"y las etiquetas **{', '.join(tematicos) or 'ninguna'}** del artículo original. "
+        "Podés modificarlas y, cuando estés conforme, tocá **Enviar datos**."
+    ).strip()
     return construir_respuesta(
-        sesion,
-        mensaje,
-        ["aceptar_metadatos", "rechazar_metadatos", "volver"],
-        aviso_privacidad=aviso_privacidad,
-        aviso_metadatos_heredados=aviso_meta,
+        sesion, mensaje, OPCIONES_CONFIRMAR_METADATOS, aviso_privacidad=aviso_privacidad
     )
 
 
@@ -303,12 +318,7 @@ def gestionar_metadatos_heredados(
     plantilla = b.tipo_plantilla or sesion.tipo_plantilla
     ant = b.metadatos_anteriores
     if acepta:
-        tematicos = [t for t in (ant.get("tags") or []) if extraer_tipo_plantilla([t]) is None]
-        b.tags = combinar_tags(plantilla, tematicos)
-        b.categoria_id = ant.get("categoria_id")
-        b.categoria_nombre = ant.get("categoria_nombre") or (
-            DICCIONARIO_OFICIAL_CATEGORIAS.get(b.categoria_id) if b.categoria_id else None
-        )
+        _cargar_metadatos_heredados(sesion)
         prefijo = "Se confirmaron los metadatos de la versión anterior. "
     else:
         b.tags = combinar_tags(plantilla, [])

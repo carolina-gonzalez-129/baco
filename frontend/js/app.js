@@ -1762,58 +1762,11 @@
     }
   }
 
+  // Los metadatos heredados se cargan en el panel y la decisión
+  // (Mantener / Elegir otros) se toma desde el chat: no se muestra banner.
   function pintarAvisoMetadatosHeredados(s) {
     const bannerMeta = $('#bannerMetadatosHeredados');
-    if (!bannerMeta) return;
-    const b = s.borrador;
-    const metaAnt = b && b.metadatos_anteriores;
-    const etapaPostTexto = s.flujo !== 'ESPERANDO_TITULO' && s.flujo !== 'DECISION_TITULO' && s.flujo !== 'ESPERANDO_TEXTO' && s.flujo !== 'DECISION_TEXTO';
-    const pendiente = (etapaPostTexto || !!s.aviso_metadatos_heredados) && metaAnt && !b.metadatos_heredados_revisados;
-
-    if (pendiente) {
-      if (bannerMeta.querySelector('.banner-meta-ant') && bannerMeta.querySelector('#btnAcepMetaHeredados')) {
-        return;
-      }
-      const nomCat = metaAnt.categoria_nombre || nombreCategoria(s, metaAnt.categoria_id);
-      const tagsStr = (metaAnt.tags || []).join(', ') || 'sin etiquetas';
-      bannerMeta.innerHTML =
-        '<div class="banner aviso banner-meta-ant" style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px;">' +
-          '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" style="flex-shrink:0; margin-top:2px;"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.5v4M8 11.5h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
-          '<div style="flex:1">' +
-            '<div><b>Metadatos heredados de la versión anterior (#' + esc(b.articulo_original_id) + '):</b></div>' +
-            '<div style="margin:4px 0 8px 0; font-size:12.5px;">Categoría: <b>' + esc(nomCat) + '</b> · Etiquetas: <b>' + esc(tagsStr) + '</b></div>' +
-            '<div style="display:flex; gap:8px;">' +
-              '<button type="button" class="btn btn-sm btn-primary" id="btnAcepMetaHeredados">Aceptar</button>' +
-              '<button type="button" class="btn btn-sm btn-secondary" id="btnRechMetaHeredados">Rechazar</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-
-      const btnAcep = $('#btnAcepMetaHeredados');
-      if (btnAcep) {
-        btnAcep.onclick = () => {
-          const sAct = store.get();
-          const payload = { accion: 'aceptar_metadatos' };
-          if (hayCambios(sAct) && sAct.form && sAct.form.texto) {
-            payload.texto = sAct.form.texto;
-          }
-          enviarTurno(payload, 'Aceptar metadatos heredados');
-        };
-      }
-      const btnRech = $('#btnRechMetaHeredados');
-      if (btnRech) {
-        btnRech.onclick = () => {
-          const sAct = store.get();
-          const payload = { accion: 'rechazar_metadatos' };
-          if (hayCambios(sAct) && sAct.form && sAct.form.texto) {
-            payload.texto = sAct.form.texto;
-          }
-          enviarTurno(payload, 'Rechazar metadatos heredados');
-        };
-      }
-    } else {
-      bannerMeta.innerHTML = '';
-    }
+    if (bannerMeta) bannerMeta.innerHTML = '';
   }
 
   function pintarResumenFinal(s) {

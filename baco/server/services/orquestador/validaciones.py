@@ -948,16 +948,9 @@ def construir_respuesta(
             skills_hab = True
             skills_mot = None
 
-    # La decisión sobre metadatos heredados pertenece solo al paso de tags y categoría.
-    tiene_meta_pendiente = bool(
-        sesion.borrador
-        and sesion.borrador.metadatos_anteriores
-        and not sesion.borrador.metadatos_heredados_revisados
-        and sesion.estado == EstadoFlujo.ESPERANDO_METADATOS
-    )
+    # Los metadatos heredados se muestran en el panel y la pregunta va en el chat:
+    # ya no se completa el aviso del banner.
     meta_aviso_final = aviso_metadatos_heredados
-    if tiene_meta_pendiente and not meta_aviso_final:
-        meta_aviso_final = obtener_aviso_metadatos_heredados(sesion.borrador)
 
     # Las opciones de metadatos heredados las define solo continuar.py
     # (_resp_metadatos_heredados); acá no se pisan.

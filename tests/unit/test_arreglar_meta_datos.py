@@ -1,8 +1,8 @@
 """Rama arreglar-meta-datos: carga de categoría y tags por chat vs. panel.
 
-1. Con metadatos heredados pendientes, el texto libre del chat no se toma como tag
-   ni avanza: se repite la pregunta de heredados.
-2. Escribir "Mantener categoría y tags" equivale a aceptar_metadatos.
+1. Los metadatos heredados se precargan en el panel (sin banner ni botones
+   Mantener / Elegir otros) y se confirman con "Enviar datos".
+2. Con heredados sin mostrar, el texto libre del chat no se toma como tag.
 3. Si la carga por chat completa los metadatos, no se avanza solo: se pide
    confirmar con "Enviar datos", igual que desde el panel.
 4. La carga desde el panel (envía tags) sigue avanzando directo.
@@ -77,8 +77,8 @@ def _sesion(sid, tags, categoria_id, heredados):
 
 
 @pytest.mark.anyio
-async def test_heredados_pendientes_texto_libre_no_se_toma_como_tag(mock_buscador):
-    sesion = _sesion("meta-hola", ["instructivo", "ventas"], 5, heredados=True)
+async def test_heredados_se_precargan_sin_banner_y_piden_enviar_datos(mock_buscador):
+    sesion = _sesion("meta-hola", ["instructivo"], None, heredados=True)
     # El front envía mensaje + categoria_id desde el chat.
     req = ChatOrquestadorRequest(session_id="meta-hola", mensaje="hola", categoria_id=5)
     resp = await manejar_turno(req, mock_buscador)
@@ -86,19 +86,20 @@ async def test_heredados_pendientes_texto_libre_no_se_toma_como_tag(mock_buscado
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
     assert "hola" not in sesion.borrador.tags
     assert sesion.borrador.tags == ["instructivo", "ventas"]
-    assert sesion.borrador.metadatos_heredados_revisados is False
-    assert resp.opciones == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+    assert sesion.borrador.categoria_id == 5
+    assert resp.aviso_metadatos_heredados is None
+    assert resp.opciones == ["enviar_datos", "volver"]
+    assert "Enviar datos" in resp.mensaje
 
 
 @pytest.mark.anyio
-async def test_texto_mantener_categoria_y_tags_equivale_a_aceptar(mock_buscador):
-    sesion = _sesion("meta-mantener", ["instructivo", "ventas"], 5, heredados=True)
-    req = ChatOrquestadorRequest(session_id="meta-mantener", mensaje="Mantener categoría y tags", categoria_id=5)
-    resp = await manejar_turno(req, mock_buscador)
-
-    assert sesion.borrador.metadatos_heredados_revisados is True
-    assert resp.estado != EstadoFlujo.ESPERANDO_METADATOS
-    assert "mantener" not in " ".join(sesion.borrador.tags)
+async def test_heredados_precargados_se_confirman_con_enviar_datos(mock_buscador):
+    _sesion("meta-enviar", ["instructivo"], None, heredados=True)
+    await manejar_turno(ChatOrquestadorRequest(session_id="meta-enviar", mensaje="hola"), mock_buscador)
+    resp = await manejar_turno(
+        ChatOrquestadorRequest(session_id="meta-enviar", accion="enviar_datos"), mock_buscador
+    )
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
 
 
 @pytest.mark.anyio
