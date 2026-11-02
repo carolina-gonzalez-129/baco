@@ -39,6 +39,8 @@ from baco.server.services.orquestador.mensajes import (
     PREFIJO_DATOS_SANITIZADOS,
     PREFIJO_ERROR_CONFORMIDAD,
     PREFIJO_METADATOS_REGISTRADOS,
+    OPCIONES_CONFIRMAR_METADATOS,
+    msg_confirmar_metadatos,
     PREFIJO_SIN_DUPLICADOS,
     msg_actualizar_serie_cargado,
     msg_articulo_muy_largo,
@@ -70,6 +72,7 @@ from baco.server.services.orquestador.retroceso import (
 from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
 from baco.server.services.orquestador.continuar import (
     _registrar_finalizado,
+    _resp_metadatos_heredados,
     continuar,
     continuar_desde_revision,
 )
@@ -1067,6 +1070,18 @@ async def handle_esperando_plantilla(
     return continuar(sesion)
 
 
+def _resp_confirmar_metadatos_chat(
+    sesion: SesionChat, aviso_privacidad: Optional[str] = None
+) -> ChatOrquestadorResponse:
+    """Metadatos completos cargados por chat: no se avanza hasta que la persona confirme."""
+    b = sesion.borrador
+    tematicos = [t for t in (b.tags or []) if t and extraer_tipo_plantilla([t]) is None]
+    msg = msg_confirmar_metadatos(b.categoria_nombre or "", tematicos)
+    return construir_respuesta(
+        sesion, msg, OPCIONES_CONFIRMAR_METADATOS, aviso_privacidad=aviso_privacidad
+    )
+
+
 async def handle_esperando_metadatos(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
@@ -1078,15 +1093,35 @@ async def handle_esperando_metadatos(
     if opcion == "volver":
         return retroceder(sesion)
 
-    # Si la persona edita tags o categoría directamente, eso resuelve los metadatos heredados.
-    if (
-        b is not None
-        and b.metadatos_anteriores
-        and not b.metadatos_heredados_revisados
-        and (req.tags is not None or req.categoria_id is not None)
-    ):
-        b.metadatos_heredados_revisados = True
-        sesion.metadatos_heredados_revisados = True
+    # Carga por chat: llega texto (mensaje o acción) sin tags. El panel envía tags
+    # o solo la categoría elegida en el menú.
+    es_carga_chat = req.tags is None and bool(
+        (req.mensaje or "").strip() or (req.accion or "").strip()
+    )
+
+    # Metadatos heredados pendientes: solo se resuelven con los botones o con una
+    # edición desde el panel. El texto libre del chat no se toma como tag ni
+    # categoría: se repite la pregunta sin modificar la sesión.
+    if b is not None and b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        if es_carga_chat:
+            return _resp_metadatos_heredados(sesion)
+        if req.tags is not None or req.categoria_id is not None:
+            b.metadatos_heredados_revisados = True
+            sesion.metadatos_heredados_revisados = True
+
+    # Por chat no se avanza solo al completar: se confirma con "Enviar datos",
+    # igual que desde el panel.
+    if opcion == "enviar_datos" and b is not None:
+        if len(b.tags) >= 2 and b.categoria_id is not None:
+            return continuar(sesion, prefijo=PREFIJO_METADATOS_REGISTRADOS)
+        intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
+        if len(b.tags) < 2 and b.categoria_id is None:
+            msg = msg_pedir_tags_y_categoria(b.tipo_plantilla or "", intento)
+        elif b.categoria_id is None:
+            msg = msg_pedir_categoria(intento)
+        else:
+            msg = msg_pedir_tag_adicional(b.tipo_plantilla or "", intento)
+        return construir_respuesta(sesion, msg, ["volver"])
 
     plantilla_guardada = (
         (b.tipo_plantilla if b else sesion.tipo_plantilla)
@@ -1151,6 +1186,8 @@ async def handle_esperando_metadatos(
                 b.categoria_nombre = res_chat.categoria_nombre
                 sesion.categoria_id = res_chat.categoria_id
                 sesion.categoria_nombre = res_chat.categoria_nombre
+                if es_carga_chat:
+                    return _resp_confirmar_metadatos_chat(sesion)
                 return continuar(sesion, prefijo=PREFIJO_METADATOS_REGISTRADOS)
             elif res_chat.estado == "ambiguo":
                 intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
@@ -1233,6 +1270,8 @@ async def handle_esperando_metadatos(
             msg = msg_pedir_tag_adicional(b.tipo_plantilla or "", intento)
         return construir_respuesta(sesion, msg, ["volver"], aviso_privacidad=aviso_priv_tags)
 
+    if es_carga_chat:
+        return _resp_confirmar_metadatos_chat(sesion, aviso_privacidad=aviso_priv_tags)
     return continuar(sesion, prefijo=PREFIJO_METADATOS_REGISTRADOS)
 
 

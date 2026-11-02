@@ -156,6 +156,10 @@ def test_flujo_chat_categoria_ambigua_y_seleccion_posterior(client, mock_buscado
 
     # Selecciona 'Compras'
     r_ok = client.post("/chat", json={"session_id": sid, "mensaje": "Compras"}).json()
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_ok["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "enviar_datos" in r_ok["opciones"]
+    r_ok = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
     assert r_ok["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_ok["borrador"]["categoria_id"] == 24
     assert r_ok["borrador"]["categoria_nombre"] == "Compras"
@@ -215,6 +219,10 @@ def test_reproduccion_caso_original_articulo_muestra_nombre_ventas(client, mock_
 
     # 2. Ingresa 'Ventas'
     r_cat = client.post("/chat", json={"session_id": sid, "mensaje": "Ventas"}).json()
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_cat["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "enviar_datos" in r_cat["opciones"]
+    r_cat = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
     assert r_cat["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_cat["borrador"]["categoria_id"] == 20
     assert r_cat["borrador"]["categoria_nombre"] == "Ventas"

@@ -208,6 +208,10 @@ def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(cli
 
     # Ingresa tags temáticos y categoría -> corre validar_articulo y pasa a REVISION_BORRADOR
     r_val = client.post("/chat", json={"session_id": sid, "mensaje": "ventas, facturacion, 4"}).json()
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_val["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "enviar_datos" in r_val["opciones"]
+    r_val = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
     assert r_val["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_val["borrador"]["modo"] == "nuevo"
     assert r_val["borrador"]["tags"] == ["instructivo", "ventas", "facturacion"]
@@ -986,6 +990,10 @@ def test_seleccion_categoria_por_nombre_en_metadatos(client, mock_buscador):
 
     # Usuario envía tag temático y el nombre de la categoría disponible
     r_val = client.post("/chat", json={"mensaje": "sueldos, Liquidación de Haberes"}).json()
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_val["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "enviar_datos" in r_val["opciones"]
+    r_val = client.post("/chat", json={"accion": "enviar_datos"}).json()
     assert r_val["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_val["borrador"]["categoria_id"] == 39
     assert r_val["tags_acumulados"] == ["instructivo", "sueldos"]
@@ -1627,6 +1635,10 @@ def test_mapear_categoria_directamente_desde_chat_en_turno_2(client, mock_buscad
 
     # Turno 2: usuario ingresa la categoría escribiendo 'Ventas' en el chat
     r_rev = client.post("/chat", json={"session_id": sid, "mensaje": "Ventas"}).json()
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_rev["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert "enviar_datos" in r_rev["opciones"]
+    r_rev = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
     assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_rev["borrador"]["categoria_id"] is not None
     assert "facturacion" in r_rev["borrador"]["tags"]

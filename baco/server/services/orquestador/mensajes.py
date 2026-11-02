@@ -15,7 +15,7 @@ OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
 OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
 OPCIONES_REVISION_VALIDO = ["auditar", "continuar", "volver"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
-# Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
+
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador"]
@@ -41,6 +41,7 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "confirmar_rechazo": {"accion": "confirmar_rechazo", "label": "Sí, descartar", "estilo": "btn-peligro"},
     "aceptar_metadatos": {"accion": "aceptar_metadatos", "label": "Mantener categoría y tags", "estilo": "btn-primary"},
     "rechazar_metadatos": {"accion": "rechazar_metadatos", "label": "Elegir otros", "estilo": "btn-secondary"},
+    "enviar_datos": {"accion": "enviar_datos", "label": "Enviar datos", "estilo": "btn-primary"},
     "ayuda": {"accion": "ayuda", "label": "¿Qué hago acá?", "estilo": "btn-ghost"},
     "reiniciar": {"accion": "reiniciar", "label": "Empezar de nuevo", "estilo": "btn-ghost"},
     "ver_articulo_final": {"accion": "ver_articulo_final", "label": "Ver artículo", "estilo": "btn-primary"},
@@ -60,7 +61,7 @@ MSG_VOLVER_PLANTILLA = (
     "Volvemos a la selección de formato. ¿Qué **tipo** de plantilla preferís para este artículo?"
 )
 MSG_VOLVER_METADATOS = (
-    "Volvemos al paso anterior. Podés redefinir las etiquetas o tags para clasificar tu artículo:"
+    "Volvemos al paso anterior. Podes corregir **la categoría y los tags tematicos** para clasificar tu artículo:"
 )
 MSG_VOLVER_ENRIQUECER_O_DESCARTAR = (
     "Volvemos al paso anterior. ¿Deseás **enriquecer** el artículo encontrado o **descartarlo**?"
@@ -70,7 +71,7 @@ MSG_OPERACION_CANCELADA = (
 )
 
 MSG_SIN_COINCIDENCIAS_TITULO = (
-    "No encontré nada similar. Por favor, enviame el texto o desarrollo del artículo."
+    "No encontré nada parecido. Por favor, enviame el texto o desarrollo del artículo."
 )
 MSG_DESCARTAR_COINCIDENCIA_TITULO = (
     "✨ Seguimos con tu propuesta de artículo.\n\n"
@@ -110,18 +111,21 @@ MSG_SESION_EXPIRADA = (
     "Tu sesión se cerró por inactividad. Para retomar, escribí el título del artículo o tocá **Empezar de nuevo**."
 )
 
-PREFIJO_SIN_DUPLICADOS = " "
-PREFIJO_CONTINUAR_PROPIO = " "
+PREFIJO_SIN_DUPLICADOS = ""
+PREFIJO_CONTINUAR_PROPIO = ""
 PREFIJO_METADATOS_REGISTRADOS = ""
 PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = ""
 
 MSG_CATEGORIA_TAGS_COMPLETOS = (
-    "Ya está todo completo. Podés Auditar el texto para mejorar su redacción, o tocar Continuar para enviarlo."
+    "Perfecto! . Podés **Auditar** para mejorar tu artículo acorde a las pautas editoriales, o **Continuar** para enviarlo."
+    "Si te confundiste en alguna parte, no hay problema, toca **Volver** para que lo arreglemos"
 )
 MSG_PLANTILLA_VALIDADA = (
-    "Podés Aplicar plantilla para darle el formato estándar, o tocar Continuar si ya lo tiene."
+    "Podés **Aplicar** para darle el formato estándar acorde a la plantilla, "
+    "o tocar **Continuar** si ya lo tiene."
+    "Si queres elegir otra, no hay problema. Toca **Volver**"
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
@@ -155,7 +159,6 @@ def msg_coincidencia(res_msg: str, titulo: str, url: str) -> str:
 VARIANTES_TEXTO_VACIO = [
     "Necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes.",
     "El mensaje me llegó en blanco, probá pegando de nuevo el contenido acá.",
-    "Aún no recibí el mensaje. Si necesitás prepararlo antes en tu editor, acá te espero; o podés tocar **Empezar de nuevo** si preferís comenzar en otro momento.",
 ]
 
 
@@ -222,7 +225,6 @@ def msg_opcion_invalida(intento: int = 0) -> str:
 
 VARIANTES_TAGS_FALTANTES = [
     "¡Ya casi lo tenemos listo! Para que el artículo quede bien clasificado y cualquiera lo encuentre al toque en la plataforma, sumale al menos una etiqueta temática (por ejemplo: ventas, facturacion o stock).",
-    "No te preocupes si no estás seguro de cuál usar. Pensá en qué palabra escribirías vos en el buscador si tuvieras este problema en el trabajo (el módulo o el circuito). Con una o dos palabras clave separadas por coma ya estamos.",
 ]
 
 
@@ -230,6 +232,18 @@ VARIANTES_CATEGORIA_FALTANTE = [
     "¡Etiquetas listas! Ahora indicame la **categoría** por acá o seleccionala en el menú de  **panel izquierdo** y tocá **Enviar datos**.",
     "Sólo falta la **categoría**: escribila por acá (ej: Ventas) o elegila en el **panel izquierdo** y tocá **Enviar datos**.",
 ]
+
+
+OPCIONES_CONFIRMAR_METADATOS = ["enviar_datos", "volver"]
+
+
+def msg_confirmar_metadatos(categoria: str, tags: List[str]) -> str:
+    """Carga por chat completa: se confirma con Enviar datos, igual que desde el panel."""
+    tags_txt = ", ".join(tags) if tags else "sin etiquetas"
+    return (
+        f"Listo, cargué la categoría **{categoria}** y las etiquetas **{tags_txt}**. "
+        "Revisalas en el panel y tocá **Enviar datos** para seguir."
+    )
 
 
 def msg_pedir_categoria(intento: int = 0) -> str:
@@ -280,7 +294,7 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
         f"{prefijo}🏷️ Asignamos el formato **{plantilla.capitalize()}**.\n\n"
         "Para continuar, completá la clasificación:\n"
         "• Sumá **al menos una etiqueta más** (o las que creas necesarias).\n"
-        "Podés indicarlas por aca o cargarlas en el menu desplegable arriba del panel izquierdo."
+        "Podés indicarlas por aca o cargarlas en el menu desplegable."
     )
 
 
