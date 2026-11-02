@@ -374,7 +374,8 @@ def aplicar_edicion_campos(
     ) or ""
 
     edita_titulo = titulo_difiere(req.titulo, tit_guardado)
-    edita_texto = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
+    texto_req = req.texto if req.texto is not None else req.texto_editor
+    edita_texto = texto_difiere(texto_req, txt_guardado, titulo_contexto=tit_guardado)
 
     if not edita_titulo and not edita_texto:
         return ResultadoEdicion(ok=True)
@@ -403,7 +404,7 @@ def aplicar_edicion_campos(
             aviso_plantilla,
             err_txt,
         ) = procesar_edicion_texto(
-            req.texto,
+            texto_req,
             sesion,
             titulo_contexto=titulo_nuevo or tit_guardado,
             det_req=getattr(req, "aviso_privacidad_detectado", None),
