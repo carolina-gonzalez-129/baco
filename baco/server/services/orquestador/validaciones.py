@@ -959,9 +959,9 @@ def construir_respuesta(
     if tiene_meta_pendiente and not meta_aviso_final:
         meta_aviso_final = obtener_aviso_metadatos_heredados(sesion.borrador)
 
+    # Las opciones de metadatos heredados las define solo continuar.py
+    # (_resp_metadatos_heredados); acá no se pisan.
     opciones_finales = list(opciones)
-    if tiene_meta_pendiente:
-        opciones_finales = ["aceptar_metadatos", "rechazar_metadatos", "volver"]
 
     sesion.ultimas_opciones = list(opciones_finales)
 
