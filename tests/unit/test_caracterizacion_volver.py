@@ -741,6 +741,79 @@ async def test_volver_en_revision_borrador_linea_1521_modo_nuevo(mock_buscador):
 
 
 @pytest.mark.anyio
+async def test_volver_en_revision_borrador_intermedia_conserva_tipo_plantilla(mock_buscador):
+    """
+    Punto 1: Desde la revisión intermedia (revision_intermedia=True) en modo nuevo,
+    'volver' transiciona a ESPERANDO_PLANTILLA conservando tipo_plantilla en el borrador
+    y mostrándolo como opción actual en resp.borrador.tipo_plantilla.
+    """
+    sid = "test-volver-intermedia-plantilla"
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla="instructivo",
+        revision_intermedia=True,
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.REVISION_BORRADOR,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        borrador=borrador,
+    )
+    sesion.registrar_fallo("REVISION_BORRADOR")
+    SESIONES[sid] = sesion
+
+    req = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp = await manejar_turno(req, mock_buscador)
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert resp.mensaje == MSG_VOLVER_PLANTILLA
+    assert resp.opciones == OPCIONES_PLANTILLAS
+    assert sesion.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert "REVISION_BORRADOR" not in sesion.intentos_fallidos_por_estado
+    assert sesion.borrador.tipo_plantilla == "instructivo"
+    assert resp.borrador is not None
+    assert resp.borrador.tipo_plantilla == "instructivo"
+
+
+@pytest.mark.anyio
+async def test_volver_en_subsanando_borrador_intermedia_conserva_tipo_plantilla(mock_buscador):
+    """
+    Punto 1: En SUBSANANDO_BORRADOR con revision_intermedia=True, 'volver'
+    también transiciona a ESPERANDO_PLANTILLA conservando tipo_plantilla.
+    """
+    sid = "test-volver-subsanando-intermedia-plantilla"
+    borrador = BorradorSesion(
+        modo="nuevo",
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla="soluciones",
+        revision_intermedia=True,
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.SUBSANANDO_BORRADOR,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        borrador=borrador,
+    )
+    sesion.registrar_fallo("SUBSANANDO_BORRADOR")
+    SESIONES[sid] = sesion
+
+    req = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp = await manejar_turno(req, mock_buscador)
+
+    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert sesion.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert "SUBSANANDO_BORRADOR" not in sesion.intentos_fallidos_por_estado
+    assert sesion.borrador.tipo_plantilla == "soluciones"
+    assert resp.borrador is not None
+    assert resp.borrador.tipo_plantilla == "soluciones"
+
+
+@pytest.mark.anyio
 async def test_volver_en_revision_borrador_linea_1521_modo_enriquecimiento(mock_buscador):
     """
     Caracterización handlers.py L1521 (Modo enriquecimiento):

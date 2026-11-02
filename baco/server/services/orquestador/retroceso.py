@@ -157,9 +157,6 @@ def _restaurar_revision_borrador(sesion: SesionChat) -> None:
 def _restaurar_revision_borrador_nuevo(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("REVISION_BORRADOR")
     sesion.limpiar_fallos("SUBSANANDO_BORRADOR")
-    # Desde la revisión intermedia se vuelve a elegir plantilla reseteando tipo_plantilla.
-    if sesion.borrador and sesion.borrador.revision_intermedia:
-        sesion.borrador.tipo_plantilla = None
 
 def _resp_decision_titulo(sesion: SesionChat) -> ChatOrquestadorResponse:
     return construir_respuesta(sesion, MSG_VOLVER_TITULO, [])
