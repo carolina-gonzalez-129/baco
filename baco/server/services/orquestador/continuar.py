@@ -17,13 +17,18 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
 )
 from baco.server.services.orquestador.mensajes import (
+    MSG_BORRADOR_FINALIZADO,
+    MSG_RECHAZADO,
+    OPCIONES_FINALIZADO,
     OPCIONES_PLANTILLAS,
+    OPCIONES_REINICIAR,
     PREFIJO_ERROR_CONFORMIDAD,
     PREFIJO_METADATOS_REGISTRADOS,
     msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
 from baco.server.services.orquestador.sesion import SesionChat
+from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     combinar_tags,
@@ -189,6 +194,67 @@ def _resp_paso_revision_final(
     pref = prefijo or PREFIJO_METADATOS_REGISTRADOS
     msg, ops = validar_borrador(sesion, pref)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
+
+
+
+def continuar_desde_revision(sesion: SesionChat) -> ChatOrquestadorResponse:
+    """
+    Decide la acción de 'continuar' o 'continuar_revision' desde el estado de revisión:
+    - Si es revisión intermedia: avanza al siguiente paso del troncal con continuar().
+    - Si es revisión final: registra la finalización del borrador con _registrar_finalizado().
+    """
+    b = sesion.borrador
+    if b is not None and b.revision_intermedia:
+        return continuar(sesion)
+    return _registrar_finalizado(sesion)
+
+
+def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
+    """Registra la finalización del borrador aplicando sanitización silenciosa final si corresponde."""
+    b = sesion.borrador
+    if b is None:
+        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
+
+    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        return continuar(sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
+
+    from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
+    adoptar_resultado_skill_pendiente(sesion)
+
+    b.metadatos_heredados_revisados = True
+    sesion.metadatos_heredados_revisados = True
+
+    comp = verificar_compuerta_avance(sesion)
+    if comp is not None:
+        return comp
+
+    limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
+    titulo_conf = limpio["titulo_sanitizado"]
+    bloques_conf = [
+        sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
+        for bl in b.bloques_texto
+        if bl.strip()
+    ]
+    bloques_conf = [bl for bl in bloques_conf if bl]
+    txt_conf_limpio = "\n\n".join(bloques_conf).strip()
+    aviso_privacidad_final = limpio.get("aviso_privacidad")
+
+    sesion.actualizar_contenido_borrador(
+        titulo=titulo_conf,
+        bloques_texto=bloques_conf,
+        texto_base_limpio=txt_conf_limpio,
+        texto_editor=txt_conf_limpio,
+        texto_original=txt_conf_limpio,
+    )
+    b.finalizado = True
+    sesion.estado = EstadoFlujo.FINALIZADO
+
+    return construir_respuesta(
+        sesion,
+        MSG_BORRADOR_FINALIZADO,
+        OPCIONES_FINALIZADO,
+        aviso_privacidad=aviso_privacidad_final,
+    )
 
 
 # ==============================================================================

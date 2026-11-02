@@ -390,3 +390,33 @@ def test_contenido_adicional_misma_modificacion_no_invalida_y_cambio_real_si():
     assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
     assert sesion.borrador.finalizado is False
 
+
+
+def test_revision_final_metadatos_anteriores_sin_revisar_continuar_no_finaliza_avisa(client):
+    """Borrador en revisión final con metadatos_anteriores sin revisar + opción 'continuar':
+    no debe finalizar ni recursar, debe responder con el aviso de metadatos heredados."""
+    sid = "test-revision-final-meta-pendiente"
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.REVISION_BORRADOR,
+        borrador=BorradorSesion(
+            modo="enriquecimiento",
+            articulo_original_id=101,
+            titulo="Configurar Punto de Venta Electrónico",
+            bloques_texto=[TEXTO_VALIDO],
+            tipo_plantilla="instructivo",
+            categoria_id=1,
+            categoria_nombre="General",
+            tags=["instructivo", "ventas"],
+            revision_intermedia=False,
+            metadatos_anteriores={"categoria_id": 1, "categoria_nombre": "General", "tags": ["instructivo", "ventas"]},
+            metadatos_heredados_revisados=False,
+        ),
+    )
+    SESIONES[sid] = sesion
+
+    r = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "continuar"}).json()
+    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.finalizado is False
+    assert r["aviso_metadatos_heredados"] is not None
+    assert "Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización" in r["mensaje"]

@@ -68,7 +68,11 @@ from baco.server.services.orquestador.retroceso import (
     retroceder,
 )
 from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
-from baco.server.services.orquestador.continuar import continuar
+from baco.server.services.orquestador.continuar import (
+    _registrar_finalizado,
+    continuar,
+    continuar_desde_revision,
+)
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     actualizar_metadatos_sesion,
@@ -1405,54 +1409,6 @@ def _aplicar_mutaciones_borrador(
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_priv_edicion)
 
 
-def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
-    """Registra la finalización del borrador aplicando sanitización silenciosa final si corresponde."""
-    b = sesion.borrador
-    if b is None:
-        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
-
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return continuar(sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
-
-    from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
-    adoptar_resultado_skill_pendiente(sesion)
-
-    b.metadatos_heredados_revisados = True
-    sesion.metadatos_heredados_revisados = True
-
-    comp = verificar_compuerta_avance(sesion)
-    if comp is not None:
-        return comp
-
-    limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
-    titulo_conf = limpio["titulo_sanitizado"]
-    bloques_conf = [
-        sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
-        for bl in b.bloques_texto
-        if bl.strip()
-    ]
-    bloques_conf = [bl for bl in bloques_conf if bl]
-    txt_conf_limpio = "\n\n".join(bloques_conf).strip()
-    aviso_privacidad_final = limpio.get("aviso_privacidad")
-
-    sesion.actualizar_contenido_borrador(
-        titulo=titulo_conf,
-        bloques_texto=bloques_conf,
-        texto_base_limpio=txt_conf_limpio,
-        texto_editor=txt_conf_limpio,
-        texto_original=txt_conf_limpio,
-    )
-    b.finalizado = True
-    sesion.estado = EstadoFlujo.FINALIZADO
-
-    return construir_respuesta(
-        sesion,
-        MSG_BORRADOR_FINALIZADO,
-        OPCIONES_FINALIZADO,
-        aviso_privacidad=aviso_privacidad_final,
-    )
-
-
 async def handle_revision_borrador(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
@@ -1515,14 +1471,14 @@ async def handle_revision_borrador(
             b.tags = tags_nuevos
             sesion.tags = tags_nuevos
 
-        if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
-            return continuar(sesion)
+        if opcion in ("continuar_revision", "continuar"):
+            return continuar_desde_revision(sesion)
 
         if opcion == "finalizar" and b is not None and b.revision_intermedia:
             msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
             return construir_respuesta(sesion, msg, ops)
 
-        if opcion in ("finalizar", "continuar", "continuar_revision"):
+        if opcion == "finalizar":
             return _registrar_finalizado(sesion)
 
         if opcion not in ("editar", "aplicar_plantilla", "auditar", "rechazar", "confirmar_rechazo"):
@@ -1550,14 +1506,14 @@ async def handle_revision_borrador(
         from baco.server.services.orquestador.edicion import ejecutar_skill
         return await ejecutar_skill(sesion, req, "auditor")
 
-    if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
-        return continuar(sesion)
+    if opcion in ("continuar_revision", "continuar"):
+        return continuar_desde_revision(sesion)
 
     if opcion == "finalizar" and b is not None and b.revision_intermedia:
         msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
         return construir_respuesta(sesion, msg, ops)
 
-    if opcion in ("finalizar", "continuar", "continuar_revision"):
+    if opcion == "finalizar":
         return _registrar_finalizado(sesion)
 
     if opcion == "rechazar":
