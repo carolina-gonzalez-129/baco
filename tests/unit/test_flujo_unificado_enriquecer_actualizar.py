@@ -80,9 +80,10 @@ def test_decision_titulo_enriquecer_trae_imagenes_y_valida_bloqueante(client, mo
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r2["borrador"]["texto_alineado_discourse"]}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
-    # Al tener tags >= 2 y plantilla 'instructivo', llega a REVISION_BORRADOR (revisión intermedia)
-    # y se puede continuar hacia la revisión final
-    assert "continuar_revision" in r3["opciones"]
+    # Con metadatos heredados pendientes, las opciones iniciales son aceptar/rechazar/volver
+    assert r3["opciones"] == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar_metadatos"}).json()
+    assert "continuar" in r4["opciones"] or "continuar_revision" in r4["opciones"]
 
 
 def test_decision_titulo_actualizar_adopta_nuevo_titulo(client, mock_buscador):
@@ -135,8 +136,10 @@ def test_decision_texto_enriquecer_trae_imagenes_y_termina_duplicados(client, mo
 
     r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
     assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Nuevo flujo: en la revisión intermedia se avanza con 'continuar_revision'
-    assert "continuar_revision" in r3_conf["opciones"]
+    # Con metadatos heredados pendientes, las opciones iniciales son aceptar/rechazar/volver
+    assert r3_conf["opciones"] == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+    r4_meta = client.post("/chat", json={"session_id": sid, "accion": "aceptar_metadatos"}).json()
+    assert "continuar" in r4_meta["opciones"] or "continuar_revision" in r4_meta["opciones"]
 
 
 def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, mock_buscador):

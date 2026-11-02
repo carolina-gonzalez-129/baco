@@ -241,7 +241,12 @@ def aplicar_plantilla(
             status_code=422,
             detail=borrador.skills_motivo or "Las skills están deshabilitadas para este borrador.",
         )
+    if borrador.texto_editor:
+        borrador.bloques_texto = [borrador.texto_editor]
     resultado = ejecutar_skill_plantillas(sid, borrador, baco)
+    borrador.resultado_skill_desactualizado = False
+    borrador.resultado_skill_pendiente = True
+    borrador.skill_pendiente = "plantilla"
     return ChatResponse(response=resultado)
 
 
@@ -254,7 +259,7 @@ def auditar_semantica(
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
-    _, borrador = sesion_valida
+    sid, borrador = sesion_valida
     if not borrador.skills_habilitadas:
         raise HTTPException(
             status_code=422,
@@ -269,7 +274,17 @@ def auditar_semantica(
                 "asigná una categoría y al menos 2 etiquetas."
             ),
         )
+    if borrador.texto_editor:
+        borrador.bloques_texto = [borrador.texto_editor]
     dictamen, texto_corregido = ejecutar_skill_validador(borrador, baco)
+    borrador.resultado_skill_desactualizado = False
+    borrador.resultado_skill_pendiente = True
+    borrador.skill_pendiente = "auditor"
+    sesion = gestor_sesiones.obtener_sesion(sid)
+    if sesion and sesion.borrador:
+        sesion.borrador.resultado_skill_desactualizado = False
+        sesion.borrador.resultado_skill_pendiente = True
+        sesion.borrador.skill_pendiente = "auditor"
     return ChatResponse(response=dictamen, texto_corregido=texto_corregido)
 
 

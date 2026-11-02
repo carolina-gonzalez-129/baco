@@ -90,6 +90,7 @@ class SesionChat:
     categoria_id: Optional[int] = None
     categoria_nombre: Optional[str] = None
     tags: List[str] = field(default_factory=list)
+    tipo_plantilla: Optional[str] = None
     metadatos_anteriores: Optional[Dict[str, Any]] = None
     metadatos_heredados_revisados: bool = False
     coincidencias: List[CoincidenciaArticulo] = field(default_factory=list)
@@ -104,6 +105,7 @@ class SesionChat:
     descarto_serie: bool = False
     busquedas_descartadas: Set[Tuple[str, str]] = field(default_factory=set)
     huella_validacion: Optional[str] = None
+    ultimas_opciones: List[str] = field(default_factory=list)
 
     @property
     def huella(self) -> Optional[str]:
@@ -234,6 +236,9 @@ class SesionChat:
         categoria_nombre: Optional[str] = None,
         tags: Optional[List[str]] = None,
         tipo_plantilla: Optional[str] = None,
+        resultado_skill_desactualizado: Optional[bool] = None,
+        resultado_skill_pendiente: Optional[bool] = None,
+        skill_pendiente: Optional[str] = None,
     ) -> None:
         """Sincroniza atómicamente los bloques de texto, recursos y metadatos entre la sesión y su borrador."""
         if titulo is not None:
@@ -318,8 +323,19 @@ class SesionChat:
             if self.borrador is not None:
                 self.borrador.tags = list(tags)
 
-        if tipo_plantilla is not None and self.borrador is not None:
-            self.borrador.tipo_plantilla = tipo_plantilla
+        if tipo_plantilla is not None:
+            self.tipo_plantilla = tipo_plantilla
+            if self.borrador is not None:
+                self.borrador.tipo_plantilla = tipo_plantilla
+
+        if resultado_skill_desactualizado is not None and self.borrador is not None:
+            self.borrador.resultado_skill_desactualizado = resultado_skill_desactualizado
+
+        if resultado_skill_pendiente is not None and self.borrador is not None:
+            self.borrador.resultado_skill_pendiente = resultado_skill_pendiente
+
+        if skill_pendiente is not None and self.borrador is not None:
+            self.borrador.skill_pendiente = skill_pendiente
 
         if self.borrador and getattr(self.borrador, "finalizado", False):
             _invalidar_finalizado(self)
@@ -496,8 +512,9 @@ class GestorSesiones:
             texto_strip = (nuevo_texto or "").strip()
             sesion.borrador.bloques_texto = [texto_strip] if texto_strip else []
             sesion.bloques_texto = list(sesion.borrador.bloques_texto)
-            sesion.texto_limpio = sesion.borrador.texto_limpio
-            sesion.texto = sesion.borrador.texto_alineado_discourse
+            sesion.borrador.resultado_skill_pendiente = True
+            sesion.borrador.skill_pendiente = "plantilla"
+            sesion.borrador.resultado_skill_desactualizado = False
             _invalidar_finalizado(sesion)
             sesion.updated_at = ahora
             return True

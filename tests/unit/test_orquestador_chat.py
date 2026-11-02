@@ -288,7 +288,7 @@ def test_edicion_borrador_con_longitud_invalida_no_rompe_y_muestra_bloqueante(cl
     # Editamos el borrador con un título inválido (< 15 caracteres)
     r_edit = client.post("/chat", json={"session_id": sid, "accion": "editar", "titulo": "Corto"}).json()
     assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "puntos obligatorios pendientes" in r_edit["mensaje"]
+    assert "Antes de seguir, hay que resolver esto" in r_edit["mensaje"]
     assert r_edit["validacion"]["valido"] is False
 
 
@@ -699,7 +699,7 @@ def test_id_desconocido_genera_sesion_nueva_y_avisa_expiracion(client):
     resp = client.post("/chat", json={"mensaje": "Hola de nuevo"})
     assert resp.status_code == 200
     data = resp.json()
-    assert "la sesión se cerró por inactividad" in data["mensaje"]
+    assert "se cerró por inactividad" in data["mensaje"]
     assert data["session_id"] != id_desconocido
     assert len(data["session_id"]) >= 32
     assert data["estado"] == EstadoFlujo.ESPERANDO_TITULO

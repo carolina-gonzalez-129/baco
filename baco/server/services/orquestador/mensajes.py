@@ -18,7 +18,7 @@ OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 # Revisión intermedia (antes de categoría y tags): se avanza con "continuar_revision", no con "conforme".
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
-OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador", "volver"]
+OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador"]
 
 DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
@@ -100,17 +100,13 @@ MSG_ELEGIR_PLANTILLA = (
     "📋 Elegí el formato para tu artículo:\n\n"
     "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta."
 )
-MSG_PEDIR_EDICION = (
-    "Podes ingresar los cambios que gustes! "
-    "."
-)
+MSG_PEDIR_EDICION = "Hacé los cambios que necesites en el Editor."
 MSG_RECHAZADO = (
     "Cancelamos el borrador y no se guardó ningún cambio. "
-    "Si querés comenzar otra redacción desde el principio, tocá **reiniciar**."
+    "Si querés comenzar otra redacción desde el principio, tocá **Empezar de nuevo**."
 )
 MSG_SESION_EXPIRADA = (
-    "Disculpá la interrupción: la sesión se cerró por inactividad para proteger tus datos. "
-    "Para retomar, ingresá el título de tu artículo o tocá 'reiniciar'."
+    "Tu sesión se cerró por inactividad. Para retomar, escribí el título del artículo o tocá **Empezar de nuevo**."
 )
 
 PREFIJO_SIN_DUPLICADOS = " "
@@ -118,13 +114,13 @@ PREFIJO_CONTINUAR_PROPIO = " "
 PREFIJO_METADATOS_REGISTRADOS = ""
 PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
-PREFIJO_ERROR_CONFORMIDAD = "Todavía no podemos avanzar porque **hay puntos obligatorios pendientes**:\n"
+PREFIJO_ERROR_CONFORMIDAD = ""
 
 MSG_CATEGORIA_TAGS_COMPLETOS = (
-    "¡Perfecto! Si querés, podés auditar la calidad editorial del contenido, o podés **Continuar** si ya la tiene."
+    "Ya está todo completo. Podés Auditar el texto para mejorar su redacción, o tocar Continuar para enviarlo."
 )
 MSG_PLANTILLA_VALIDADA = (
-    "¡Perfecto! Si querés, podés aplicar la plantilla para estandarizar el contenido, o podés **Continuar** si ya la tiene."
+    "Podés Aplicar plantilla para darle el formato estándar, o tocar Continuar si ya lo tiene."
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
@@ -152,7 +148,7 @@ def msg_coincidencia(res_msg: str, titulo: str, url: str) -> str:
 VARIANTES_TEXTO_VACIO = [
     "Necesito que me pases el texto o los pasos del artículo para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes.",
     "El mensaje me llegó en blanco, probá pegando de nuevo el contenido acá.",
-    "Aún no recibí el mensaje. Si necesitás prepararlo antes en tu editor, acá te espero; o podés tocar 'reiniciar' si preferís comenzar en otro momento.",
+    "Aún no recibí el mensaje. Si necesitás prepararlo antes en tu editor, acá te espero; o podés tocar **Empezar de nuevo** si preferís comenzar en otro momento.",
 ]
 
 
@@ -188,28 +184,28 @@ def msg_error_longitud_maxima(campo: str, max_c: int, intento: int = 0) -> str:
 
 def msg_articulo_muy_largo(max_c: int) -> str:
     return (
-        f"Este artículo es muy largo para editarlo desde el chat (supera los {max_c} caracteres). "
-        "Tocá 'descartar' para escribir un texto nuevo o 'reiniciar' para volver al inicio."
+        "Este artículo es demasiado largo para editarlo desde el chat (más de 15.000 caracteres). "
+        "Tocá **Es un tema distinto** para escribir uno nuevo, o **Empezar de nuevo**."
     )
 
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f"📄 Cargué el artículo ('{titulo}') en la **Vista previa** del panel izquierdo.\n\n"
-        "Hace los cambios que necesites y tocá **Confirmar texto**."
+        "Hacé los cambios que necesites y tocá **Confirmar texto**."
     )
 
 
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
         f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la **Vista previa** del panel izquierdo.\n\n'
-        "Hace los cambios que necesites y tocá **Confirmar texto**."
+        "Hacé los cambios que necesites y tocá **Confirmar texto**."
     )
 
 
 VARIANTES_OPCION_INVALIDA = [
     "Disculpá, no llegué a interpretar bien lo que me enviaste. Para que no tengas que escribirlo a mano, podés tocar directamente uno de los botones que te aparecen en pantalla.",
-    "No te preocupes, a veces me confundo si no usamos la palabra exacta. Para que avancemos sobre seguro, elegí 'enriquecer' (o 'actualizar') si querés aprovechar lo que ya existe en la base, o 'descartar' si preferís ingresar tu contenido aparte.",
+    "No te preocupes, a veces me confundo si no usamos la palabra exacta. Para que avancemos sobre seguro, elegí **Enriquecer el existente** (o **Actualizar el existente**) si querés aprovechar lo que ya existe en la base, o **Es un tema distinto** si preferís ingresar tu contenido aparte.",
 ]
 
 
@@ -261,10 +257,7 @@ def msg_categoria_ambigua(termino: str, candidatos: List[str]) -> str:
 
 def msg_pedir_tags_y_categoria(plantilla: str = "", intento: int = 0) -> str:
     art = f"el {plantilla}" if plantilla else "el artículo"
-    return (
-        f"Necesitamos al menos dos etiquetas para clasificar {art} "
-        "y que selecciones la categoría ."
-    )
+    return f"Para clasificar {art}, elegí una categoría y sumá al menos dos etiquetas."
 
 
 def msg_pedir_tag_adicional(plantilla: str = "", intento: int = 0) -> str:
@@ -285,7 +278,8 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
 
 
 def msg_sesion_finalizada(estado_valor: str) -> str:
-    return f"Esta conversación ya concluyó (el artículo fue {estado_valor}). Para comenzar una nueva redacción, tocá 'reiniciar'."
+    accion = "descartado" if estado_valor in (EstadoFlujo.RECHAZADO.value, "rechazado") else "enviado a revisión"
+    return f"Este artículo ya fue {accion}. Para escribir uno nuevo, tocá **Empezar de nuevo**."
 
 
 def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
@@ -364,7 +358,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
             )
         return (
-            "✅ El borrador superó las validaciones mínimas. Si estás conforme con el contenido, tocá **Continuar**.",
+            "Tu borrador está listo para revisar.",
             list(OPCIONES_REVISION_VALIDO),
         )
 

@@ -85,6 +85,7 @@ from baco.server.services.orquestador.validaciones import (
     validar_longitud_maxima,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
+from baco.server.services.orquestador.edicion import procesar_edicion_texto
 
 
 async def handle_esperando_titulo(
@@ -822,7 +823,7 @@ async def handle_decision_texto(
         if not sesion.coincidencias:
             return construir_respuesta(
                 sesion,
-                "No se encontró el artículo coincidente para enriquecer. Tocá 'continuar' para usar tu propio texto:",
+                "No se encontró el artículo coincidente para enriquecer. Tocá **Continuar con mi texto** para usar tu propio texto:",
                 ["continuar", "reiniciar"],
             )
         elegido = sesion.coincidencias[0]
@@ -1158,7 +1159,7 @@ def _resolver_flujo_rechazo(
 
     return construir_respuesta(
         sesion,
-        "Por favor confirmá si querés descartar el artículo tocando 'confirmar_rechazo' o 'volver' para continuar trabajando en él.",
+        "Por favor confirmá si querés descartar el artículo tocando **Sí, descartar** o **Volver** para continuar trabajando en él.",
         ["confirmar_rechazo", "volver"],
     )
 
@@ -1431,17 +1432,12 @@ async def handle_revision_borrador(
     # 2. Gestión de metadatos heredados de versión previa
     resp_meta = _gestionar_metadatos_heredados(sesion, opcion)
     if resp_meta is not None:
-        if hubo_cambios and texto_edicion is not None:
-            _aplicar_mutaciones_borrador(sesion, req, texto_edicion)
         return resp_meta
 
     # 3. Acción explícita o silenciosa de sanitización
     if opcion == "sanitizar":
         return _ejecutar_sanitizacion_borrador(sesion, req)
 
-    # 4. Mutaciones y edición de campos del borrador
-    if hubo_cambios:
-        return _aplicar_mutaciones_borrador(sesion, req, texto_edicion)
 
     # 5. Opciones estándar del estado de revisión
     if opcion == "editar":
@@ -1455,9 +1451,13 @@ async def handle_revision_borrador(
     if opcion == "volver":
         return retroceder(sesion)
 
-    if opcion in ("aplicar_plantilla", "auditar"):
-        msg, ops = validar_borrador(sesion)
-        return construir_respuesta(sesion, msg, ops)
+    if opcion == "aplicar_plantilla":
+        from baco.server.services.orquestador.edicion import ejecutar_skill
+        return await ejecutar_skill(sesion, req, "plantilla")
+
+    if opcion == "auditar":
+        from baco.server.services.orquestador.edicion import ejecutar_skill
+        return await ejecutar_skill(sesion, req, "auditor")
 
     if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
         return _continuar_a_metadatos(sesion)

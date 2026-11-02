@@ -581,9 +581,7 @@ def combinar_tags(plantilla: Optional[str], *listas_tags: List[str]) -> List[str
             if not limpio:
                 continue
             clave = limpio.lower()
-            if clave in ("instructivos", "instructivo") and plantilla == "instructivo":
-                continue
-            if clave in ("soluciones", "solucion", "solución") and plantilla == "soluciones":
+            if plantilla and extraer_tipo_plantilla([limpio]) is not None:
                 continue
             if clave not in vistos:
                 vistos.add(clave)
@@ -869,10 +867,7 @@ def obtener_aviso_metadatos_heredados(borrador: Optional[BorradorSesion]) -> Opt
         if ant.get("categoria_id") else "Sin categoría"
     )
     tags_str = ", ".join(ant.get("tags") or []) or "ninguna"
-    return (
-        f"El artículo en su versión anterior tenía asociada la categoría '{cat_nom}' y las etiquetas: [{tags_str}]. "
-        "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
-    )
+    return f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
 
 
 def construir_respuesta(
@@ -927,10 +922,7 @@ def construir_respuesta(
 
     opciones_finales = list(opciones)
     if tiene_meta_pendiente:
-        if "aceptar_metadatos" not in opciones_finales:
-            opciones_finales = ["aceptar_metadatos", "rechazar_metadatos"] + [
-                o for o in opciones_finales if o not in ("aceptar_metadatos", "rechazar_metadatos")
-            ]
+        opciones_finales = ["aceptar_metadatos", "rechazar_metadatos", "volver"]
 
     sesion.ultimas_opciones = list(opciones_finales)
 
@@ -990,8 +982,8 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         sesion.estado = EstadoFlujo.REVISION_BORRADOR
         detalle = "\n".join(f"- [{f['severity']}] {f['field']}: {f['description']}" for f in findings)
         return (
-            f"{prefijo}Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n{detalle}\n"
-            "Podés tocar 'editar' para corregirlos o 'rechazar' para cancelar.",
+            f"{prefijo}Antes de seguir, hay que resolver esto:\n{detalle}\n\n"
+            "Tocá Seguir editando para corregirlo o Descartar borrador para empezar de cero.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
@@ -1047,8 +1039,8 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     if not valido:
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in bloqueantes)
         return (
-            f"{prefijo}Todavía no podemos avanzar porque hay puntos obligatorios pendientes:\n{detalle}\n"
-            "Podés tocar 'editar' para corregirlos o 'rechazar' para cancelar.",
+            f"{prefijo}Antes de seguir, hay que resolver esto:\n{detalle}\n\n"
+            "Tocá Seguir editando para corregirlo o Descartar borrador para empezar de cero.",
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
@@ -1058,8 +1050,8 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     if ajustes:
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in ajustes)
         return (
-            f"{prefijo}El borrador supera los requisitos técnicos mínimos pero presenta {len(ajustes)} observación(es) "
-            f"editoriales que requieren ajuste humano:\n{detalle}\n\n{msg_cierre}",
+            f"{prefijo}El borrador está completo, pero hay {len(ajustes)} sugerencia(s) para mejorarlo:\n{detalle}\n\n"
+            "Podés corregirlas en el Editor, Auditar el texto o tocar Continuar para dejarlo así.",
             ops_validas,
         )
 
@@ -1088,15 +1080,10 @@ def avanzar_a_metadatos_o_revision(
             if b.metadatos_anteriores.get("categoria_id") else "Sin categoría"
         )
         tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
-        aviso_meta = (
-            f"El artículo en su versión anterior tenía asociada la categoría '{cat_nom}' y las etiquetas: [{tags_str}]. "
-            "Podés tocar 'Aceptar' para conservar estos metadatos o 'Rechazar' si preferís definirlos manualmente."
-        )
-        msg_val, ops_val = validar_borrador(sesion, prefijo)
-        mensaje_espera = f"{prefijo}Esperando confirmación o rechazo de los metadatos heredados en el panel izquierdo."
-        ops = ["aceptar_metadatos", "rechazar_metadatos"] + [
-            o for o in ops_val if o not in ("aceptar_metadatos", "rechazar_metadatos")
-        ]
+        validar_borrador(sesion, prefijo)
+        aviso_meta = f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
+        mensaje_espera = f"{prefijo}{aviso_meta}".strip()
+        ops = ["aceptar_metadatos", "rechazar_metadatos", "volver"]
         return construir_respuesta(
             sesion,
             mensaje_espera,

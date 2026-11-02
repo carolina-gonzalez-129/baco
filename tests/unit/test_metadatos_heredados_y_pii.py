@@ -111,10 +111,10 @@ def test_enriquecer_con_pii_devuelve_ambos_avisos(client, mock_buscador):
     assert "anonimizaron" in r3["aviso_privacidad"].lower() or "personal" in r3["aviso_privacidad"].lower()
     # Debe tener aviso_metadatos_heredados porque los metadatos siguen pendientes de decisión
     assert r3["aviso_metadatos_heredados"] is not None
-    assert "versión anterior" in r3["aviso_metadatos_heredados"].lower()
+    assert "querés mantenerlas" in r3["aviso_metadatos_heredados"].lower()
     # Las opciones deben incluir aceptar y rechazar
-    assert "aceptar" in r3["opciones"]
-    assert "rechazar" in r3["opciones"]
+    assert "aceptar_metadatos" in r3["opciones"]
+    assert "rechazar_metadatos" in r3["opciones"]
     assert r3["borrador"]["metadatos_heredados_revisados"] is False
 
 
@@ -144,8 +144,8 @@ def test_enriquecer_sin_pii_devuelve_solo_aviso_metadatos(client, mock_buscador)
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r3["aviso_privacidad"] is None
     assert r3["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r3["opciones"]
-    assert "rechazar" in r3["opciones"]
+    assert "aceptar_metadatos" in r3["opciones"]
+    assert "rechazar_metadatos" in r3["opciones"]
     assert r3["borrador"]["metadatos_heredados_revisados"] is False
 
 
@@ -178,8 +178,8 @@ def test_edicion_manual_conserva_aviso_metadatos_heredados_automaticamente(clien
     assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
     # aviso_metadatos_heredados debe conservarse automáticamente
     assert r_edit["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r_edit["opciones"]
-    assert "rechazar" in r_edit["opciones"]
+    assert "aceptar_metadatos" in r_edit["opciones"]
+    assert "rechazar_metadatos" in r_edit["opciones"]
     assert r_edit["borrador"]["metadatos_heredados_revisados"] is False
 
     if edicion_con_pii:
@@ -246,3 +246,36 @@ def test_rechazar_metadatos_heredados_limpia_y_solicita_nuevos(client, mock_busc
     assert r_rech["borrador"]["tags"] == []
     # Al estar vacíos los metadatos, pasa a pedir plantilla
     assert r_rech["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+
+
+def test_opciones_con_metadatos_heredados_pendientes_son_aceptar_y_rechazar_metadatos(client, mock_buscador):
+    """Verifica que con metadatos heredados pendientes las opciones sean aceptar_metadatos y rechazar_metadatos."""
+    mock_buscador.evaluar_titulo.return_value = {
+        "mensaje": "Coincidencia",
+        "link": "https://bc.finneg.com/t/9006",
+        "coincidencias": [(9006, "Guía de Facturación", "https://bc.finneg.com/t/9006")],
+    }
+    mock_buscador.obtener_articulo.return_value = {
+        "id": 9006,
+        "titulo": "Guía de Facturación",
+        "url": "https://bc.finneg.com/t/9006",
+        "texto": TEXTO_BASE_EXISTENTE,
+        "categoria_id": 20,
+        "tags": ["instructivo", "facturacion"],
+    }
+
+    r1 = client.post("/chat", json={"mensaje": "Guía de Facturación"}).json()
+    sid = r1["session_id"]
+    client.post("/chat", json={"session_id": sid, "accion": "enriquecer"})
+    r_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_BASE_EXISTENTE}).json()
+
+    assert r_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_conf["aviso_metadatos_heredados"] is not None
+    assert "aceptar_metadatos" in r_conf["opciones"]
+    assert "rechazar_metadatos" in r_conf["opciones"]
+    assert "aceptar" not in r_conf["opciones"]
+
+    # Verificar que los botones asociados tienen los labels correctos
+    botones = {b["accion"]: b["label"] for b in r_conf.get("botones", [])}
+    assert botones.get("aceptar_metadatos") == "Mantener categoría y tags"
+    assert botones.get("rechazar_metadatos") == "Elegir otros"

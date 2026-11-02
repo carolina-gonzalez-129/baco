@@ -1,10 +1,14 @@
-
 from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorRequest,
     ChatOrquestadorResponse,
     EstadoFlujo,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
+from baco.server.services.orquestador.edicion import (
+    ESTADOS_EDICION_LIBRE,
+    aplicar_edicion_campos,
+    handle_reaplicar_skill,
+)
 from baco.server.services.orquestador.handlers import STATE_HANDLERS
 from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
@@ -22,6 +26,7 @@ from baco.server.services.orquestador.validaciones import (
     interpretar_opcion,
     validar_borrador,
 )
+
 
 async def manejar_turno(
     req: ChatOrquestadorRequest, buscador: BuscadorDuplicados
@@ -94,6 +99,42 @@ async def manejar_turno(
                 sesion,
                 MSG_BORRADOR_FINALIZADO,
                 OPCIONES_FINALIZADO,
+            )
+
+    if sesion.estado in ESTADOS_EDICION_LIBRE:
+        res_edicion = aplicar_edicion_campos(sesion, req)
+        if not res_edicion.ok:
+            return construir_respuesta(
+                sesion,
+                res_edicion.error or "",
+                sesion.ultimas_opciones,
+            )
+
+        if opcion == "reaplicar":
+            return await handle_reaplicar_skill(sesion, req, buscador)
+
+        if opcion in ("continuar", "continuar_revision"):
+            b = sesion.borrador
+            if b is not None and (getattr(b, "resultado_skill_desactualizado", False) or getattr(b, "skill_desactualizada", False)):
+                texto_a_usar = b.texto_editor or getattr(sesion, "texto_editor", None)
+                if texto_a_usar:
+                    sesion.actualizar_contenido_borrador(
+                        bloques_texto=[texto_a_usar],
+                        resultado_skill_desactualizado=False,
+                        resultado_skill_pendiente=False,
+                    )
+                    b.skill_pendiente = None
+
+        es_solo_edicion = not (req.accion and req.accion.strip()) and not (req.mensaje and req.mensaje.strip())
+        if es_solo_edicion:
+            opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones
+            sesion.ultimas_opciones = list(opciones_edicion)
+            mensaje_edicion = res_edicion.aviso_skill_desactualizada or res_edicion.aviso or ""
+            return construir_respuesta(
+                sesion,
+                mensaje_edicion,
+                opciones_edicion,
+                aviso_privacidad=res_edicion.aviso_privacidad,
             )
 
     handler = STATE_HANDLERS.get(sesion.estado)

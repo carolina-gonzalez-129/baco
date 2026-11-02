@@ -678,6 +678,10 @@ class ChatOrquestadorRequest(BaseModel):
         default=None,
         description="Lista de tags del borrador."
     )
+    tipo_plantilla: Optional[str] = Field(
+        default=None,
+        description="Tipo de plantilla ('instructivo' o 'soluciones') del borrador.",
+    )
     aviso_privacidad_detectado: Optional[str] = Field(
         default=None,
         exclude=True,

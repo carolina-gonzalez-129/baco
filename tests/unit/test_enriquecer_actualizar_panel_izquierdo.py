@@ -89,9 +89,12 @@ def test_enriquecer_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(clien
     texto_modificado = TEXTO_EXISTENTE + "\n\nSe agrega apartado sobre alícuotas especiales 2026."
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_modificado}).json()
     assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Nuevo flujo: en la revisión intermedia se avanza con 'continuar_revision'
-    assert "continuar_revision" in r3["opciones"]
+    # Con metadatos heredados pendientes, las opciones iniciales son aceptar/rechazar/volver
+    assert r3["opciones"] == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
     assert "alícuotas especiales 2026" in r3["borrador"]["texto_limpio"]
+    # Al resolver metadatos heredados, avanza a revisión
+    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar_metadatos"}).json()
+    assert "continuar" in r4["opciones"] or "continuar_revision" in r4["opciones"]
 
 
 def test_actualizar_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(client, mock_buscador):
