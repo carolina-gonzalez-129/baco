@@ -6,6 +6,7 @@ from baco.server.schemas.chat_orquestado import (
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.edicion import (
     ESTADOS_EDICION_LIBRE,
+    adoptar_resultado_skill_pendiente,
     aplicar_edicion_campos,
     handle_reaplicar_skill,
 )
@@ -115,16 +116,7 @@ async def manejar_turno(
             return await handle_reaplicar_skill(sesion, req, buscador)
 
         if opcion in ("continuar", "continuar_revision"):
-            b = sesion.borrador
-            if b is not None and (getattr(b, "resultado_skill_desactualizado", False) or getattr(b, "skill_desactualizada", False)):
-                texto_a_usar = b.texto_editor or getattr(sesion, "texto_editor", None)
-                if texto_a_usar:
-                    sesion.actualizar_contenido_borrador(
-                        bloques_texto=[texto_a_usar],
-                        resultado_skill_desactualizado=False,
-                        resultado_skill_pendiente=False,
-                    )
-                    b.skill_pendiente = None
+            adoptar_resultado_skill_pendiente(sesion)
 
         es_paso_metadatos_o_plantilla = sesion.estado in (
             EstadoFlujo.ESPERANDO_PLANTILLA,

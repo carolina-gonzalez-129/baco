@@ -1356,6 +1356,9 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
         return avanzar_a_metadatos_o_revision(sesion, "Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
 
+    from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
+    adoptar_resultado_skill_pendiente(sesion)
+
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
 
@@ -1373,9 +1376,16 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
         if bl.strip()
     ]
     bloques_conf = [bl for bl in bloques_conf if bl]
+    txt_conf_limpio = "\n\n".join(bloques_conf).strip()
     aviso_privacidad_final = limpio.get("aviso_privacidad")
 
-    sesion.actualizar_contenido_borrador(titulo=titulo_conf, bloques_texto=bloques_conf)
+    sesion.actualizar_contenido_borrador(
+        titulo=titulo_conf,
+        bloques_texto=bloques_conf,
+        texto_base_limpio=txt_conf_limpio,
+        texto_editor=txt_conf_limpio,
+        texto_original=txt_conf_limpio,
+    )
     b.finalizado = True
     sesion.estado = EstadoFlujo.FINALIZADO
 
@@ -1394,6 +1404,9 @@ def _continuar_a_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
         return avanzar_a_metadatos_o_revision(
             sesion, "Debés aceptar o rechazar los metadatos heredados antes de continuar. "
         )
+
+    from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
+    adoptar_resultado_skill_pendiente(sesion)
 
     if not sesion.validacion:
         validar_borrador(sesion)

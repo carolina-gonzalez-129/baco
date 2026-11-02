@@ -19,6 +19,7 @@ from baco.server.schemas.recurso import Recurso
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
     procesar_recursos_y_bloques,
+    texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.sesion import SesionChat
 from baco.server.services.orquestador.validaciones import (
@@ -244,7 +245,9 @@ def procesar_edicion_texto(
     if sesion.borrador is not None:
         sesion.borrador.texto_editor = txt_nuevo_limpio
         sesion.borrador.texto_base_limpio = txt_nuevo_limpio
+        sesion.borrador.texto_original = txt_nuevo_limpio
     sesion.texto_editor = txt_nuevo_limpio
+    sesion.texto_original = txt_nuevo_limpio
 
     return (
         bloques_nuevos,
@@ -422,6 +425,7 @@ def aplicar_edicion_campos(
         if txt_nuevo_limpio is not None:
             kwargs["texto_base_limpio"] = txt_nuevo_limpio
             kwargs["texto_editor"] = txt_nuevo_limpio
+            kwargs["texto_original"] = txt_nuevo_limpio
         if tiene_skill_vis:
             kwargs["resultado_skill_desactualizado"] = False
             kwargs["resultado_skill_pendiente"] = False
@@ -448,6 +452,40 @@ def aplicar_edicion_campos(
     )
 
 
+def adoptar_resultado_skill_pendiente(sesion: SesionChat) -> None:
+    """Si hay un resultado de skill pendiente, lo adopta como texto vigente del borrador y la sesión."""
+    b = sesion.borrador
+    if b is None:
+        return
+
+    if getattr(b, "resultado_skill_desactualizado", False) or getattr(b, "skill_desactualizada", False):
+        texto_a_usar = b.texto_editor or getattr(sesion, "texto_editor", None)
+        if texto_a_usar:
+            sesion.actualizar_contenido_borrador(
+                bloques_texto=[texto_a_usar],
+                texto_base_limpio=texto_a_usar,
+                texto_editor=texto_a_usar,
+                texto_original=texto_a_usar,
+                resultado_skill_desactualizado=False,
+                resultado_skill_pendiente=False,
+            )
+            b.skill_pendiente = None
+        return
+
+    if getattr(b, "resultado_skill_pendiente", False):
+        bloques_adoptados = list(b.bloques_texto) if b.bloques_texto else []
+        texto_adoptado = b.texto_limpio
+        sesion.actualizar_contenido_borrador(
+            bloques_texto=bloques_adoptados,
+            texto_base_limpio=texto_adoptado,
+            texto_editor=texto_adoptado,
+            texto_original=texto_adoptado,
+            resultado_skill_desactualizado=False,
+            resultado_skill_pendiente=False,
+        )
+        b.skill_pendiente = None
+
+
 async def ejecutar_skill(
     sesion: SesionChat,
     req: ChatOrquestadorRequest,
@@ -455,9 +493,9 @@ async def ejecutar_skill(
     es_reaplicacion: bool = False,
 ) -> ChatOrquestadorResponse:
     """Ejecuta la skill ('plantilla' o 'auditor') sobre el texto original del Editor.
-    El resultado va solo a b.bloques_texto y sesion.bloques_texto.
-    El texto original se preserva en b.texto_editor, sesion.texto_editor y b.texto_base_limpio.
-    No sincroniza sesion.texto_limpio ni sesion.texto con el resultado de la skill.
+    El resultado va solo a b.bloques_texto y sesion.bloques_texto (Vista previa).
+    El texto original se preserva en texto_original, texto_editor y texto_base_limpio (Editor).
+    No sincroniza sesion.texto_limpio ni sesion.texto con el resultado de la skill hasta 'Continuar'.
     """
     from baco.server.services.orquestador.validaciones import (
         construir_respuesta,
@@ -485,15 +523,33 @@ async def ejecutar_skill(
             )
             return construir_respuesta(sesion, msg_falta_meta, sesion.ultimas_opciones)
 
-    texto_origen = (
-        b.texto_editor
-        or sesion.texto_editor
-        or b.texto_base_limpio
-        or b.texto_limpio
-        or sesion.texto_limpio
-        or sesion.texto
-        or ""
-    ).strip()
+    if getattr(b, "resultado_skill_pendiente", False) and (
+        getattr(b, "texto_original", None)
+        or getattr(sesion, "texto_original", None)
+        or getattr(b, "texto_editor", None)
+        or getattr(sesion, "texto_editor", None)
+    ):
+        texto_vigente = (
+            b.texto_editor
+            or sesion.texto_editor
+            or b.texto_original
+            or sesion.texto_original
+            or ""
+        ).strip()
+    else:
+        texto_vigente = (
+            b.texto_editor
+            or sesion.texto_editor
+            or b.texto_limpio
+            or sesion.texto_limpio
+            or b.texto_base_limpio
+            or sesion.texto
+            or ""
+        ).strip()
+
+    texto_origen = texto_efectivo_sin_marcadores(texto_vigente)
+    sesion.texto_original = texto_origen
+    b.texto_original = texto_origen
 
     baco = getattr(req, "_baco_agent", None) or getattr(sesion, "_baco_agent", None)
     if baco is None:
@@ -526,6 +582,7 @@ async def ejecutar_skill(
             raise ValueError("La skill no devolvió contenido.")
     except Exception:
         b.bloques_texto = bloques_anteriores
+        sesion.bloques_texto = list(bloques_anteriores)
         msg_error = (
             "No pudimos aplicar la plantilla en este momento. Por favor, intentá nuevamente."
             if not es_auditor
@@ -536,33 +593,29 @@ async def ejecutar_skill(
     b.bloques_texto = [resultado]
     sesion.bloques_texto = [resultado]
 
+    b.texto_original = texto_origen
+    sesion.texto_original = texto_origen
     b.texto_editor = texto_origen
     sesion.texto_editor = texto_origen
     b.texto_base_limpio = texto_origen
+    sesion.texto_limpio = texto_origen
 
     b.resultado_skill_desactualizado = False
     b.resultado_skill_pendiente = True
     b.skill_pendiente = skill_nombre
 
+    opciones = (
+        ["continuar_revision", "volver"]
+        if getattr(b, "revision_intermedia", False)
+        else ["continuar", "volver"]
+    )
     if es_reaplicacion:
-        opciones = [o for o in sesion.ultimas_opciones if o != "reaplicar"]
-        if not opciones:
-            opciones = (
-                ["continuar_revision", "volver"]
-                if getattr(b, "revision_intermedia", False)
-                else ["continuar", "volver"]
-            )
         msg = (
             "Reaplicamos la plantilla sobre el texto actual del Editor."
             if not es_auditor
             else "Reauditamos el artículo con el texto actual del Editor."
         )
     else:
-        opciones = (
-            ["continuar_revision", "volver"]
-            if getattr(b, "revision_intermedia", False)
-            else ["continuar", "volver"]
-        )
         msg = (
             "Listo, apliqué la plantilla. Revisá el resultado y tocá **Continuar**."
             if not es_auditor

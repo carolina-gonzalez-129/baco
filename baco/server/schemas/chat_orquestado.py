@@ -148,6 +148,10 @@ class BorradorSesion(BaseModel):
         default=None,
         description="Texto escrito exclusivamente por la persona en el Editor, independiente de la Vista previa.",
     )
+    texto_original: Optional[str] = Field(
+        default=None,
+        description="Texto original previo a la aplicación de una skill, destinado al Editor.",
+    )
     orden_multimedia: List[int] = Field(
         default_factory=list,
         description="Vector numérico que guarda el orden explícito de los contenidos multimedia en el borrador."
@@ -799,6 +803,14 @@ class ChatOrquestadorResponse(BaseModel):
     texto_limpio: Optional[str] = Field(
         default=None,
         description="Texto limpio y sanitizado actual de la sesión o borrador."
+    )
+    texto_original: Optional[str] = Field(
+        default=None,
+        description="Texto original previo a la aplicación de una skill para el Editor, separado del resultado en Vista previa.",
+    )
+    texto_editor: Optional[str] = Field(
+        default=None,
+        description="Texto actual destinado al Editor, separado del resultado en Vista previa.",
     )
     multimedia_habilitada: bool = Field(
         default=False,

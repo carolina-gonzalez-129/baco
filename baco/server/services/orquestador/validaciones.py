@@ -887,6 +887,44 @@ def construir_respuesta(
         if sesion.borrador is not None
         else (sesion.texto_limpio or sesion.texto_en_edicion or None)
     )
+    txt_original_actual = (
+        (
+            sesion.borrador.texto_original
+            if sesion.borrador.texto_original is not None
+            else (
+                sesion.texto_original
+                if sesion.texto_original is not None
+                else (
+                    sesion.borrador.texto_editor
+                    if sesion.borrador.texto_editor is not None
+                    else (
+                        sesion.texto_editor
+                        if sesion.texto_editor is not None
+                        else (sesion.borrador.texto_base_limpio or sesion.texto_limpio or None)
+                    )
+                )
+            )
+        )
+        if sesion.borrador is not None
+        else (
+            sesion.texto_original
+            if sesion.texto_original is not None
+            else (
+                sesion.texto_editor
+                if sesion.texto_editor is not None
+                else (sesion.texto_limpio or sesion.texto_en_edicion or None)
+            )
+        )
+    )
+    txt_editor_actual = (
+        (
+            sesion.borrador.texto_editor
+            if sesion.borrador.texto_editor is not None
+            else (sesion.texto_editor if sesion.texto_editor is not None else txt_original_actual)
+        )
+        if sesion.borrador is not None
+        else (sesion.texto_editor if sesion.texto_editor is not None else txt_original_actual)
+    )
     if sesion.borrador is not None:
         skills_hab = sesion.borrador.skills_habilitadas
         skills_mot = sesion.borrador.skills_motivo
@@ -939,6 +977,8 @@ def construir_respuesta(
         borrador=sesion.borrador,
         titulo=txt_titulo_actual,
         texto_limpio=txt_limpio_actual,
+        texto_original=txt_original_actual,
+        texto_editor=txt_editor_actual,
         multimedia_habilitada=multimedia_habilitada(sesion),
         skills_habilitadas=skills_hab,
         skills_motivo=skills_mot,

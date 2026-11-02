@@ -82,6 +82,7 @@ class SesionChat:
     bloques_texto: List[str] = field(default_factory=list)
     texto_en_edicion: str = ""
     texto_editor: Optional[str] = None
+    texto_original: Optional[str] = None
     recursos: Dict[str, Recurso] = field(default_factory=dict)
     ultimo_id_recurso: int = 0
     orden_multimedia: List[int] = field(default_factory=list)
@@ -231,6 +232,7 @@ class SesionChat:
         texto_base_limpio: Optional[str] = None,
         texto_en_edicion: Optional[str] = None,
         texto_editor: Optional[str] = None,
+        texto_original: Optional[str] = None,
         titulo: Optional[str] = None,
         categoria_id: Optional[int] = None,
         categoria_nombre: Optional[str] = None,
@@ -297,6 +299,11 @@ class SesionChat:
             self.texto_editor = texto_editor
             if self.borrador is not None:
                 self.borrador.texto_editor = texto_editor
+
+        if texto_original is not None:
+            self.texto_original = texto_original
+            if self.borrador is not None:
+                self.borrador.texto_original = texto_original
 
         if texto is not None:
             self.texto = texto

@@ -149,14 +149,45 @@ def _restaurar_esperando_metadatos(sesion: SesionChat) -> None:
         b.texto_base_revision_final = None
 
 
+def _restaurar_skill_pendiente(sesion: SesionChat) -> None:
+    """Descarta el resultado de la skill pendiente y restaura el texto_original."""
+    b = sesion.borrador
+    if b is not None and (
+        getattr(b, "resultado_skill_pendiente", False)
+        or getattr(b, "skill_pendiente", None)
+        or getattr(b, "resultado_skill_desactualizado", False)
+    ):
+        texto_orig = (
+            getattr(b, "texto_original", None)
+            or getattr(sesion, "texto_original", None)
+            or getattr(b, "texto_editor", None)
+            or getattr(sesion, "texto_editor", None)
+            or getattr(b, "texto_base_limpio", None)
+            or getattr(sesion, "texto_limpio", None)
+            or ""
+        ).strip()
+        bloques_orig = [texto_orig] if texto_orig else []
+        sesion.actualizar_contenido_borrador(
+            bloques_texto=bloques_orig,
+            texto_base_limpio=texto_orig,
+            texto_editor=texto_orig,
+            texto_original=texto_orig,
+            resultado_skill_desactualizado=False,
+            resultado_skill_pendiente=False,
+        )
+        b.skill_pendiente = None
+
+
 def _restaurar_revision_borrador(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("REVISION_BORRADOR")
     sesion.limpiar_fallos("SUBSANANDO_BORRADOR")
+    _restaurar_skill_pendiente(sesion)
 
 
 def _restaurar_revision_borrador_nuevo(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("REVISION_BORRADOR")
     sesion.limpiar_fallos("SUBSANANDO_BORRADOR")
+    _restaurar_skill_pendiente(sesion)
     # Desde la revisión intermedia se vuelve a elegir plantilla reseteando tipo_plantilla.
     if sesion.borrador and sesion.borrador.revision_intermedia:
         sesion.borrador.tipo_plantilla = None
