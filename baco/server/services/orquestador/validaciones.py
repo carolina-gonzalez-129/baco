@@ -1021,7 +1021,6 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
                 "tags_count": len(b.tags or []),
             },
         )
-        sesion.estado = EstadoFlujo.REVISION_BORRADOR
         detalle = "\n".join(f"- [{f['severity']}] {f['field']}: {f['description']}" for f in findings)
         return (
             f"{prefijo}Antes de seguir, hay que resolver esto:\n{detalle}\n\n"
@@ -1072,7 +1071,6 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         findings=res.get("findings", []),
         resumen={"longitud_texto": res["longitud_texto"], "tags_count": res["tags_count"]},
     )
-    sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
     bloqueantes = [f for f in res.get("findings", []) if f.get("severity") == "Bloqueante"]
     ajustes = [f for f in res.get("findings", []) if f.get("severity") == "Requiere ajuste"]

@@ -29,6 +29,7 @@ from baco.server.services.orquestador.mensajes import (
 )
 from baco.server.services.orquestador.sesion import SesionChat
 from baco.server.services.validar_articulo import sanitizar_borrador
+from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     combinar_tags,
@@ -138,11 +139,86 @@ def _avanzar_paso_revision_intermedia(sesion: SesionChat) -> None:
     b.revision_intermedia = True
     b.texto_base_revision_final = None
 
+    texto_vigente = (
+        b.texto_editor
+        or sesion.texto_editor
+        or b.texto_original
+        or sesion.texto_original
+        or b.texto_limpio
+        or sesion.texto_limpio
+        or b.texto_base_limpio
+        or sesion.texto
+        or ""
+    ).strip()
+    texto_origen = texto_efectivo_sin_marcadores(texto_vigente)
+    sesion.texto_original = texto_origen
+    b.texto_original = texto_origen
+    b.texto_editor = texto_origen
+    sesion.texto_editor = texto_origen
+    b.texto_base_limpio = texto_origen
+    sesion.texto_limpio = texto_origen
+
+    import os
+    baco = getattr(sesion, "_baco_agent", None)
+    if baco is None:
+        try:
+            from baco.server.app.main import app
+            from baco.server.app.dependencies import get_baco_agent
+            override = app.dependency_overrides.get(get_baco_agent)
+            if override:
+                baco = override()
+        except Exception:
+            pass
+    if baco is None and "PYTEST_CURRENT_TEST" not in os.environ:
+        try:
+            from baco.server.app.dependencies import get_baco_agent
+            baco = get_baco_agent()
+        except Exception:
+            baco = None
+
+    if baco is not None and callable(baco):
+        resultado_plantilla = None
+        try:
+            from baco.server.services.agente_service import (
+                ejecutar_skill_plantillas,
+                ejecutar_skill_validador,
+            )
+            b.bloques_texto = [texto_origen] if texto_origen else []
+            resultado_plantilla = (
+                ejecutar_skill_plantillas(sesion.session_id, b, baco) or ""
+            ).strip()
+            if resultado_plantilla:
+                b.bloques_texto = [resultado_plantilla]
+                sesion.bloques_texto = [resultado_plantilla]
+        except Exception:
+            resultado_plantilla = None
+
+        if resultado_plantilla:
+            try:
+                dictamen, texto_corr = ejecutar_skill_validador(b, baco)
+                resultado_final = (texto_corr or resultado_plantilla).strip()
+                if resultado_final:
+                    b.bloques_texto = [resultado_final]
+                    sesion.bloques_texto = [resultado_final]
+            except Exception:
+                pass
+
+            b.resultado_skill_desactualizado = False
+            b.resultado_skill_pendiente = True
+            b.skill_pendiente = "plantilla"
+            b.skill_aplicada = "plantilla"
+            sesion.skill_aplicada = "plantilla"
+
 
 def _resp_paso_revision_intermedia(
     sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
 ) -> ChatOrquestadorResponse:
+    b = sesion.borrador
     msg, ops = validar_borrador(sesion, prefijo)
+    ops = [op for op in ops if op != "aplicar_plantilla"]
+    if b and getattr(b, "resultado_skill_pendiente", False):
+        if sesion.validacion and sesion.validacion.valido:
+            msg = f"{prefijo}Listo, apliqué la plantilla. Revisá el resultado y tocá **Continuar**.".strip()
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
 
 
@@ -227,25 +303,14 @@ def continuar_desde_revision(sesion: SesionChat) -> ChatOrquestadorResponse:
     return continuar(sesion)
 
 
-def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
-    """Registra la finalización del borrador aplicando sanitización silenciosa final si corresponde."""
+def _avanzar_paso_finalizado(sesion: SesionChat) -> None:
     b = sesion.borrador
     if b is None:
-        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
-
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return continuar(sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
-
+        return
     from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
     adoptar_resultado_skill_pendiente(sesion)
-
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
-
-    comp = verificar_compuerta_avance(sesion)
-    if comp is not None:
-        return comp
-
     limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
     titulo_conf = limpio["titulo_sanitizado"]
     bloques_conf = [
@@ -255,8 +320,6 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     ]
     bloques_conf = [bl for bl in bloques_conf if bl]
     txt_conf_limpio = "\n\n".join(bloques_conf).strip()
-    aviso_privacidad_final = limpio.get("aviso_privacidad")
-
     sesion.actualizar_contenido_borrador(
         titulo=titulo_conf,
         bloques_texto=bloques_conf,
@@ -265,14 +328,36 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
         texto_original=txt_conf_limpio,
     )
     b.finalizado = True
-    sesion.estado = EstadoFlujo.FINALIZADO
+    sesion._aviso_privacidad_final = limpio.get("aviso_privacidad")
 
+
+def _resp_paso_finalizado(
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+) -> ChatOrquestadorResponse:
+    aviso_priv = aviso_privacidad or getattr(sesion, "_aviso_privacidad_final", None)
     return construir_respuesta(
         sesion,
         MSG_BORRADOR_FINALIZADO,
         OPCIONES_FINALIZADO,
-        aviso_privacidad=aviso_privacidad_final,
+        aviso_privacidad=aviso_priv,
     )
+
+
+def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
+    """Registra la finalización del borrador aplicando sanitización silenciosa final si corresponde."""
+    b = sesion.borrador
+    if b is None:
+        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
+
+    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+        return continuar(sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
+
+    if sesion.estado == EstadoFlujo.EDICION_FINAL:
+        return continuar(sesion)
+
+    _avanzar_paso_finalizado(sesion)
+    sesion.estado = EstadoFlujo.FINALIZADO
+    return _resp_paso_finalizado(sesion)
 
 
 # ==============================================================================
@@ -361,6 +446,13 @@ TABLA_CONTINUAR: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaContinuar] = {
         estado_destino=EstadoFlujo.EDICION_FINAL,
         avanzar=_avanzar_paso_edicion_final,
         construir_respuesta=_resp_paso_edicion_final,
+    ),
+
+    # Paso 5 / Finalizado desde Edición Final
+    (EstadoFlujo.EDICION_FINAL, None): ReglaContinuar(
+        estado_destino=EstadoFlujo.FINALIZADO,
+        avanzar=_avanzar_paso_finalizado,
+        construir_respuesta=_resp_paso_finalizado,
     ),
 }
 

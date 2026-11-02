@@ -477,6 +477,7 @@ async def handle_decision_titulo(
                 if omitir_txt
                 else PREFIJO_SIN_DUPLICADOS
             )
+            sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
             return continuar(
                 sesion, prefijo=pref, aviso_privacidad=aviso_privacidad
             )
@@ -1060,6 +1061,8 @@ async def handle_esperando_plantilla(
     sesion.tags = list(b.tags)
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
+    if getattr(req, "_baco_agent", None):
+        sesion._baco_agent = req._baco_agent
     return continuar(sesion)
 
 
