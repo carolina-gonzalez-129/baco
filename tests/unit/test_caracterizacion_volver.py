@@ -1251,3 +1251,49 @@ async def test_volver_en_conformidad_usuario_coordinador_modo_enriquecimiento(mo
     assert sesion.borrador.tags == ["instructivo", "ventas"]
     assert sesion.borrador.metadatos_anteriores is None
     assert sesion.borrador.metadatos_heredados_revisados is False
+
+
+@pytest.mark.anyio
+async def test_volver_en_esperando_plantilla_modo_actualizar_con_metadatos_heredados(mock_buscador):
+    """
+    En flujo actualizar con metadatos heredados, estando en ESPERANDO_PLANTILLA,
+    'volver' deja el estado en REVISION_BORRADOR y no vuelve a pedir plantilla.
+    """
+    sid = "test-volver-actualizar-plantilla-con-metadatos"
+    metadatos_ant = {
+        "categoria_id": 5,
+        "categoria_nombre": "Ventas",
+        "tags": ["instructivo", "ventas"],
+    }
+    borrador = BorradorSesion(
+        modo="enriquecimiento",
+        articulo_original_id=505,
+        titulo=TITULO_VALIDO,
+        bloques_texto=[TEXTO_VALIDO],
+        tipo_plantilla=None,
+        categoria_id=None,
+        tags=[],
+        metadatos_anteriores=metadatos_ant,
+        metadatos_heredados_revisados=True,
+    )
+    sesion = SesionChat(
+        session_id=sid,
+        estado=EstadoFlujo.ESPERANDO_PLANTILLA,
+        titulo=TITULO_VALIDO,
+        texto=TEXTO_VALIDO,
+        tags=[],
+        categoria_id=None,
+        borrador=borrador,
+        metadatos_anteriores=metadatos_ant,
+        metadatos_heredados_revisados=True,
+    )
+    sesion.registrar_fallo("ESPERANDO_PLANTILLA")
+    SESIONES[sid] = sesion
+
+    req = ChatOrquestadorRequest(session_id=sid, accion="volver")
+    resp = await manejar_turno(req, mock_buscador)
+
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado != EstadoFlujo.ESPERANDO_PLANTILLA
+    assert resp.opciones != OPCIONES_PLANTILLAS

@@ -23,6 +23,7 @@ from baco.server.services.validar_articulo import (
 )
 from baco.server.services.orquestador.mensajes import (
     MSG_ANTES_DE_FINALIZAR,
+    PREFIJO_ERROR_CONFORMIDAD,
     MSG_ANTES_DE_CONTINUAR,
     OPCIONES_PLANTILLAS,
     OPCIONES_REVISION_BLOQUEANTE,
@@ -1063,49 +1064,18 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
     )
 
 
-def avanzar_a_metadatos_o_revision(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
-) -> ChatOrquestadorResponse:
-    b = sesion.borrador
-    if b.categoria_id is None and sesion.categoria_id is not None:
-        b.categoria_id = sesion.categoria_id
-
-    # Prioridad 1: Si hay metadatos heredados de una versión anterior y todavía no fueron confirmados/revisados:
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        b.revision_intermedia = True
-        b.texto_base_revision_final = None
-        sesion.estado = EstadoFlujo.REVISION_BORRADOR
-        cat_nom = b.metadatos_anteriores.get("categoria_nombre") or (
-            DICCIONARIO_OFICIAL_CATEGORIAS.get(b.metadatos_anteriores.get("categoria_id"), f"Categoría {b.metadatos_anteriores.get('categoria_id')}")
-            if b.metadatos_anteriores.get("categoria_id") else "Sin categoría"
-        )
-        tags_str = ", ".join(b.metadatos_anteriores.get("tags") or []) or "ninguna"
-        validar_borrador(sesion, prefijo)
-        aviso_meta = f"Este artículo ya tenía la categoría {cat_nom} y las etiquetas: {tags_str}. ¿Querés mantenerlas?"
-        mensaje_espera = f"{prefijo}{aviso_meta}".strip()
-        ops = ["aceptar_metadatos", "rechazar_metadatos", "volver"]
-        return construir_respuesta(
-            sesion,
-            mensaje_espera,
-            ops,
-            aviso_privacidad=aviso_privacidad,
-            aviso_metadatos_heredados=aviso_meta,
-        )
-
-    plantilla = b.tipo_plantilla or extraer_tipo_plantilla(b.tags)
-    if plantilla:
-        b.tipo_plantilla = plantilla
-        b.tags = combinar_tags(plantilla, b.tags)
-
-    if not b.tipo_plantilla:
-        sesion.estado = EstadoFlujo.ESPERANDO_PLANTILLA
-        return construir_respuesta(
-            sesion, msg_pedir_plantilla(prefijo), OPCIONES_PLANTILLAS, aviso_privacidad=aviso_privacidad
-        )
-
-    # Con plantilla elegida se pasa a la revisión intermedia (edición y skills). La categoría y los
-    # tags se piden al tocar 'continuar_revision' (ver handlers._continuar_a_metadatos).
-    b.revision_intermedia = True
-    b.texto_base_revision_final = None
-    msg, ops = validar_borrador(sesion, prefijo)
-    return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
+def verificar_compuerta_avance(
+    sesion: SesionChat, prefijo_error: str = PREFIJO_ERROR_CONFORMIDAD
+) -> Optional[ChatOrquestadorResponse]:
+    """
+    Compuerta de validación previa a avanzar (validar_borrador + bloqueantes).
+    Evalúa la conformidad del borrador. Si no es válido o tiene bloqueantes,
+    construye la respuesta correspondiente. Si es válido, retorna None.
+    Usada tanto por continuar() como por _registrar_finalizado().
+    """
+    if not sesion.validacion:
+        validar_borrador(sesion)
+    if not sesion.validacion or not sesion.validacion.valido:
+        msg, ops = validar_borrador(sesion, prefijo_error)
+        return construir_respuesta(sesion, msg, ops)
+    return None
