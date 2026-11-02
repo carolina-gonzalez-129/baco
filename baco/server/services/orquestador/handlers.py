@@ -1010,7 +1010,7 @@ async def handle_esperando_plantilla(
             ultimo_id_recurso=max(ultimo_id_p, _max_num_recurso(recs_plant)),
         )
 
-    opcion_plantilla = opcion or req.texto or req.mensaje or ""
+    opcion_plantilla = opcion or req.tipo_plantilla or req.texto or req.mensaje or ""
     plantilla = extraer_tipo_plantilla(req.tags or [], opcion_plantilla)
     if not plantilla:
         return construir_respuesta(sesion, MSG_ELEGIR_PLANTILLA, OPCIONES_PLANTILLAS)

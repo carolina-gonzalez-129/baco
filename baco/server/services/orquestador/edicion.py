@@ -362,20 +362,8 @@ def aplicar_edicion_campos(
     sesion: SesionChat,
     req: ChatOrquestadorRequest,
 ) -> ResultadoEdicion:
-    """Valida y aplica la edición silenciosa de título, texto, categoría, tags y/o plantilla en estados posteriores a duplicados."""
+    """Valida y aplica la edición silenciosa de título y/o texto en estados posteriores a duplicados."""
     b = sesion.borrador
-    # Una sola fuente de verdad: b.tipo_plantilla es la fuente.
-    plantilla_guardada = b.tipo_plantilla if b else getattr(sesion, "tipo_plantilla", None)
-
-    # Validar antes de mutar: la validación de tipo_plantilla tiene que ser lo primero en aplicar_edicion_campos.
-    # Si es inválida, se retorna error sin aplicar ningún otro campo del mismo request (título, texto, categoría, tags).
-    try:
-        edita_plantilla = plantilla_difiere(req.tipo_plantilla, plantilla_guardada)
-    except ValueError as e:
-        return ResultadoEdicion(ok=False, error=str(e))
-
-    plantilla_normalizada = req.tipo_plantilla.strip().lower() if req.tipo_plantilla is not None else None
-    plantilla_efectiva = plantilla_normalizada if edita_plantilla else plantilla_guardada
 
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
     tiene_skill_vis = tiene_resultado_skill_visible(b)
@@ -384,15 +372,11 @@ def aplicar_edicion_campos(
         if (b and b.texto_editor and tiene_skill_vis)
         else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
     ) or ""
-    cat_guardada = b.categoria_id if b else sesion.categoria_id
-    tags_guardados = (b.tags if b else sesion.tags) or []
 
     edita_titulo = titulo_difiere(req.titulo, tit_guardado)
     edita_texto = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
-    edita_categoria = categoria_difiere(req.categoria_id, cat_guardada)
-    edita_tags = tags_difiere(req.tags, tags_guardados)
 
-    if not edita_titulo and not edita_texto and not edita_categoria and not edita_tags and not edita_plantilla:
+    if not edita_titulo and not edita_texto:
         return ResultadoEdicion(ok=True)
 
     titulo_nuevo = None
@@ -402,36 +386,12 @@ def aplicar_edicion_campos(
         if err_tit:
             return ResultadoEdicion(ok=False, error=err_tit)
 
-    categoria_id_nueva = None
-    categoria_nombre_nuevo = None
-    if edita_categoria:
-        categoria_id_nueva, categoria_nombre_nuevo, err_cat = procesar_edicion_categoria(
-            req.categoria_id,
-            getattr(sesion, "categorias_disponibles", None),
-        )
-        if err_cat:
-            return ResultadoEdicion(ok=False, error=err_cat)
-
-    tags_nuevos = None
-    if edita_tags:
-        tags_nuevos, err_tags = procesar_edicion_tags(
-            req.tags,
-            plantilla=plantilla_efectiva,
-        )
-        if err_tags:
-            return ResultadoEdicion(ok=False, error=err_tags)
-    elif edita_plantilla:
-        # Reemplazar en los tags el tag de plantilla anterior por el nuevo, sin perder los temáticos
-        tags_nuevos = combinar_tags(plantilla_efectiva, tags_guardados)
-
     bloques_nuevos = None
     recursos_nuevos = None
     txt_nuevo_limpio = None
     ultimo_id_nuevo = None
     aviso_priv_txt = None
     aviso_plantilla = None
-    aviso_skill_desact = None
-    opciones_sugeridas = None
 
     if edita_texto:
         (
@@ -451,54 +411,24 @@ def aplicar_edicion_campos(
         if err_txt:
             return ResultadoEdicion(ok=False, error=err_txt)
 
-    if edita_plantilla:
-        txt_a_evaluar = (
-            txt_nuevo_limpio
-            or (b.texto_editor if (b and b.texto_editor) else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto or "")))
-        )
-        aviso_plantilla = revalidar_estructura_plantilla(
-            sesion,
-            txt_a_evaluar,
-            titulo=titulo_nuevo or tit_guardado,
-            plantilla=plantilla_efectiva,
-        )
-
-    kwargs = {}
+    kwargs: Dict[str, Any] = {}
     if edita_titulo:
         kwargs["titulo"] = titulo_nuevo
-    if edita_categoria:
-        kwargs["categoria_id"] = categoria_id_nueva
-        kwargs["categoria_nombre"] = categoria_nombre_nuevo
-    if tags_nuevos is not None:
-        kwargs["tags"] = tags_nuevos
-    if edita_plantilla:
-        kwargs["tipo_plantilla"] = plantilla_efectiva
 
-    if tiene_skill_vis and (edita_plantilla or edita_texto):
-        if b is not None:
-            b.resultado_skill_desactualizado = True
-            b.resultado_skill_pendiente = True
-            if not b.skill_pendiente:
-                b.skill_pendiente = "plantilla"
-        kwargs["resultado_skill_desactualizado"] = True
-        kwargs["resultado_skill_pendiente"] = True
-        aviso_skill_desact = (
-            MSG_PLANTILLA_DESACTUALIZADA if edita_plantilla else MSG_SKILL_DESACTUALIZADA
-        )
-        ops_base = list(sesion.ultimas_opciones) if sesion.ultimas_opciones else ["continuar", "volver"]
-        opciones_sugeridas = ["reaplicar"] + [o for o in ops_base if o != "reaplicar"]
-        if "continuar" not in opciones_sugeridas:
-            opciones_sugeridas.append("continuar")
-        if "volver" not in opciones_sugeridas:
-            opciones_sugeridas.append("volver")
-    elif edita_texto:
+    if edita_texto:
         kwargs["bloques_texto"] = bloques_nuevos
         kwargs["recursos"] = recursos_nuevos
         kwargs["ultimo_id_recurso"] = ultimo_id_nuevo
-
-    if edita_texto and txt_nuevo_limpio is not None:
-        kwargs["texto_base_limpio"] = txt_nuevo_limpio
-        kwargs["texto_editor"] = txt_nuevo_limpio
+        if txt_nuevo_limpio is not None:
+            kwargs["texto_base_limpio"] = txt_nuevo_limpio
+            kwargs["texto_editor"] = txt_nuevo_limpio
+        if tiene_skill_vis:
+            kwargs["resultado_skill_desactualizado"] = False
+            kwargs["resultado_skill_pendiente"] = False
+            if b is not None:
+                b.resultado_skill_desactualizado = False
+                b.resultado_skill_pendiente = False
+                b.skill_pendiente = None
 
     if kwargs:
         sesion.actualizar_contenido_borrador(**kwargs)
@@ -510,17 +440,11 @@ def aplicar_edicion_campos(
         ok=True,
         aviso=aviso_plantilla,
         aviso_privacidad=aviso_priv_total,
-        aviso_skill_desactualizada=aviso_skill_desact,
-        opciones_sugeridas=opciones_sugeridas,
         titulo_nuevo=titulo_nuevo,
         bloques_nuevos=bloques_nuevos,
         recursos_nuevos=recursos_nuevos,
         txt_nuevo_limpio=txt_nuevo_limpio,
         ultimo_id_nuevo=ultimo_id_nuevo,
-        categoria_id_nueva=categoria_id_nueva,
-        categoria_nombre_nuevo=categoria_nombre_nuevo,
-        tags_nuevos=tags_nuevos,
-        tipo_plantilla_nueva=plantilla_efectiva if edita_plantilla else None,
     )
 
 

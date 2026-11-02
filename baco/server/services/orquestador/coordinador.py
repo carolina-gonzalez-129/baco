@@ -101,6 +101,7 @@ async def manejar_turno(
                 OPCIONES_FINALIZADO,
             )
 
+    res_edicion = None
     if sesion.estado in ESTADOS_EDICION_LIBRE:
         res_edicion = aplicar_edicion_campos(sesion, req)
         if not res_edicion.ok:
@@ -125,7 +126,24 @@ async def manejar_turno(
                     )
                     b.skill_pendiente = None
 
-        es_solo_edicion = not (req.accion and req.accion.strip()) and not (req.mensaje and req.mensaje.strip())
+        es_paso_metadatos_o_plantilla = sesion.estado in (
+            EstadoFlujo.ESPERANDO_PLANTILLA,
+            EstadoFlujo.ESPERANDO_METADATOS,
+        ) and (
+            req.tipo_plantilla is not None
+            or req.tags is not None
+            or req.categoria_id is not None
+        )
+        tiene_campos_req = any(
+            v is not None
+            for v in (req.titulo, req.texto, req.tipo_plantilla, req.categoria_id, req.tags)
+        )
+        es_solo_edicion = (
+            not (req.accion and req.accion.strip())
+            and not (req.mensaje and req.mensaje.strip())
+            and tiene_campos_req
+            and not es_paso_metadatos_o_plantilla
+        )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones
             sesion.ultimas_opciones = list(opciones_edicion)
@@ -145,4 +163,7 @@ async def manejar_turno(
             OPCIONES_REINICIAR,
         )
 
-    return await handler(sesion, req, opcion, buscador)
+    resp_handler = await handler(sesion, req, opcion, buscador)
+    if res_edicion is not None and res_edicion.aviso_privacidad and not resp_handler.aviso_privacidad:
+        resp_handler.aviso_privacidad = res_edicion.aviso_privacidad
+    return resp_handler

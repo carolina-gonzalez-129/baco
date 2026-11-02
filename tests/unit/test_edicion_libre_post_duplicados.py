@@ -420,22 +420,24 @@ async def test_edicion_texto_con_opcion_continuar_procesa_una_sola_vez():
 
 
 @pytest.mark.anyio
-async def test_editar_con_resultado_pendiente_activa_flag_y_opcion_reaplicar():
+async def test_editar_texto_con_resultado_skill_visible_descarta_skill_y_actualiza_vista_previa():
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
     sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
     sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.ultimas_opciones = ["aplicar_plantilla", "continuar_revision", "volver"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # 1. Aplicar la plantilla inicialmente
     baco_mock = MagicMock(return_value="### Paso 1\nConfigurar opciones iniciales del sistema Finnegans.")
     resultado_plantilla = ejecutar_skill_plantillas(sesion.session_id, sesion.borrador, baco_mock)
+    sesion.borrador.resultado_skill_pendiente = True
+    sesion.borrador.resultado_skill_desactualizado = False
+    sesion.borrador.skill_pendiente = "plantilla"
     assert "Paso 1" in resultado_plantilla
     assert "Paso 1" in sesion.borrador.texto_limpio
-    assert sesion.borrador.resultado_skill_pendiente is True
-    assert sesion.borrador.resultado_skill_desactualizado is False
 
-    # 2. La persona edita el texto del Editor
+    # 2. La persona edita el texto del Editor con un resultado de skill visible
     texto_editado_usuario = (
         "Texto personalizado por el usuario después de aplicar la plantilla con detalles "
         "operativos específicos de la empresa para la configuración."
@@ -446,73 +448,26 @@ async def test_editar_con_resultado_pendiente_activa_flag_y_opcion_reaplicar():
     )
     resp_edicion = await manejar_turno(req_edicion, buscador)
 
-    # No reaplica automáticamente y no borra el resultado de Vista previa
-    assert "Paso 1" in resp_edicion.texto_limpio
+    # El texto editado pasa a ser el nuevo original (texto_editor y texto_base_limpio)
     assert sesion.borrador.texto_editor == texto_editado_usuario
+    assert sesion.borrador.texto_base_limpio == texto_editado_usuario
+    assert sesion.texto_editor == texto_editado_usuario
 
-    # Flag activo
-    assert sesion.borrador.resultado_skill_desactualizado is True
-    assert sesion.borrador.skill_desactualizada is True
+    # La Vista previa muestra el texto editado (se descarta el resultado de la skill)
+    assert resp_edicion.texto_limpio == texto_editado_usuario
+    assert sesion.borrador.texto_limpio == texto_editado_usuario
+    assert sesion.borrador.bloques_texto == [texto_editado_usuario]
+    assert "Paso 1" not in resp_edicion.texto_limpio
 
-    # Aviso breve en el chat y opción Reaplicar agregada (Continuar y Volver se mantienen)
-    assert "Editaste el texto, así que la versión de la Vista previa quedó desactualizada." in resp_edicion.mensaje
-    assert "reaplicar" in resp_edicion.opciones
-    assert "continuar" in resp_edicion.opciones
-    assert "volver" in resp_edicion.opciones
-
-
-@pytest.mark.anyio
-async def test_reaplicar_ejecuta_skill_sobre_texto_editado_y_limpia_flag():
-    from baco.server.services.agente_service import ejecutar_skill_plantillas
-
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
-    sesion.borrador.tipo_plantilla = "instructivo"
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    baco_mock = MagicMock(return_value="### Paso 1\nConfigurar opciones iniciales.")
-    ejecutar_skill_plantillas(sesion.session_id, sesion.borrador, baco_mock)
-
-    texto_editado_usuario = (
-        "Texto personalizado por el usuario después de aplicar la plantilla con detalles "
-        "operativos específicos de la empresa para la configuración."
-    )
-    req_edicion = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        texto=texto_editado_usuario,
-    )
-    await manejar_turno(req_edicion, buscador)
-    assert sesion.borrador.resultado_skill_desactualizado is True
-
-    # Usuario presiona "Reaplicar"
-    prompt_recibido = None
-
-    def baco_reaplicar(prompt):
-        nonlocal prompt_recibido
-        prompt_recibido = prompt
-        return "### Paso 1 Reaplicado\nContenido actualizado con el nuevo texto del editor."
-
-    req_reaplicar = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        accion="reaplicar",
-    )
-    setattr(req_reaplicar, "_baco_agent", baco_reaplicar)
-
-    resp_reap = await manejar_turno(req_reaplicar, buscador)
-
-    # Skill corre sobre el texto editado (nuevo original)
-    assert prompt_recibido is not None
-    assert texto_editado_usuario in prompt_recibido
-
-    # Limpia el flag
+    # Se limpian resultado_skill_pendiente, resultado_skill_desactualizado y skill_pendiente
+    assert sesion.borrador.resultado_skill_pendiente is False
     assert sesion.borrador.resultado_skill_desactualizado is False
-    assert sesion.borrador.skill_desactualizada is False
+    assert sesion.borrador.skill_pendiente is None
 
-    # No cambia el estado
-    assert resp_reap.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-
-    # Vista previa actualizada con el nuevo resultado
-    assert "Paso 1 Reaplicado" in sesion.borrador.texto_limpio
+    # No se reaplica nada ni se ofrece "reaplicar" ni aviso de desactualizada
+    assert resp_edicion.mensaje == ""
+    assert "reaplicar" not in resp_edicion.opciones
+    assert resp_edicion.opciones == ["aplicar_plantilla", "continuar_revision", "volver"]
 
 
 @pytest.mark.anyio
@@ -536,91 +491,6 @@ async def test_editar_sin_resultado_pendiente_sin_aviso():
     assert resp.mensaje == ""
     assert "reaplicar" not in resp.opciones
     assert sesion.borrador.resultado_skill_desactualizado is False
-
-
-@pytest.mark.anyio
-async def test_continuar_con_resultado_desactualizado_no_bloquea():
-    from baco.server.services.agente_service import ejecutar_skill_plantillas
-
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.borrador.tags = ["instructivo"]
-    sesion.borrador.revision_intermedia = True
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    # 1. Aplicar skill y luego editar texto
-    baco_mock = MagicMock(return_value="### Paso 1\nConfigurar opciones iniciales.")
-    ejecutar_skill_plantillas(sesion.session_id, sesion.borrador, baco_mock)
-
-    req_edit = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        texto="Texto con modificaciones adicionales en el editor que deja desactualizada la vista previa.",
-    )
-    await manejar_turno(req_edit, buscador)
-    assert sesion.borrador.resultado_skill_desactualizado is True
-
-    # 2. Usuario elige 'Continuar' con el resultado desactualizado
-    req_cont = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        accion="continuar",
-    )
-    resp_cont = await manejar_turno(req_cont, buscador)
-
-    # No se bloquea: avanza según la lógica de continuar (a ESPERANDO_METADATOS)
-    assert resp_cont.estado == EstadoFlujo.ESPERANDO_METADATOS
-
-
-@pytest.mark.anyio
-async def test_continuar_desactualizado_usa_texto_editor():
-    from baco.server.services.agente_service import ejecutar_skill_plantillas
-
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.borrador.tags = ["instructivo"]
-    sesion.borrador.revision_intermedia = True
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    # 1. Aplicar skill: resultado visible en Vista previa
-    baco_mock = MagicMock(return_value="### Paso 1 Formato Plantilla\nContenido viejo de la plantilla.")
-    ejecutar_skill_plantillas(sesion.session_id, sesion.borrador, baco_mock)
-    assert sesion.borrador.resultado_skill_pendiente is True
-    assert "Contenido viejo de la plantilla" in sesion.borrador.texto_limpio
-
-    # 2. El usuario edita el texto en el editor
-    texto_editado_usuario = (
-        "Texto modificado manualmente por el usuario en el editor. "
-        "Esta edición nunca debe perderse al continuar hacia metadatos o conformidad."
-    )
-    req_edit = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        texto=texto_editado_usuario,
-    )
-    await manejar_turno(req_edit, buscador)
-    assert sesion.borrador.resultado_skill_desactualizado is True
-    assert sesion.borrador.texto_editor == texto_editado_usuario
-    # En este punto intermedio la vista previa aún conservaba el resultado viejo
-    assert "Contenido viejo de la plantilla" in sesion.borrador.texto_limpio
-
-    # 3. El usuario elige 'continuar'
-    req_cont = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        accion="continuar",
-    )
-    resp_cont = await manejar_turno(req_cont, buscador)
-
-    # Comportamiento esperado:
-    # - Se usa b.texto_editor (lo editado), no b.bloques_texto viejo.
-    # - Las ediciones nunca se pierden.
-    # - Flags desactualizado y pendiente se resuelven / limpian.
-    assert sesion.borrador.resultado_skill_desactualizado is False
-    assert sesion.borrador.resultado_skill_pendiente is False
-    assert sesion.borrador.skill_pendiente is None
-
-    assert sesion.borrador.texto_limpio == texto_editado_usuario
-    assert sesion.borrador.bloques_texto == [texto_editado_usuario]
-    assert "Contenido viejo de la plantilla" not in sesion.borrador.texto_limpio
-    assert resp_cont.texto_limpio == texto_editado_usuario
-    assert resp_cont.estado == EstadoFlujo.ESPERANDO_METADATOS
 
 
 @pytest.mark.anyio
@@ -731,130 +601,138 @@ def test_auditar_semantica_sin_edicion_previa_resultado_identico():
 
 
 @pytest.mark.anyio
-async def test_continuar_con_tags_editados_quedan_guardados():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-tags-guardados")
+async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_sin_error():
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-ignorar-meta")
     sesion.borrador.revision_intermedia = False
-    sesion.borrador.categoria_id = 5
+    sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.tipo_plantilla = "instructivo"
+    sesion.borrador.categoria_id = 20
     sesion.borrador.categoria_nombre = "Ventas"
+    sesion.categoria_id = 20
+    sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
     sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
-    nuevos_tags = ["instructivo", "facturacion", "afip"]
+    # Enviar tipo_plantilla inválido, categoria_id inexistente y tags vacíos fuera de su paso natural:
+    # deben ignorarse sin error (ni ValueError ni 500) y sin mutar el borrador.
     req = ChatOrquestadorRequest(
         session_id=sesion.session_id,
-        tags=nuevos_tags,
-        accion="continuar",
-    )
-
-    resp = await manejar_turno(req, buscador)
-
-    # El estado avanza a FINALIZADO
-    assert resp.estado == EstadoFlujo.FINALIZADO
-    # Los tags editados quedaron guardados
-    assert set(sesion.borrador.tags) == set(nuevos_tags)
-    assert set(sesion.tags) == set(nuevos_tags)
-
-
-@pytest.mark.anyio
-async def test_continuar_sin_cambios_sin_avisos():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-sin-cambios")
-    sesion.borrador.revision_intermedia = False
-    sesion.borrador.categoria_id = 5
-    sesion.borrador.categoria_nombre = "Ventas"
-    sesion.borrador.tags = ["instructivo", "ventas"]
-    sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    # Reenvía los mismos tags en orden distinto
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tags=["ventas", "instructivo"],
-        categoria_id=5,
-        accion="continuar",
-    )
-
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.estado == EstadoFlujo.FINALIZADO
-    # Sin avisos adicionales en el mensaje
-    assert "Aviso" not in resp.mensaje
-
-
-@pytest.mark.anyio
-async def test_cambio_solo_de_categoria_valida_solo_categoria():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-solo-cat")
-    sesion.borrador.categoria_id = 5
-    sesion.borrador.categoria_nombre = "Ventas"
-    sesion.borrador.tags = ["instructivo", "ventas"]
-    sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    # Categoría inválida que no existe en el catálogo
-    req_invalida = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
+        tipo_plantilla="invalida_cualquiera",
         categoria_id=999999,
-        accion="continuar",
+        tags=[],
     )
+    resp = await manejar_turno(req, buscador)
 
-    resp_inv = await manejar_turno(req_invalida, buscador)
-
-    # No avanza y muestra error solo de la categoría
-    assert resp_inv.estado == EstadoFlujo.REVISION_BORRADOR
-    assert "La categoría '999999' no es válida o no existe" in resp_inv.mensaje
-    assert "tags" not in resp_inv.mensaje.lower()
-
-    # Categoría válida del catálogo (ej. 1 - General)
-    req_valida = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        categoria_id=1,
-    )
-    resp_val = await manejar_turno(req_valida, buscador)
-    assert resp_val.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.categoria_id == 1
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.mensaje == ""
+    assert sesion.borrador.tipo_plantilla == "instructivo"
+    assert sesion.borrador.categoria_id == 20
+    assert sesion.borrador.tags == ["instructivo", "ventas"]
 
 
 @pytest.mark.anyio
-async def test_continuar_con_tags_invalidos_en_revision_final_no_finaliza():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-tags-invalidos")
-    sesion.borrador.revision_intermedia = False
-    sesion.borrador.categoria_id = 5
-    sesion.borrador.categoria_nombre = "Ventas"
-    sesion.borrador.tags = ["instructivo", "ventas"]
-    sesion.tags = ["instructivo", "ventas"]
+async def test_punto_3_anonimizacion_pii_y_validacion_solo_campo_modificado():
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-pii-edicion")
     sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
-    # Intento de continuar con un único tag (menos de TAGS_MIN = 2)
-    req = ChatOrquestadorRequest(
+    # Editar título con PII (email) -> se anonimiza y se valida longitud, sin tocar el texto
+    req_tit = ChatOrquestadorRequest(
         session_id=sesion.session_id,
-        tags=["instructivo"],
-        accion="continuar",
+        titulo="Configurar alertas para usuario@empresa.com en Ventas",
     )
+    resp_tit = await manejar_turno(req_tit, buscador)
+    assert resp_tit.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "usuario@empresa.com" not in (sesion.borrador.titulo or "")
+    assert sesion.borrador.texto_limpio == TEXTO_VALIDO
 
-    resp = await manejar_turno(req, buscador)
+    # Editar texto con PII (email) -> se anonimiza y se valida longitud, sin tocar el título
+    titulo_prev = sesion.borrador.titulo
+    req_txt = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        texto=(
+            "Para configurar el envío de comprobantes a cliente@dominio.com en Finnegans ERP "
+            "es necesario ingresar al maestro de clientes y verificar la casilla de correo."
+        ),
+    )
+    resp_txt = await manejar_turno(req_txt, buscador)
+    assert resp_txt.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "cliente@dominio.com" not in (sesion.borrador.texto_limpio or "")
+    assert sesion.borrador.titulo == titulo_prev
 
-    # No avanza a finalizado
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-    # Muestra el error
-    assert "Se requieren al menos 2 tags o etiquetas" in resp.mensaje
-    # Conserva las mismas opciones
-    assert resp.opciones == ["auditar", "continuar", "volver"]
-    # Verificación de que el borrador y la sesión no cambiaron (sin mutación parcial)
-    assert sesion.borrador.tags == ["instructivo", "ventas"]
-    assert sesion.tags == ["instructivo", "ventas"]
-    assert sesion.borrador.finalizado is False
+
+@pytest.mark.anyio
+async def test_esperando_plantilla_y_metadatos_con_edicion_titulo_texto_y_error():
+    buscador = MagicMock(spec=BuscadorDuplicados)
+
+    # 1. En ESPERANDO_PLANTILLA: trae tipo_plantilla Y título válido que difiere -> aplica título y avanza
+    sesion_p = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA, session_id="test-p-combo-ok")
+    nuevo_tit = "Título editado al elegir plantilla en paso natural"
+    req_p_ok = ChatOrquestadorRequest(
+        session_id=sesion_p.session_id,
+        tipo_plantilla="instructivo",
+        titulo=nuevo_tit,
+    )
+    resp_p_ok = await manejar_turno(req_p_ok, buscador)
+    assert sesion_p.borrador.titulo == nuevo_tit
+    assert sesion_p.borrador.tipo_plantilla == "instructivo"
+    assert resp_p_ok.estado == EstadoFlujo.REVISION_BORRADOR
+
+    # 2. En ESPERANDO_PLANTILLA: trae tipo_plantilla Y título inválido (corto) -> error sin avanzar
+    sesion_p_err = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA, session_id="test-p-combo-err")
+    req_p_err = ChatOrquestadorRequest(
+        session_id=sesion_p_err.session_id,
+        tipo_plantilla="instructivo",
+        titulo="Corto",
+    )
+    resp_p_err = await manejar_turno(req_p_err, buscador)
+    assert resp_p_err.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert sesion_p_err.borrador.tipo_plantilla is None
+    assert sesion_p_err.borrador.titulo == TITULO_VALIDO
+    assert f"{TITULO_MIN} caracteres" in resp_p_err.mensaje
+
+    # 3. En ESPERANDO_METADATOS: trae tags + categoria_id Y texto válido que difiere -> aplica texto y avanza
+    sesion_m = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-m-combo-ok")
+    sesion_m.borrador.tags = ["instructivo"]
+    nuevo_txt = (
+        "1. Ingresar al módulo de Ventas en el menú principal.\n\n"
+        "2. Seleccionar el punto de venta electrónico y asociar el certificado AFIP."
+    )
+    req_m_ok = ChatOrquestadorRequest(
+        session_id=sesion_m.session_id,
+        tags=["instructivo", "ventas"],
+        categoria_id=20,
+        texto=nuevo_txt,
+    )
+    resp_m_ok = await manejar_turno(req_m_ok, buscador)
+    assert sesion_m.borrador.texto_limpio == nuevo_txt
+    assert sesion_m.borrador.categoria_id == 20
+    assert "ventas" in sesion_m.borrador.tags
+    assert resp_m_ok.estado == EstadoFlujo.REVISION_BORRADOR
+
+    # 4. En ESPERANDO_METADATOS: trae tags + categoria_id Y texto inválido (corto) -> error sin avanzar
+    sesion_m_err = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-m-combo-err")
+    sesion_m_err.borrador.tags = ["instructivo"]
+    req_m_err = ChatOrquestadorRequest(
+        session_id=sesion_m_err.session_id,
+        tags=["instructivo", "ventas"],
+        categoria_id=20,
+        texto="Muy corto",
+    )
+    resp_m_err = await manejar_turno(req_m_err, buscador)
+    assert resp_m_err.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert sesion_m_err.borrador.categoria_id is None
+    assert sesion_m_err.borrador.texto_limpio == TEXTO_VALIDO
+    assert f"{TEXTO_MIN} caracteres" in resp_m_err.mensaje
 
 
 @pytest.mark.anyio
 async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez():
     sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-single-call")
     sesion.borrador.revision_intermedia = False
-    sesion.borrador.categoria_id = 5
+    sesion.borrador.categoria_id = 20
     sesion.borrador.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
@@ -863,7 +741,7 @@ async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez
 
     req = ChatOrquestadorRequest(
         session_id=sesion.session_id,
-        tags=["instructivo", "ventas", "facturacion"],
+        titulo="Cómo configurar el punto de venta electrónico en Ventas",
         accion="continuar",
     )
 
@@ -875,271 +753,3 @@ async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez
         assert spy_aplicar.call_count == 1
 
     assert resp.estado == EstadoFlujo.FINALIZADO
-
-
-
-@pytest.mark.anyio
-async def test_editar_tags_en_esperando_metadatos_y_revision_borrador_quedan_guardados():
-    # 1. En ESPERANDO_METADATOS
-    sesion_meta = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-tags-meta")
-    sesion_meta.borrador.tags = ["instructivo"]
-    sesion_meta.tags = ["instructivo"]
-    sesion_meta.borrador.categoria_id = None
-    sesion_meta.ultimas_opciones = ["volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req_meta = ChatOrquestadorRequest(
-        session_id=sesion_meta.session_id,
-        tags=["instructivo", "facturacion", "ventas"],
-    )
-    resp_meta = await manejar_turno(req_meta, buscador)
-    assert resp_meta.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert set(sesion_meta.borrador.tags) == {"instructivo", "facturacion", "ventas"}
-    assert set(sesion_meta.tags) == {"instructivo", "facturacion", "ventas"}
-
-    # 2. En REVISION_BORRADOR
-    sesion_rev = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-tags-rev")
-    sesion_rev.borrador.categoria_id = 5
-    sesion_rev.borrador.tags = ["instructivo", "ventas"]
-    sesion_rev.tags = ["instructivo", "ventas"]
-    sesion_rev.ultimas_opciones = ["auditar", "continuar", "volver"]
-
-    req_rev = ChatOrquestadorRequest(
-        session_id=sesion_rev.session_id,
-        tags=["instructivo", "ventas", "afip"],
-    )
-    resp_rev = await manejar_turno(req_rev, buscador)
-    assert resp_rev.estado == EstadoFlujo.REVISION_BORRADOR
-    assert set(sesion_rev.borrador.tags) == {"instructivo", "ventas", "afip"}
-    assert set(sesion_rev.tags) == {"instructivo", "ventas", "afip"}
-
-
-@pytest.mark.anyio
-async def test_edicion_pura_guarda_opciones_sugeridas_con_reaplicar_en_sesion():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-edicion-pura-opciones")
-    sesion.borrador.resultado_skill_pendiente = True
-    sesion.borrador.skill_pendiente = "plantilla"
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        texto=TEXTO_VALIDO + "\n\nTexto adicional editado en editor.",
-    )
-
-    resp = await manejar_turno(req, buscador)
-    assert "reaplicar" in resp.opciones
-    assert "reaplicar" in sesion.ultimas_opciones
-    assert sesion.ultimas_opciones == resp.opciones
-
-
-@pytest.mark.anyio
-async def test_cambio_plantilla_sin_skill_aplicada():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-plantilla-sin-skill")
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.tags = ["instructivo", "ventas", "facturacion"]
-    sesion.tags = ["instructivo", "ventas", "facturacion"]
-    sesion.borrador.resultado_skill_pendiente = False
-    sesion.borrador.resultado_skill_desactualizado = False
-    sesion.borrador.skill_pendiente = None
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="soluciones",
-    )
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.tipo_plantilla == "soluciones"
-    assert sesion.tipo_plantilla == "soluciones"
-    assert sesion.borrador.tags == ["soluciones", "ventas", "facturacion"]
-    assert sesion.tags == ["soluciones", "ventas", "facturacion"]
-    assert "reaplicar" not in resp.opciones
-    assert sesion.borrador.resultado_skill_desactualizado is False
-
-
-@pytest.mark.anyio
-async def test_cambio_plantilla_con_resultado_plantillas_visible():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-plantilla-skill-vis")
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.tags = ["instructivo", "ventas", "facturacion"]
-    sesion.tags = ["instructivo", "ventas", "facturacion"]
-    sesion.borrador.resultado_skill_pendiente = True
-    sesion.borrador.skill_pendiente = "plantilla"
-    sesion.borrador.resultado_skill_desactualizado = False
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="soluciones",
-    )
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.tipo_plantilla == "soluciones"
-    assert sesion.tipo_plantilla == "soluciones"
-    assert sesion.borrador.resultado_skill_desactualizado is True
-    assert "reaplicar" in resp.opciones
-    assert "plantilla" in resp.mensaje.lower()
-    assert "editaste el texto" not in resp.mensaje.lower()
-    assert sesion.borrador.tags == ["soluciones", "ventas", "facturacion"]
-
-
-@pytest.mark.anyio
-async def test_cambio_plantilla_con_resultado_auditor_visible():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-plantilla-auditor-vis")
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.tags = ["instructivo", "ventas", "facturacion"]
-    sesion.tags = ["instructivo", "ventas", "facturacion"]
-    sesion.borrador.resultado_skill_pendiente = True
-    sesion.borrador.skill_pendiente = "auditor"
-    sesion.borrador.resultado_skill_desactualizado = False
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="soluciones",
-    )
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.tipo_plantilla == "soluciones"
-    assert sesion.tipo_plantilla == "soluciones"
-    assert sesion.borrador.resultado_skill_desactualizado is True
-    assert sesion.borrador.skill_pendiente == "auditor"
-    assert "reaplicar" in resp.opciones
-    assert "plantilla" in resp.mensaje.lower()
-    assert "editaste el texto" not in resp.mensaje.lower()
-
-
-@pytest.mark.anyio
-async def test_reaplicar_despues_del_cambio_usa_texto_original_y_nueva_plantilla():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-reaplicar-nueva-plantilla")
-    texto_original = "Texto original redactado en el editor para probar reaplicación."
-    texto_formateado_viejo = "## Borrador reestructurado con la plantilla 'instructivo'\n\nTexto viejo"
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.texto_editor = texto_original
-    sesion.borrador.texto_base_limpio = texto_original
-    sesion.texto_editor = texto_original
-    sesion.borrador.bloques_texto = [texto_formateado_viejo]
-    sesion.borrador.resultado_skill_pendiente = True
-    sesion.borrador.skill_pendiente = "plantilla"
-    sesion.borrador.resultado_skill_desactualizado = False
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    # 1. Cambiar plantilla a soluciones
-    req1 = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="soluciones",
-    )
-    resp1 = await manejar_turno(req1, buscador)
-    assert sesion.borrador.resultado_skill_desactualizado is True
-    assert "reaplicar" in resp1.opciones
-
-    # 2. Reaplicar con mock de baco
-    prompt_recibido = None
-
-    def baco_mock(prompt):
-        nonlocal prompt_recibido
-        prompt_recibido = prompt
-        return f"## Borrador formateado con soluciones\n\n{texto_original}"
-
-    req2 = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        accion="reaplicar",
-    )
-    setattr(req2, "_baco_agent", baco_mock)
-    resp2 = await manejar_turno(req2, buscador)
-
-    assert resp2.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.tipo_plantilla == "soluciones"
-    assert sesion.borrador.resultado_skill_desactualizado is False
-    # La skill recibió la nueva plantilla y el texto original
-    assert prompt_recibido is not None
-    assert "soluciones" in prompt_recibido.lower()
-    assert texto_original in prompt_recibido
-    assert "Texto viejo" not in prompt_recibido
-    # Bloques de texto actualizados
-    assert "soluciones" in sesion.borrador.bloques_texto[0]
-    assert texto_original in sesion.borrador.bloques_texto[0]
-    assert "Texto viejo" not in sesion.borrador.bloques_texto[0]
-
-
-@pytest.mark.anyio
-async def test_valor_plantilla_no_permitido_error_sin_cambios():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-plantilla-invalida")
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.titulo = TITULO_VALIDO
-    sesion.borrador.tags = ["instructivo", "ventas"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="invalida",
-        titulo="Título Que No Debe Mutar",
-    )
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert "no es válido" in resp.mensaje.lower() or "no es válida" in resp.mensaje.lower()
-    # Sin cambios en el borrador ni en la sesión
-    assert sesion.borrador.tipo_plantilla == "instructivo"
-    assert sesion.tipo_plantilla == "instructivo"
-    assert sesion.borrador.titulo == TITULO_VALIDO
-    assert sesion.borrador.tags == ["instructivo", "ventas"]
-
-
-@pytest.mark.anyio
-async def test_turno_sin_cambio_de_plantilla_sin_avisos():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-plantilla-sin-cambio")
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.resultado_skill_pendiente = True
-    sesion.borrador.skill_pendiente = "plantilla"
-    sesion.borrador.resultado_skill_desactualizado = False
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="instructivo",
-    )
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.mensaje == ""
-    assert sesion.borrador.resultado_skill_desactualizado is False
-    assert "reaplicar" not in resp.opciones
-
-
-@pytest.mark.anyio
-async def test_extra_normalizacion_espacios_y_mayusculas_sin_cambio():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-plantilla-normalizada")
-    sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.tipo_plantilla = "instructivo"
-    sesion.borrador.resultado_skill_pendiente = True
-    sesion.borrador.skill_pendiente = "plantilla"
-    sesion.borrador.resultado_skill_desactualizado = False
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    # tipo_plantilla="Instructivo " se acepta y al ser igual no genera cambio, aviso ni reaplicar
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="Instructivo ",
-    )
-    resp = await manejar_turno(req, buscador)
-
-    assert resp.mensaje == ""
-    assert sesion.borrador.tipo_plantilla == "instructivo"
-    assert sesion.borrador.resultado_skill_desactualizado is False
-    assert "reaplicar" not in resp.opciones
