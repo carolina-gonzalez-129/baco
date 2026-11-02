@@ -108,19 +108,41 @@ def procesar_edicion_categoria(
     return res_cat.categoria_id, res_cat.categoria_nombre, None
 
 
+def _sanitizar_tags_tematicos(
+    tags: List[str],
+    plantilla: Optional[str] = None,
+) -> Tuple[List[str], Optional[str]]:
+    """Sanitiza PII en cada tag temático manteniendo la plantilla fija."""
+    tags_filtrados: List[str] = []
+    avisos_priv: List[str] = []
+    for t in tags:
+        if not t or not t.strip():
+            continue
+        tp = extraer_tipo_plantilla([t])
+        if tp is not None:
+            if plantilla and tp == plantilla:
+                tags_filtrados.append(tp)
+            continue
+        sanit_t = sanitizar_borrador(texto=t.strip(), sanitizar_redundancia_titulo=False)
+        t_limpio = (sanit_t.get("texto_sanitizado") or t).strip()
+        aviso_t = sanit_t.get("aviso_privacidad")
+        if aviso_t and aviso_t not in avisos_priv:
+            avisos_priv.append(aviso_t)
+        if t_limpio:
+            tags_filtrados.append(t_limpio)
+    aviso_priv = "\n".join(avisos_priv) if avisos_priv else None
+    return tags_filtrados, aviso_priv
+
+
 def procesar_edicion_tags(
     tags: List[str],
     plantilla: Optional[str] = None,
 ) -> Tuple[Optional[List[str]], Optional[str]]:
-    """Filtra y valida los tags provistos, preservando la plantilla fija y asegurando TAGS_MIN.
+    """Filtra, sanitiza y valida los tags provistos, preservando la plantilla fija y asegurando TAGS_MIN.
 
     Retorna: (tags_nuevos, error)
     """
-    tags_filtrados = [
-        t
-        for t in tags
-        if extraer_tipo_plantilla([t]) is None or (plantilla and extraer_tipo_plantilla([t]) == plantilla)
-    ]
+    tags_filtrados, _ = _sanitizar_tags_tematicos(tags, plantilla=plantilla)
     tags_nuevos = combinar_tags(plantilla, tags_filtrados)
     if len(tags_nuevos) < TAGS_MIN:
         return None, f"Se requieren al menos {TAGS_MIN} tags o etiquetas (actualmente tiene {len(tags_nuevos)})."
@@ -345,29 +367,42 @@ def tags_difiere(
     plantilla: Optional[str] = None,
 ) -> bool:
     """Determina si los tags del request difieren de los guardados como conjunto (ignorando orden).
-    Compara solo tags temáticos, excluyendo los de plantilla mediante extraer_tipo_plantilla.
+    Compara solo tags temáticos (tanto en crudo normalizado como tras sanitizar),
+    excluyendo los de plantilla mediante extraer_tipo_plantilla.
     """
     if tags_req is None:
         return False
-    tematicos_req = {
-        t.strip().lower()
-        for t in tags_req
-        if t and t.strip() and extraer_tipo_plantilla([t]) is None
-    }
     tematicos_guardados = {
         t.strip().lower()
         for t in (tags_guardados or [])
         if t and t.strip() and extraer_tipo_plantilla([t]) is None
     }
-    return tematicos_req != tematicos_guardados
+    tematicos_req_crudo = {
+        t.strip().lower()
+        for t in tags_req
+        if t and t.strip() and extraer_tipo_plantilla([t]) is None
+    }
+    if tematicos_req_crudo == tematicos_guardados:
+        return False
+
+    tags_sanit, _ = _sanitizar_tags_tematicos(tags_req, plantilla=plantilla)
+    tematicos_req_sanit = {
+        t.strip().lower()
+        for t in tags_sanit
+        if t and t.strip() and extraer_tipo_plantilla([t]) is None
+    }
+    return tematicos_req_sanit != tematicos_guardados
 
 
 def aplicar_edicion_campos(
     sesion: SesionChat,
     req: ChatOrquestadorRequest,
 ) -> ResultadoEdicion:
-    """Valida y aplica la edición silenciosa de título y/o texto en estados posteriores a duplicados."""
+    """Valida y aplica la edición de los campos que cambiaron respecto de su último valor validado
+    en estados posteriores a la búsqueda de duplicados. Los campos no modificados se validan en silencio.
+    """
     b = sesion.borrador
+    det_req = getattr(req, "aviso_privacidad_detectado", None)
 
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
     tiene_skill_vis = tiene_resultado_skill_visible(b)
@@ -376,24 +411,99 @@ def aplicar_edicion_campos(
         if (b and b.texto_editor and tiene_skill_vis)
         else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
     ) or ""
-
-    edita_titulo = titulo_difiere(req.titulo, tit_guardado)
-    edita_texto = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
-
-    es_continuar = interpretar_opcion(req) in ("continuar", "continuar_revision")
+    cat_guardada = b.categoria_id if b else sesion.categoria_id
     tags_guardados = (b.tags if b else sesion.tags) or []
     plantilla_guardada = (
         (b.tipo_plantilla if b else sesion.tipo_plantilla)
         or extraer_tipo_plantilla(tags_guardados)
     )
-    edita_tags = es_continuar and tags_difiere(
+
+    edita_titulo = titulo_difiere(req.titulo, tit_guardado)
+    edita_texto = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
+
+    opcion_actual = interpretar_opcion(req)
+    es_continuar = opcion_actual in ("continuar", "continuar_revision", "finalizar", "editar")
+    es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR)
+
+    edita_plantilla = False
+    tipo_plantilla_nueva = None
+    if es_continuar and req.tipo_plantilla is not None:
+        try:
+            edita_plantilla = plantilla_difiere(req.tipo_plantilla, plantilla_guardada)
+        except ValueError as e:
+            return ResultadoEdicion(ok=False, error=str(e))
+        if edita_plantilla:
+            tipo_plantilla_nueva = req.tipo_plantilla.strip().lower()
+    elif es_revision and req.tipo_plantilla is not None:
+        try:
+            if plantilla_difiere(req.tipo_plantilla, plantilla_guardada):
+                edita_plantilla = True
+                tipo_plantilla_nueva = req.tipo_plantilla.strip().lower()
+        except ValueError:
+            edita_plantilla = False
+
+    plantilla_efectiva = tipo_plantilla_nueva or plantilla_guardada
+
+    edita_categoria = False
+    categoria_id_nueva = None
+    categoria_nombre_nuevo = None
+    if es_continuar and categoria_difiere(req.categoria_id, cat_guardada):
+        edita_categoria = True
+        categoria_id_nueva, categoria_nombre_nuevo, err_cat = procesar_edicion_categoria(
+            req.categoria_id,
+            sesion.categorias_disponibles,
+        )
+        if err_cat:
+            return ResultadoEdicion(ok=False, error=err_cat)
+    elif es_revision and categoria_difiere(req.categoria_id, cat_guardada):
+        cat_id_val, cat_nom_val, err_cat = procesar_edicion_categoria(
+            req.categoria_id,
+            sesion.categorias_disponibles,
+        )
+        if not err_cat and cat_id_val is not None:
+            edita_categoria = True
+            categoria_id_nueva = cat_id_val
+            categoria_nombre_nuevo = cat_nom_val
+
+    edita_tags = False
+    tags_nuevos = None
+    aviso_priv_tags = None
+    if es_continuar and tags_difiere(
         req.tags,
         tags_guardados,
-        plantilla=plantilla_guardada,
-    )
+        plantilla=plantilla_efectiva,
+    ):
+        edita_tags = True
+        _, aviso_priv_tags = _sanitizar_tags_tematicos(req.tags or [], plantilla=plantilla_efectiva)
+        tags_nuevos, err_tags = procesar_edicion_tags(
+            req.tags,
+            plantilla=plantilla_efectiva,
+        )
+        if err_tags:
+            return ResultadoEdicion(ok=False, error=err_tags)
+    elif es_revision and tags_difiere(
+        req.tags,
+        tags_guardados,
+        plantilla=plantilla_efectiva,
+    ):
+        _, aviso_priv_tags_rev = _sanitizar_tags_tematicos(req.tags or [], plantilla=plantilla_efectiva)
+        tags_val, err_tags = procesar_edicion_tags(
+            req.tags,
+            plantilla=plantilla_efectiva,
+        )
+        if not err_tags and tags_val is not None:
+            edita_tags = True
+            tags_nuevos = tags_val
+            aviso_priv_tags = aviso_priv_tags_rev
 
-    if not edita_titulo and not edita_texto and not edita_tags:
-        return ResultadoEdicion(ok=True)
+    if (
+        not edita_titulo
+        and not edita_texto
+        and not edita_tags
+        and not edita_categoria
+        and not edita_plantilla
+    ):
+        return ResultadoEdicion(ok=True, aviso_privacidad=det_req)
 
     titulo_nuevo = None
     aviso_priv_tit = None
@@ -422,21 +532,25 @@ def aplicar_edicion_campos(
             req.texto,
             sesion,
             titulo_contexto=titulo_nuevo or tit_guardado,
-            det_req=getattr(req, "aviso_privacidad_detectado", None),
+            det_req=det_req,
         )
         if err_txt:
             return ResultadoEdicion(ok=False, error=err_txt)
 
-    tags_nuevos = None
-    if edita_tags:
-        tags_nuevos, err_tags = procesar_edicion_tags(
-            req.tags,
-            plantilla=plantilla_guardada,
-        )
-        if err_tags:
-            return ResultadoEdicion(ok=False, error=err_tags)
-
     kwargs: Dict[str, Any] = {}
+    if edita_plantilla and tipo_plantilla_nueva is not None:
+        kwargs["tipo_plantilla"] = tipo_plantilla_nueva
+        if tags_nuevos is None:
+            tematicos_previos = [
+                t for t in tags_guardados
+                if t and t.strip() and extraer_tipo_plantilla([t]) is None
+            ]
+            tags_nuevos = combinar_tags(tipo_plantilla_nueva, tematicos_previos)
+            kwargs["tags"] = tags_nuevos
+    if edita_categoria and categoria_id_nueva is not None:
+        kwargs["categoria_id"] = categoria_id_nueva
+        if categoria_nombre_nuevo is not None:
+            kwargs["categoria_nombre"] = categoria_nombre_nuevo
     if tags_nuevos is not None:
         kwargs["tags"] = tags_nuevos
     if edita_titulo:
@@ -461,7 +575,9 @@ def aplicar_edicion_campos(
     if kwargs:
         sesion.actualizar_contenido_borrador(**kwargs)
 
-    partes_aviso_priv = [p for p in (aviso_priv_tit, aviso_priv_txt) if p]
+    partes_aviso_priv = [p for p in (aviso_priv_tit, aviso_priv_txt, aviso_priv_tags) if p]
+    if not partes_aviso_priv and det_req:
+        partes_aviso_priv.append(det_req)
     aviso_priv_total = "\n".join(partes_aviso_priv) if partes_aviso_priv else None
 
     return ResultadoEdicion(
@@ -473,7 +589,10 @@ def aplicar_edicion_campos(
         recursos_nuevos=recursos_nuevos,
         txt_nuevo_limpio=txt_nuevo_limpio,
         ultimo_id_nuevo=ultimo_id_nuevo,
+        categoria_id_nueva=categoria_id_nueva,
+        categoria_nombre_nuevo=categoria_nombre_nuevo,
         tags_nuevos=tags_nuevos,
+        tipo_plantilla_nueva=tipo_plantilla_nueva,
     )
 
 

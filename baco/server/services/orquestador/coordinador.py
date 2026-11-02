@@ -8,8 +8,12 @@ from baco.server.services.orquestador.edicion import (
     ESTADOS_EDICION_LIBRE,
     adoptar_resultado_skill_pendiente,
     aplicar_edicion_campos,
+    categoria_difiere,
     handle_reaplicar_skill,
+    plantilla_difiere,
+    tags_difiere,
 )
+from baco.server.services.orquestador.validaciones import extraer_tipo_plantilla
 from baco.server.services.orquestador.handlers import STATE_HANDLERS
 from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
@@ -67,6 +71,7 @@ async def manejar_turno(
             or req.titulo is not None
             or req.categoria_id is not None
             or req.tags is not None
+            or req.tipo_plantilla is not None
             or opcion in ("editar", "sanitizar")
         )
         if hubo_intento_edicion:
@@ -74,9 +79,23 @@ async def manejar_turno(
             if txt_edicion is None and opcion == "editar" and req.mensaje and req.mensaje.strip().lower() != "editar":
                 txt_edicion = req.mensaje
 
-            tiene_datos_edicion = any(v is not None for v in (req.titulo, txt_edicion, req.categoria_id, req.tags))
+            tiene_datos_edicion = any(
+                v is not None
+                for v in (req.titulo, txt_edicion, req.categoria_id, req.tags, req.tipo_plantilla)
+            )
             if tiene_datos_edicion:
-                if sesion.huella_difiere(
+                b_fin = sesion.borrador
+                plantilla_fin = (
+                    (b_fin.tipo_plantilla if b_fin else sesion.tipo_plantilla)
+                    or extraer_tipo_plantilla((b_fin.tags if b_fin else sesion.tags) or [])
+                )
+                cambio_plantilla_fin = False
+                if req.tipo_plantilla is not None:
+                    try:
+                        cambio_plantilla_fin = plantilla_difiere(req.tipo_plantilla, plantilla_fin)
+                    except ValueError:
+                        cambio_plantilla_fin = True
+                if cambio_plantilla_fin or sesion.huella_difiere(
                     titulo=req.titulo,
                     texto=txt_edicion,
                     categoria_id=req.categoria_id,
@@ -118,14 +137,36 @@ async def manejar_turno(
         if opcion in ("continuar", "continuar_revision"):
             adoptar_resultado_skill_pendiente(sesion)
 
-        es_paso_metadatos_o_plantilla = sesion.estado in (
-            EstadoFlujo.ESPERANDO_PLANTILLA,
-            EstadoFlujo.ESPERANDO_METADATOS,
-        ) and (
-            req.tipo_plantilla is not None
-            or req.tags is not None
-            or req.categoria_id is not None
+        b_act = sesion.borrador
+        tags_act = (b_act.tags if b_act else sesion.tags) or []
+        plantilla_act = (
+            (b_act.tipo_plantilla if b_act else sesion.tipo_plantilla)
+            or extraer_tipo_plantilla(tags_act)
         )
+        cat_act = b_act.categoria_id if b_act else sesion.categoria_id
+        try:
+            cambio_plantilla_req = plantilla_difiere(req.tipo_plantilla, plantilla_act)
+        except ValueError:
+            cambio_plantilla_req = True
+        meta_o_plantilla_difiere = (
+            cambio_plantilla_req
+            or categoria_difiere(req.categoria_id, cat_act)
+            or tags_difiere(req.tags, tags_act, plantilla=plantilla_act)
+        )
+        if req.titulo is not None or req.texto is not None:
+            es_paso_metadatos_o_plantilla = sesion.estado in (
+                EstadoFlujo.ESPERANDO_PLANTILLA,
+                EstadoFlujo.ESPERANDO_METADATOS,
+            ) and meta_o_plantilla_difiere
+        else:
+            es_paso_metadatos_o_plantilla = sesion.estado in (
+                EstadoFlujo.ESPERANDO_PLANTILLA,
+                EstadoFlujo.ESPERANDO_METADATOS,
+            ) and (
+                req.tipo_plantilla is not None
+                or req.tags is not None
+                or req.categoria_id is not None
+            )
         tiene_campos_req = any(
             v is not None
             for v in (req.titulo, req.texto, req.tipo_plantilla, req.categoria_id, req.tags)

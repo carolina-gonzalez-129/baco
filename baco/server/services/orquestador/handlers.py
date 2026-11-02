@@ -85,7 +85,16 @@ from baco.server.services.orquestador.validaciones import (
     validar_longitud_maxima,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
-from baco.server.services.orquestador.edicion import procesar_edicion_texto
+from baco.server.services.orquestador.edicion import (
+    _sanitizar_tags_tematicos,
+    categoria_difiere,
+    plantilla_difiere,
+    procesar_edicion_texto,
+    tags_difiere,
+    texto_difiere,
+    tiene_resultado_skill_visible,
+    titulo_difiere,
+)
 
 
 async def handle_esperando_titulo(
@@ -991,10 +1000,27 @@ async def handle_esperando_plantilla(
     if opcion == "volver":
         return retroceder(sesion)
 
-    if req.categoria_id is not None:
-        b.categoria_id = req.categoria_id
+    cat_guardada = b.categoria_id if b else sesion.categoria_id
+    if categoria_difiere(req.categoria_id, cat_guardada):
+        res_cat = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
+        if res_cat.categoria_id is not None:
+            b.categoria_id = res_cat.categoria_id
+            b.categoria_nombre = res_cat.categoria_nombre
+            sesion.categoria_id = res_cat.categoria_id
+            sesion.categoria_nombre = res_cat.categoria_nombre
+        else:
+            b.categoria_id = req.categoria_id
 
-    if b and req.texto is not None and req.texto.strip():
+    tit_guardado = (b.titulo if b else sesion.titulo) or ""
+    tiene_skill_vis = tiene_resultado_skill_visible(b)
+    txt_guardado = (
+        b.texto_editor
+        if (b and b.texto_editor and tiene_skill_vis)
+        else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
+    ) or ""
+    edita_txt_req = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
+
+    if b and req.texto is not None and req.texto.strip() and edita_txt_req:
         ultimo_id_p = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
         bloques_plant, recs_plant, _ = procesar_recursos_y_bloques(
             req.texto.strip(),
@@ -1010,8 +1036,11 @@ async def handle_esperando_plantilla(
             ultimo_id_recurso=max(ultimo_id_p, _max_num_recurso(recs_plant)),
         )
 
-    opcion_plantilla = opcion or req.tipo_plantilla or req.texto or req.mensaje or ""
+    texto_para_plantilla = req.texto if edita_txt_req else None
+    opcion_plantilla = opcion or req.tipo_plantilla or req.mensaje or texto_para_plantilla or ""
     plantilla = extraer_tipo_plantilla(req.tags or [], opcion_plantilla)
+    if not plantilla and b and b.tipo_plantilla and opcion in ("continuar", "continuar_revision"):
+        plantilla = b.tipo_plantilla
     if not plantilla:
         return construir_respuesta(sesion, MSG_ELEGIR_PLANTILLA, OPCIONES_PLANTILLAS)
 
@@ -1021,15 +1050,15 @@ async def handle_esperando_plantilla(
         for t in b.tags
         if extraer_tipo_plantilla([t]) is None or extraer_tipo_plantilla([t]) == plantilla
     ]
-    tags_req = [
-        t
-        for t in (req.tags or [])
-        if extraer_tipo_plantilla([t]) is None or extraer_tipo_plantilla([t]) == plantilla
-    ]
-    b.tags = combinar_tags(plantilla, tags_previos, tags_req)
+    tags_req_sanit, aviso_priv_tags = _sanitizar_tags_tematicos(req.tags or [], plantilla=plantilla)
+    b.tags = combinar_tags(plantilla, tags_previos, tags_req_sanit)
+    sesion.tags = list(b.tags)
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
-    return avanzar_a_metadatos_o_revision(sesion)
+    resp = avanzar_a_metadatos_o_revision(sesion)
+    if aviso_priv_tags and not resp.aviso_privacidad:
+        resp.aviso_privacidad = aviso_priv_tags
+    return resp
 
 
 async def handle_esperando_metadatos(
@@ -1043,20 +1072,62 @@ async def handle_esperando_metadatos(
     if opcion == "volver":
         return retroceder(sesion)
 
-    if req.categoria_id is not None:
+    plantilla_guardada = (
+        (b.tipo_plantilla if b else sesion.tipo_plantilla)
+        or extraer_tipo_plantilla((b.tags if b else sesion.tags) or [])
+    )
+    if req.tipo_plantilla is not None:
+        try:
+            if plantilla_difiere(req.tipo_plantilla, plantilla_guardada):
+                nueva_plantilla = req.tipo_plantilla.strip().lower()
+                b.tipo_plantilla = nueva_plantilla
+                sesion.tipo_plantilla = nueva_plantilla
+                tematicos_prev = [
+                    t for t in b.tags
+                    if t and t.strip() and extraer_tipo_plantilla([t]) is None
+                ]
+                b.tags = combinar_tags(nueva_plantilla, tematicos_prev)
+                sesion.tags = list(b.tags)
+        except ValueError as e:
+            return construir_respuesta(sesion, str(e), ["volver"])
+
+    cat_guardada = b.categoria_id if b else sesion.categoria_id
+    edita_cat = categoria_difiere(req.categoria_id, cat_guardada)
+    cat_invalida = False
+    if edita_cat and req.categoria_id is not None:
         res_dir = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
         if res_dir.categoria_id is not None:
             b.categoria_id = res_dir.categoria_id
             b.categoria_nombre = res_dir.categoria_nombre
             sesion.categoria_id = res_dir.categoria_id
             sesion.categoria_nombre = res_dir.categoria_nombre
+        else:
+            cat_invalida = True
+
+    tit_guardado = (b.titulo if b else sesion.titulo) or ""
+    tiene_skill_vis = tiene_resultado_skill_visible(b)
+    txt_guardado = (
+        b.texto_editor
+        if (b and b.texto_editor and tiene_skill_vis)
+        else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
+    ) or ""
+    edita_txt_req = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
+    texto_fallback_efectivo = req.texto if edita_txt_req else None
+
+    tags_guardados = list(b.tags) if b else list(sesion.tags)
+    edita_tags_req = tags_difiere(req.tags, tags_guardados, plantilla=b.tipo_plantilla)
 
     # Turno 2 (Categoría): Si ya tenemos al menos 2 tags (o al menos 1 temático además de plantilla) y falta la categoría,
-    # y el usuario envía un texto por chat (sin req.categoria_id ni req.tags),
+    # y el usuario envía un texto por chat (sin cambiar categoria_id ni tags por estructurado),
     # el texto se evalúa exclusivamente contra el vocabulario de categorías.
     tags_tematicos = [t for t in b.tags if t != b.tipo_plantilla]
-    if (len(tags_tematicos) >= 1 or len(b.tags) >= 2) and b.categoria_id is None and req.categoria_id is None and not req.tags:
-        texto_chat = (req.mensaje or req.texto or req.accion or "").strip()
+    if (
+        (len(tags_tematicos) >= 1 or len(b.tags) >= 2)
+        and b.categoria_id is None
+        and not edita_cat
+        and not edita_tags_req
+    ):
+        texto_chat = (req.mensaje or texto_fallback_efectivo or req.accion or "").strip()
         if texto_chat and texto_chat != "volver":
             res_chat = resolver_categoria(texto_chat, sesion.categorias_disponibles)
             if res_chat.estado == "asignado":
@@ -1086,26 +1157,49 @@ async def handle_esperando_metadatos(
             msg = msg_pedir_categoria(intento)
             return construir_respuesta(sesion, msg, ["volver"])
 
-    texto_fuente = req.mensaje or req.texto or req.accion
+    texto_fuente = req.mensaje or texto_fallback_efectivo or req.accion
+    tags_req_para_parsear = req.tags if edita_tags_req else None
+    aviso_priv_tags = None
+    if tags_req_para_parsear is not None:
+        tags_req_para_parsear, aviso_priv_tags = _sanitizar_tags_tematicos(
+            tags_req_para_parsear,
+            plantilla=b.tipo_plantilla,
+        )
+
+    cat_req_para_parsear = (
+        req.categoria_id
+        if (edita_cat and not cat_invalida)
+        else None
+    )
     nuevos_tags, cat_res, cat_nom = parsear_metadatos_mensaje(
         req.mensaje,
-        req.tags,
-        req.categoria_id,
+        tags_req_para_parsear,
+        cat_req_para_parsear,
         texto_fallback=texto_fuente,
         categorias_disponibles=sesion.categorias_disponibles,
         tags_disponibles=sesion.tags_disponibles,
     )
-    if cat_res is not None:
+    if req.mensaje and nuevos_tags:
+        nuevos_tags, aviso_msg_tags = _sanitizar_tags_tematicos(nuevos_tags, plantilla=b.tipo_plantilla)
+        if aviso_msg_tags and not aviso_priv_tags:
+            aviso_priv_tags = aviso_msg_tags
+
+    if cat_res is not None and not cat_invalida:
         b.categoria_id = cat_res
         b.categoria_nombre = cat_nom
 
-    if b.categoria_id is None and sesion.categoria_id is not None:
+    if b.categoria_id is None and sesion.categoria_id is not None and not cat_invalida:
         b.categoria_id = sesion.categoria_id
         b.categoria_nombre = sesion.categoria_nombre
 
-    b.tags = combinar_tags(b.tipo_plantilla, b.tags, nuevos_tags)
+    if edita_tags_req and req.tags is not None:
+        b.tags = combinar_tags(b.tipo_plantilla, nuevos_tags)
+    elif nuevos_tags:
+        b.tags = combinar_tags(b.tipo_plantilla, b.tags, nuevos_tags)
+    else:
+        b.tags = combinar_tags(b.tipo_plantilla, b.tags)
     sesion.tags = list(b.tags)
-    if b.categoria_id is not None:
+    if b.categoria_id is not None and not cat_invalida:
         sesion.categoria_id = b.categoria_id
         if not b.categoria_nombre:
             res_sync = resolver_categoria(b.categoria_id, sesion.categorias_disponibles)
@@ -1113,7 +1207,7 @@ async def handle_esperando_metadatos(
         sesion.categoria_nombre = b.categoria_nombre
 
     tags_faltan = len(b.tags) < 2
-    cat_falta = b.categoria_id is None
+    cat_falta = b.categoria_id is None or cat_invalida
 
     if tags_faltan or cat_falta:
         intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
@@ -1123,11 +1217,11 @@ async def handle_esperando_metadatos(
             msg = msg_pedir_categoria(intento)
         else:
             msg = msg_pedir_tag_adicional(b.tipo_plantilla or "", intento)
-        return construir_respuesta(sesion, msg, ["volver"])
+        return construir_respuesta(sesion, msg, ["volver"], aviso_privacidad=aviso_priv_tags)
 
     sesion.limpiar_fallos("ESPERANDO_METADATOS")
     msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)
-    return construir_respuesta(sesion, msg, ops)
+    return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_priv_tags)
 
 
 def _resolver_flujo_rechazo(
@@ -1257,7 +1351,7 @@ def _aplicar_mutaciones_borrador(
     aviso_priv_edicion = None
     titulo_nuevo = None
 
-    if req.titulo is not None:
+    if req.titulo is not None and titulo_difiere(req.titulo, b.titulo):
         tit_nuevo = req.titulo.strip()
         err_tit = validar_longitud_maxima(tit_nuevo, TITULO_MAX, "título")
         if err_tit:
@@ -1272,7 +1366,7 @@ def _aplicar_mutaciones_borrador(
     txt_nuevo_limpio = None
     ultimo_id_nuevo = None
 
-    if texto_edicion is not None:
+    if texto_edicion is not None and texto_difiere(texto_edicion, b.texto_limpio, titulo_contexto=titulo_nuevo or b.titulo):
         txt_nuevo = texto_edicion.strip()
         ultimo_id_edit = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
         bloques_proc, recs_comb, err_marcadores = procesar_recursos_y_bloques(
@@ -1362,7 +1456,7 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
 
-    if not sesion.validacion:
+    if not sesion.validacion or not sesion.validacion.valido or sesion.huella_difiere():
         validar_borrador(sesion)
     if not sesion.validacion or not sesion.validacion.valido:
         msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
@@ -1408,7 +1502,7 @@ def _continuar_a_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
     from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
     adoptar_resultado_skill_pendiente(sesion)
 
-    if not sesion.validacion:
+    if not sesion.validacion or not sesion.validacion.valido or sesion.huella_difiere():
         validar_borrador(sesion)
     if not sesion.validacion or not sesion.validacion.valido:
         msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)

@@ -874,3 +874,264 @@ async def test_continuar_valida_tags_solo_si_cambiaron():
     assert "Se requieren al menos" in resp_invalido.mensaje
     assert sesion_invalido.borrador.tags == ["instructivo", "ventas"]
     assert sesion_invalido.tags == ["instructivo", "ventas"]
+
+
+@pytest.mark.anyio
+async def test_validacion_post_duplicados_compara_cinco_campos_sin_cambios_en_silencio():
+    """Si los 5 campos (título, texto, categoría, tags, tipo de plantilla) coinciden con su
+    último valor validado, se validan en silencio sin re-ejecutar validadores de edición."""
+    from baco.server.services.orquestador.edicion import (
+        procesar_edicion_categoria,
+        procesar_edicion_tags,
+        procesar_edicion_texto,
+        procesar_edicion_titulo,
+    )
+    from baco.server.services.orquestador.validaciones import validar_borrador
+
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-cinco-campos-silencio")
+    sesion.borrador.revision_intermedia = False
+    sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.tipo_plantilla = "instructivo"
+    sesion.borrador.categoria_id = 20
+    sesion.borrador.categoria_nombre = "Ventas"
+    sesion.categoria_id = 20
+    sesion.categoria_nombre = "Ventas"
+    sesion.borrador.tags = ["instructivo", "ventas"]
+    sesion.tags = ["instructivo", "ventas"]
+    validar_borrador(sesion)
+
+    req = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo=sesion.borrador.titulo,
+        texto=sesion.borrador.texto_limpio,
+        categoria_id=20,
+        tags=["instructivo", "ventas"],
+        tipo_plantilla="instructivo",
+        accion="continuar",
+    )
+
+    with (
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_titulo", wraps=procesar_edicion_titulo) as spy_tit,
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_texto", wraps=procesar_edicion_texto) as spy_txt,
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_categoria", wraps=procesar_edicion_categoria) as spy_cat,
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_tags", wraps=procesar_edicion_tags) as spy_tags,
+        patch("baco.server.services.orquestador.handlers.validar_borrador", wraps=validar_borrador) as spy_val_borr,
+    ):
+        resp = await manejar_turno(req, buscador)
+        assert spy_tit.call_count == 0
+        assert spy_txt.call_count == 0
+        assert spy_cat.call_count == 0
+        assert spy_tags.call_count == 0
+        assert spy_val_borr.call_count == 0
+
+    assert resp.estado == EstadoFlujo.FINALIZADO
+
+
+@pytest.mark.anyio
+async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_modificado():
+    """Al enviar los 5 campos, solo se valida y pide acción sobre el campo que cambió;
+    los campos no modificados se validan en silencio."""
+    from baco.server.services.orquestador.edicion import (
+        procesar_edicion_categoria,
+        procesar_edicion_tags,
+        procesar_edicion_texto,
+        procesar_edicion_titulo,
+    )
+
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-solo-campo-modificado")
+    sesion.borrador.revision_intermedia = False
+    sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.tipo_plantilla = "instructivo"
+    sesion.borrador.categoria_id = 20
+    sesion.borrador.categoria_nombre = "Ventas"
+    sesion.categoria_id = 20
+    sesion.categoria_nombre = "Ventas"
+    sesion.borrador.tags = ["instructivo", "ventas"]
+    sesion.tags = ["instructivo", "ventas"]
+    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+
+    # 1. Solo cambia categoria_id a un valor inválido; título, texto, tags y plantilla no cambiaron
+    req_cat_inv = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo=sesion.borrador.titulo,
+        texto=sesion.borrador.texto_limpio,
+        categoria_id=999999,
+        tags=["instructivo", "ventas"],
+        tipo_plantilla="instructivo",
+        accion="continuar",
+    )
+    with (
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_titulo", wraps=procesar_edicion_titulo) as spy_tit,
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_texto", wraps=procesar_edicion_texto) as spy_txt,
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_categoria", wraps=procesar_edicion_categoria) as spy_cat,
+        patch("baco.server.services.orquestador.edicion.procesar_edicion_tags", wraps=procesar_edicion_tags) as spy_tags,
+    ):
+        resp_cat = await manejar_turno(req_cat_inv, buscador)
+        assert spy_tit.call_count == 0
+        assert spy_txt.call_count == 0
+        assert spy_cat.call_count == 1
+        assert spy_tags.call_count == 0
+
+    assert resp_cat.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "categoría" in resp_cat.mensaje.lower()
+    assert sesion.borrador.categoria_id == 20
+
+    # 2. Solo cambia tipo_plantilla a un valor inválido
+    req_plant_inv = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo=sesion.borrador.titulo,
+        texto=sesion.borrador.texto_limpio,
+        categoria_id=20,
+        tags=["instructivo", "ventas"],
+        tipo_plantilla="plantilla_inexistente",
+        accion="continuar",
+    )
+    resp_plant_inv = await manejar_turno(req_plant_inv, buscador)
+    assert resp_plant_inv.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "tipo de plantilla" in resp_plant_inv.mensaje.lower()
+    assert sesion.borrador.tipo_plantilla == "instructivo"
+
+    # 3. Solo cambia tipo_plantilla a un valor válido ("consulta") y categoria_id a una válida (21 - Compras)
+    req_cambio_valido = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo=sesion.borrador.titulo,
+        texto=sesion.borrador.texto_limpio,
+        categoria_id=21,
+        tags=["instructivo", "ventas"],
+        tipo_plantilla="soluciones",
+        accion="continuar",
+    )
+    resp_ok = await manejar_turno(req_cambio_valido, buscador)
+    assert resp_ok.estado == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.tipo_plantilla == "soluciones"
+    assert sesion.borrador.categoria_id == 21
+    assert sesion.borrador.categoria_nombre == "Contabilidad"
+    assert "soluciones" in sesion.borrador.tags
+    assert "ventas" in sesion.borrador.tags
+
+
+@pytest.mark.anyio
+async def test_esperando_metadatos_compara_cinco_campos_y_solo_pide_accion_en_modificados():
+    """En ESPERANDO_METADATOS, reenviar campos ya validados junto con la acción del paso
+    valida en silencio los no modificados y solo pide acción sobre lo que falta o cambió."""
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-metadatos-cinco-campos")
+    sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.tipo_plantilla = "instructivo"
+    sesion.borrador.tags = ["instructivo", "ventas"]
+    sesion.tags = ["instructivo", "ventas"]
+    sesion.borrador.categoria_id = None
+    sesion.categoria_id = None
+
+    # Caso 1: Usuario envía categoría por mensaje ("Ventas") mientras el front reenvía
+    # título, texto, tipo_plantilla y tags sin cambios.
+    req_cat_msg = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo=sesion.borrador.titulo,
+        texto=sesion.borrador.texto_limpio,
+        tipo_plantilla="instructivo",
+        tags=["instructivo", "ventas"],
+        mensaje="Ventas",
+    )
+    resp = await manejar_turno(req_cat_msg, buscador)
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.borrador.categoria_id == 20
+    assert sesion.borrador.categoria_nombre == "Ventas"
+    assert sesion.borrador.tags == ["instructivo", "ventas"]
+
+    # Caso 2: En ESPERANDO_METADATOS con categoría ya validada (20), el usuario modifica tags
+    # quitando el tag temático (queda solo ["instructivo"]) y reenvía categoria_id=20 sin cambios.
+    # Solo debe pedir acción sobre el tag faltante, manteniendo la categoría validada en silencio.
+    sesion2 = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-metadatos-solo-tags")
+    sesion2.borrador.tipo_plantilla = "instructivo"
+    sesion2.tipo_plantilla = "instructivo"
+    sesion2.borrador.categoria_id = 20
+    sesion2.borrador.categoria_nombre = "Ventas"
+    sesion2.categoria_id = 20
+    sesion2.categoria_nombre = "Ventas"
+    sesion2.borrador.tags = ["instructivo", "ventas"]
+    sesion2.tags = ["instructivo", "ventas"]
+
+    req_quita_tag = ChatOrquestadorRequest(
+        session_id=sesion2.session_id,
+        titulo=sesion2.borrador.titulo,
+        texto=sesion2.borrador.texto_limpio,
+        categoria_id=20,
+        tipo_plantilla="instructivo",
+        tags=["instructivo"],
+    )
+    resp2 = await manejar_turno(req_quita_tag, buscador)
+    assert resp2.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert sesion2.borrador.categoria_id == 20
+    assert "etiqueta" in resp2.mensaje.lower() or "tag" in resp2.mensaje.lower()
+    assert "categoría" not in resp2.mensaje.lower()
+
+
+@pytest.mark.anyio
+async def test_esperando_plantilla_no_revalida_texto_sin_cambios_como_plantilla():
+    """En ESPERANDO_PLANTILLA, si el texto del artículo contiene la palabra 'instructivo' pero no cambió,
+    no debe interpretarse el texto sin cambios como selección de plantilla cuando falta elegirla."""
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA, session_id="test-plantilla-texto-igual")
+    texto_con_palabra = (
+        "Este documento describe el instructivo detallado para configurar el módulo de facturación "
+        "electrónica en el sistema de gestión comercial paso a paso."
+    )
+    sesion.actualizar_contenido_borrador(
+        bloques_texto=[texto_con_palabra],
+        texto_base_limpio=texto_con_palabra,
+        texto_editor=texto_con_palabra,
+        texto_original=texto_con_palabra,
+    )
+    sesion.borrador.tipo_plantilla = None
+    sesion.tipo_plantilla = None
+    sesion.borrador.tags = []
+    sesion.tags = []
+
+    req = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo=sesion.borrador.titulo,
+        texto=texto_con_palabra,
+        mensaje="texto_invalido_no_plantilla",
+    )
+    resp = await manejar_turno(req, buscador)
+    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert sesion.borrador.tipo_plantilla is None
+
+
+@pytest.mark.anyio
+async def test_anonimizacion_pii_se_mantiene_siempre_en_titulo_texto_y_tags_post_duplicados():
+    """La anonimización de PII se mantiene siempre en las validaciones posteriores a duplicados
+    para título, texto y tags."""
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-pii-post-duplicados")
+    sesion.borrador.revision_intermedia = False
+    sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.tipo_plantilla = "instructivo"
+    sesion.borrador.categoria_id = 20
+    sesion.borrador.categoria_nombre = "Ventas"
+    sesion.categoria_id = 20
+    sesion.categoria_nombre = "Ventas"
+    sesion.borrador.tags = ["instructivo", "ventas"]
+    sesion.tags = ["instructivo", "ventas"]
+    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+
+    req = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        titulo="Configuración de cuenta para cliente@empresa.com en sistema",
+        texto=(
+            "Para configurar el acceso del usuario juan.perez@gmail.com comuníquese "
+            "al correo indicado y verifique todos los parámetros del servidor."
+        ),
+        tags=["instructivo", "ventas", "contacto maria.gomez@gmail.com"],
+        categoria_id=20,
+        tipo_plantilla="instructivo",
+    )
+    resp = await manejar_turno(req, buscador)
+    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "cliente@empresa.com" not in sesion.borrador.titulo
+    assert "juan.perez@gmail.com" not in sesion.borrador.texto_limpio
+    assert all("maria.gomez@gmail.com" not in t for t in sesion.borrador.tags)
+    assert resp.aviso_privacidad is not None
