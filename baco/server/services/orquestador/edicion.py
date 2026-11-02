@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+from starlette.concurrency import run_in_threadpool
+import asyncio
 
 from baco.server.config_limites import (
     TAGS_MIN,
@@ -728,11 +730,16 @@ async def ejecutar_skill(
         b.bloques_texto = [texto_origen] if texto_origen else []
         if es_auditor:
             from baco.server.services.agente_service import ejecutar_skill_validador
-            dictamen, texto_corr = ejecutar_skill_validador(b, baco)
+            dictamen, texto_corr =  await asyncio.wait_for(
+                run_in_threadpool(ejecutar_skill_validador, b, baco), timeout=180
+            )
             resultado = (texto_corr or dictamen or "").strip()
         else:
             from baco.server.services.agente_service import ejecutar_skill_plantillas
-            resultado = (ejecutar_skill_plantillas(sesion.session_id, b, baco) or "").strip()
+        resultado = (await asyncio.wait_for(
+            run_in_threadpool(ejecutar_skill_plantillas, sesion.session_id, b, baco), timeout=180
+        ) or "").strip()
+
 
         if not resultado:
             raise ValueError("La skill no devolvió contenido.")
@@ -740,9 +747,9 @@ async def ejecutar_skill(
         b.bloques_texto = bloques_anteriores
         sesion.bloques_texto = list(bloques_anteriores)
         msg_error = (
-            "No pudimos aplicar la plantilla en este momento. Por favor, intentá nuevamente."
+            "No pudimos aplicar la **plantilla** en este momento. Por favor, intentá nuevamente."
             if not es_auditor
-            else "No pudimos auditar el artículo en este momento. Por favor, intentá nuevamente."
+            else "No pudimos **auditar** el artículo en este momento. Por favor, intentá nuevamente."
         )
         return construir_respuesta(sesion, msg_error, sesion.ultimas_opciones)
 
@@ -778,7 +785,7 @@ async def ejecutar_skill(
         )
     else:
         msg = (
-            "Listo, apliqué la plantilla. Revisá el resultado y tocá **Continuar**."
+            "🤖 Apliqué la **plantilla**. Si lo necesitas edita lo que precises y tocá **Continuar**."
             if not es_auditor
             else "Listo, revisé el texto. Mirá el resultado y tocá **Continuar**."
         )
