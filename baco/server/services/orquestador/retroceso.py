@@ -277,6 +277,18 @@ def _resp_revision_borrador_nuevo(sesion: SesionChat) -> ChatOrquestadorResponse
     return construir_respuesta(sesion, MSG_VOLVER_METADATOS, ["volver"])
 
 
+def _restaurar_edicion_final(sesion: SesionChat) -> None:
+    sesion.limpiar_fallos("EDICION_FINAL")
+    b = sesion.borrador
+    if b:
+        b.revision_intermedia = False
+
+
+def _resp_edicion_final(sesion: SesionChat) -> ChatOrquestadorResponse:
+    msg, ops = validar_borrador(sesion, PREFIJO_VOLVER_REVISION)
+    return construir_respuesta(sesion, msg, ops)
+
+
 def _resp_revision_borrador_enriquecimiento(sesion: SesionChat) -> ChatOrquestadorResponse:
     return _resp_esperando_texto_enriquecimiento(sesion)
 
@@ -386,6 +398,28 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         restaurar=_restaurar_revision_borrador_nuevo,
         construir_respuesta=_resp_revision_borrador_nuevo,
     ),
+    # EDICION_FINAL: vuelve a revisión final
+    (EstadoFlujo.EDICION_FINAL, "nuevo"): ReglaRetroceso(
+        estado_destino=EstadoFlujo.REVISION_BORRADOR,
+        restaurar=_restaurar_edicion_final,
+        construir_respuesta=_resp_edicion_final,
+    ),
+    (EstadoFlujo.EDICION_FINAL, "enriquecimiento"): ReglaRetroceso(
+        estado_destino=EstadoFlujo.REVISION_BORRADOR,
+        restaurar=_restaurar_edicion_final,
+        construir_respuesta=_resp_edicion_final,
+    ),
+    (EstadoFlujo.EDICION_FINAL, "actualizar"): ReglaRetroceso(
+        estado_destino=EstadoFlujo.REVISION_BORRADOR,
+        restaurar=_restaurar_edicion_final,
+        construir_respuesta=_resp_edicion_final,
+    ),
+    (EstadoFlujo.EDICION_FINAL, None): ReglaRetroceso(
+        estado_destino=EstadoFlujo.REVISION_BORRADOR,
+        restaurar=_restaurar_edicion_final,
+        construir_respuesta=_resp_edicion_final,
+    ),
+
     (EstadoFlujo.SUBSANANDO_BORRADOR, None): ReglaRetroceso(
         estado_destino=_destino_revision_borrador_nuevo,
         restaurar=_restaurar_revision_borrador_nuevo,

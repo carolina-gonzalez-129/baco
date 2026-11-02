@@ -752,7 +752,7 @@ async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez
         resp = await manejar_turno(req, buscador)
         assert spy_aplicar.call_count == 1
 
-    assert resp.estado == EstadoFlujo.FINALIZADO
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
 
 
 @pytest.mark.anyio
@@ -779,7 +779,7 @@ async def test_continuar_persiste_tags_editados_antes_de_avanzar():
     )
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.FINALIZADO
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
     assert sesion.borrador.tags == ["instructivo", "facturacion", "afip"]
     assert sesion.tags == ["instructivo", "facturacion", "afip"]
     assert resp.tags_acumulados == ["instructivo", "facturacion", "afip"]
@@ -925,7 +925,7 @@ async def test_validacion_post_duplicados_compara_cinco_campos_sin_cambios_en_si
         assert spy_tags.call_count == 0
         assert spy_val_borr.call_count == 0
 
-    assert resp.estado == EstadoFlujo.FINALIZADO
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
 
 
 @pytest.mark.anyio
@@ -1004,7 +1004,7 @@ async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_
         accion="continuar",
     )
     resp_ok = await manejar_turno(req_cambio_valido, buscador)
-    assert resp_ok.estado == EstadoFlujo.FINALIZADO
+    assert resp_ok.estado == EstadoFlujo.EDICION_FINAL
     assert sesion.borrador.tipo_plantilla == "soluciones"
     assert sesion.borrador.categoria_id == 21
     assert sesion.borrador.categoria_nombre == "Contabilidad"

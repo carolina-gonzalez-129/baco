@@ -260,8 +260,10 @@ def test_estado_categoria_y_tags_completos_texto_y_botones(client, mock_buscador
     assert r_meta2["estado"] == EstadoFlujo.REVISION_BORRADOR
     assert r_meta2["mensaje"] == mensaje_esperado
 
-    # 6. "Continuar" finaliza el borrador
-    r_fin = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
+    # 6. "Continuar" lleva a EDICION_FINAL y luego "Finalizar" finaliza el borrador
+    r_ed = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
+    assert r_ed["estado"] == EstadoFlujo.EDICION_FINAL
+    r_fin = client.post("/chat", json={"session_id": sid, "accion": "finalizar"}).json()
     assert r_fin["estado"] == EstadoFlujo.FINALIZADO
     assert r_fin["borrador"]["finalizado"] is True
 

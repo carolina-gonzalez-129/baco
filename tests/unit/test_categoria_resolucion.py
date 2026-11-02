@@ -219,7 +219,8 @@ def test_reproduccion_caso_original_articulo_muestra_nombre_ventas(client, mock_
     assert r_cat["borrador"]["categoria_id"] == 20
     assert r_cat["borrador"]["categoria_nombre"] == "Ventas"
 
-    # 3. Finaliza
+    # 3. Finaliza (Continuar -> EDICION_FINAL -> Finalizar)
+    client.post("/chat", json={"session_id": sid, "accion": "continuar"})
     r_conf = client.post("/chat", json={"session_id": sid, "accion": "finalizar"}).json()
     assert r_conf["estado"] == EstadoFlujo.FINALIZADO
     assert r_conf["borrador"]["finalizado"] is True

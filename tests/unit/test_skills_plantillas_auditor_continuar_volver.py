@@ -243,8 +243,8 @@ async def test_auditor_continuar_adopta_resultado_como_texto_vigente_y_avanza():
     req_cont = ChatOrquestadorRequest(session_id=sesion.session_id, accion="continuar")
     resp_cont = await manejar_turno(req_cont, buscador)
 
-    assert resp_cont.estado == EstadoFlujo.FINALIZADO
-    assert resp_cont.borrador.finalizado is True
+    assert resp_cont.estado == EstadoFlujo.EDICION_FINAL
+    assert resp_cont.borrador.finalizado is False
     # El resultado del auditor fue adoptado como texto vigente
     assert resp_cont.texto_limpio == RESULTADO_SKILL_AUDITOR_LIMPIO
     assert resp_cont.texto_original == RESULTADO_SKILL_AUDITOR_LIMPIO

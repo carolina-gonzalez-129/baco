@@ -1474,12 +1474,7 @@ async def handle_revision_borrador(
         if opcion in ("continuar_revision", "continuar"):
             return continuar_desde_revision(sesion)
 
-        if opcion == "finalizar" and b is not None and b.revision_intermedia:
-            msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
-            return construir_respuesta(sesion, msg, ops)
 
-        if opcion == "finalizar":
-            return _registrar_finalizado(sesion)
 
         if opcion not in ("editar", "aplicar_plantilla", "auditar", "rechazar", "confirmar_rechazo"):
             prefijo = PREFIJO_BORRADOR_ACTUALIZADO
@@ -1509,12 +1504,7 @@ async def handle_revision_borrador(
     if opcion in ("continuar_revision", "continuar"):
         return continuar_desde_revision(sesion)
 
-    if opcion == "finalizar" and b is not None and b.revision_intermedia:
-        msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
-        return construir_respuesta(sesion, msg, ops)
 
-    if opcion == "finalizar":
-        return _registrar_finalizado(sesion)
 
     if opcion == "rechazar":
         sesion.confirmando_rechazo = True
@@ -1535,6 +1525,74 @@ async def handle_revision_borrador(
     return construir_respuesta(sesion, msg, ops)
 
 
+async def handle_edicion_final(
+    sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
+) -> ChatOrquestadorResponse:
+    b = sesion.borrador
+    if b is None:
+        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
+
+    # 1. Volver: regresa a revisión final y se registra en retroceso.py
+    if opcion == "volver":
+        return retroceder(sesion)
+
+    # 2. Reutilizá edicion.py; validá solo los campos modificados
+    res_edicion = getattr(req, "_res_edicion", None)
+    if res_edicion is None:
+        texto_edicion = req.texto if req.texto is not None else req.texto_editor
+        hubo_cambios = any(
+            v is not None
+            for v in (req.titulo, texto_edicion, req.categoria_id, req.tags, req.tipo_plantilla)
+        )
+        if hubo_cambios:
+            req_edicion = req
+            if req.texto is None and texto_edicion is not None:
+                req_edicion = req.model_copy(update={"texto": texto_edicion})
+            res_edicion = aplicar_edicion_campos(sesion, req_edicion)
+            if not res_edicion.ok:
+                from baco.server.services.orquestador.mensajes import OPCIONES_EDICION_FINAL
+                return construir_respuesta(sesion, res_edicion.error or "", OPCIONES_EDICION_FINAL)
+
+    # 3. Si en EDICION_FINAL cambia el tipo de plantilla y había una skill aplicada,
+    # handlers.py (no continuar.py) la reaplica automáticamente desde texto_original.
+    cambio_plantilla = bool(res_edicion and res_edicion.tipo_plantilla_nueva is not None)
+    habia_skill = bool(
+        getattr(b, "skill_aplicada", None)
+        or getattr(b, "skill_pendiente", None)
+        or getattr(sesion, "skill_aplicada", None)
+        or getattr(b, "resultado_skill_pendiente", False)
+        or getattr(b, "resultado_skill_desactualizado", False)
+    )
+
+    if cambio_plantilla and habia_skill:
+        # Si texto_original no existe en la sesión, no lo crees: detenete y reportalo.
+        if not hasattr(sesion, "texto_original") or sesion.texto_original is None:
+            raise ValueError("texto_original no existe en la sesión")
+
+        skill_nombre = (
+            getattr(b, "skill_aplicada", None)
+            or getattr(b, "skill_pendiente", None)
+            or getattr(sesion, "skill_aplicada", None)
+            or "plantilla"
+        )
+        from baco.server.services.orquestador.edicion import ejecutar_skill
+        resp_skill = await ejecutar_skill(sesion, req, skill=skill_nombre, es_reaplicacion=True)
+        if opcion == "finalizar":
+            return _registrar_finalizado(sesion)
+        return resp_skill
+
+    # 4. Solo "Finalizar" de EDICION_FINAL llama a _registrar_finalizado
+    if opcion == "finalizar":
+        return _registrar_finalizado(sesion)
+
+    # 5. Edición u otra interacción en EDICION_FINAL:
+    # Botones: solo "Finalizar" y "Volver". Mensajes en mensajes.py.
+    from baco.server.services.orquestador.mensajes import MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL
+    aviso_priv = res_edicion.aviso_privacidad if res_edicion else None
+    mensaje = (res_edicion.aviso if res_edicion and res_edicion.aviso else MSG_EDICION_FINAL)
+    return construir_respuesta(sesion, mensaje, OPCIONES_EDICION_FINAL, aviso_privacidad=aviso_priv)
+
+
 EstadoHandler = Callable[
     [SesionChat, ChatOrquestadorRequest, str, BuscadorDuplicados],
     Coroutine[None, None, ChatOrquestadorResponse],
@@ -1549,4 +1607,5 @@ STATE_HANDLERS: Dict[EstadoFlujo, EstadoHandler] = {
     EstadoFlujo.ESPERANDO_METADATOS: handle_esperando_metadatos,
     EstadoFlujo.REVISION_BORRADOR: handle_revision_borrador,
     EstadoFlujo.SUBSANANDO_BORRADOR: handle_revision_borrador,
+    EstadoFlujo.EDICION_FINAL: handle_edicion_final,
 }

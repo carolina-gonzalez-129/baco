@@ -78,6 +78,7 @@ class EstadoFlujo(str, Enum):
     # SUBSANANDO_BORRADOR se preserva por compatibilidad de esquema OpenAPI/Front,
     # pero el flujo operativo gestiona la subsanación bloqueante dentro de REVISION_BORRADOR.
     SUBSANANDO_BORRADOR = "SUBSANANDO_BORRADOR"
+    EDICION_FINAL = "EDICION_FINAL"
     FINALIZADO = "FINALIZADO"
     RECHAZADO = "RECHAZADO"
 
@@ -200,6 +201,10 @@ class BorradorSesion(BaseModel):
     skill_pendiente: Optional[str] = Field(
         default=None,
         description="Identifica la skill pendiente en la Vista previa ('plantilla' o 'auditor').",
+    )
+    skill_aplicada: Optional[str] = Field(
+        default=None,
+        description="Identifica la última skill aplicada ('plantilla' o 'auditor').",
     )
 
     @property

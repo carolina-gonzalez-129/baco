@@ -122,8 +122,9 @@ async def manejar_turno(
             )
 
     res_edicion = None
-    if sesion.estado in ESTADOS_EDICION_LIBRE:
+    if sesion.estado in ESTADOS_EDICION_LIBRE or sesion.estado == EstadoFlujo.EDICION_FINAL:
         res_edicion = aplicar_edicion_campos(sesion, req)
+        req._res_edicion = res_edicion
         if not res_edicion.ok:
             return construir_respuesta(
                 sesion,
@@ -176,6 +177,7 @@ async def manejar_turno(
             and not (req.mensaje and req.mensaje.strip())
             and tiene_campos_req
             and not es_paso_metadatos_o_plantilla
+            and sesion.estado != EstadoFlujo.EDICION_FINAL
         )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones

@@ -19,6 +19,7 @@ OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador"]
+OPCIONES_EDICION_FINAL = ["finalizar", "volver"]
 
 DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
@@ -130,6 +131,12 @@ MSG_USAR_CONTINUAR = (
 MSG_BORRADOR_FINALIZADO = (
     "✅ Registramos tu borrador. Todavía no está publicado: "
     "la aprobación y publicación final las hace un moderador."
+)
+
+
+MSG_EDICION_FINAL = (
+    "Podés revisar o editar el título, texto, categoría, etiquetas y plantilla antes de finalizar. "
+    "Cuando esté listo, tocá **Finalizar**."
 )
 
 
@@ -362,6 +369,12 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             list(OPCIONES_REVISION_VALIDO),
         )
 
+
+    if est == EstadoFlujo.EDICION_FINAL:
+        return (
+            MSG_EDICION_FINAL,
+            list(OPCIONES_EDICION_FINAL),
+        )
 
     if est in (EstadoFlujo.FINALIZADO, EstadoFlujo.RECHAZADO):
         return (

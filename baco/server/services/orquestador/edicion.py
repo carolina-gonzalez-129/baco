@@ -37,6 +37,7 @@ ESTADOS_EDICION_LIBRE = {
     EstadoFlujo.ESPERANDO_METADATOS,
     EstadoFlujo.REVISION_BORRADOR,
     EstadoFlujo.SUBSANANDO_BORRADOR,
+
 }
 
 
@@ -424,7 +425,10 @@ def aplicar_edicion_campos(
 
     opcion_actual = interpretar_opcion(req)
     es_continuar = opcion_actual in ("continuar", "continuar_revision", "finalizar", "editar")
-    es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR)
+    es_edicion_final = sesion.estado == EstadoFlujo.EDICION_FINAL
+    es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR, EstadoFlujo.EDICION_FINAL)
+    if es_edicion_final:
+        es_continuar = True
 
     edita_plantilla = False
     tipo_plantilla_nueva = None
@@ -504,7 +508,11 @@ def aplicar_edicion_campos(
         and not edita_categoria
         and not edita_plantilla
     ):
-        return ResultadoEdicion(ok=True, aviso_privacidad=det_req)
+        return ResultadoEdicion(
+            ok=True,
+            aviso_privacidad=det_req,
+            opciones_sugeridas=(["finalizar", "volver"] if es_edicion_final else None),
+        )
 
     titulo_nuevo = None
     aviso_priv_tit = None
@@ -583,6 +591,7 @@ def aplicar_edicion_campos(
 
     return ResultadoEdicion(
         ok=True,
+        opciones_sugeridas=(["finalizar", "volver"] if es_edicion_final else None),
         aviso=aviso_plantilla,
         aviso_privacidad=aviso_priv_total,
         titulo_nuevo=titulo_nuevo,
@@ -668,7 +677,9 @@ async def ejecutar_skill(
             )
             return construir_respuesta(sesion, msg_falta_meta, sesion.ultimas_opciones)
 
-    if getattr(b, "resultado_skill_pendiente", False) and (
+    if es_reaplicacion and (getattr(sesion, "texto_original", None) or getattr(b, "texto_original", None)):
+        texto_vigente = (getattr(sesion, "texto_original", None) or getattr(b, "texto_original", None) or "").strip()
+    elif getattr(b, "resultado_skill_pendiente", False) and (
         getattr(b, "texto_original", None)
         or getattr(sesion, "texto_original", None)
         or getattr(b, "texto_editor", None)
@@ -748,8 +759,13 @@ async def ejecutar_skill(
     b.resultado_skill_desactualizado = False
     b.resultado_skill_pendiente = True
     b.skill_pendiente = skill_nombre
+    b.skill_aplicada = skill_nombre
+    sesion.skill_aplicada = skill_nombre
 
-    opciones = (
+    if sesion.estado == EstadoFlujo.EDICION_FINAL:
+        opciones = ["finalizar", "volver"]
+    else:
+        opciones = (
         ["continuar_revision", "volver"]
         if getattr(b, "revision_intermedia", False)
         else ["continuar", "volver"]

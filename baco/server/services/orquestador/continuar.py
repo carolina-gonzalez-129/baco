@@ -197,6 +197,24 @@ def _resp_paso_revision_final(
 
 
 
+def _avanzar_paso_edicion_final(sesion: SesionChat) -> None:
+    sesion.limpiar_fallos("REVISION_BORRADOR")
+    b = sesion.borrador
+    if not b:
+        return
+    b.revision_intermedia = False
+    if b.categoria_id is None and sesion.categoria_id is not None:
+        b.categoria_id = sesion.categoria_id
+
+
+def _resp_paso_edicion_final(
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+) -> ChatOrquestadorResponse:
+    from baco.server.services.orquestador.mensajes import MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL
+    msg = f"{prefijo}{MSG_EDICION_FINAL}".strip()
+    return construir_respuesta(sesion, msg, OPCIONES_EDICION_FINAL, aviso_privacidad=aviso_privacidad)
+
+
 def continuar_desde_revision(sesion: SesionChat) -> ChatOrquestadorResponse:
     """
     Decide la acción de 'continuar' o 'continuar_revision' desde el estado de revisión:
@@ -206,7 +224,7 @@ def continuar_desde_revision(sesion: SesionChat) -> ChatOrquestadorResponse:
     b = sesion.borrador
     if b is not None and b.revision_intermedia:
         return continuar(sesion)
-    return _registrar_finalizado(sesion)
+    return continuar(sesion)
 
 
 def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
@@ -340,9 +358,9 @@ TABLA_CONTINUAR: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaContinuar] = {
 
     # Paso 4 / Revisión final
     (EstadoFlujo.REVISION_BORRADOR, None): ReglaContinuar(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
-        avanzar=_avanzar_paso_revision_final,
-        construir_respuesta=_resp_paso_revision_final,
+        estado_destino=EstadoFlujo.EDICION_FINAL,
+        avanzar=_avanzar_paso_edicion_final,
+        construir_respuesta=_resp_paso_edicion_final,
     ),
 }
 
@@ -384,12 +402,21 @@ def continuar(
             f"No existe regla de avance definida para estado={sesion.estado} y variante={variante}"
         )
 
-    # Compuerta previa al avance desde revisión intermedia
+    # Compuerta previa al avance desde revisión
     if sesion.estado == EstadoFlujo.REVISION_BORRADOR and variante == "intermedia":
         if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
             return continuar(
                 sesion,
                 prefijo="Debés aceptar o rechazar los metadatos heredados antes de continuar. ",
+            )
+        comp = verificar_compuerta_avance(sesion)
+        if comp is not None:
+            return comp
+    elif sesion.estado == EstadoFlujo.REVISION_BORRADOR:
+        if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
+            return _resp_paso_revision_final(
+                sesion,
+                prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ",
             )
         comp = verificar_compuerta_avance(sesion)
         if comp is not None:

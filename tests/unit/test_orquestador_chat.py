@@ -216,6 +216,7 @@ def test_camino_articulo_nuevo_pide_plantilla_y_metadatos_sanitiza_y_aprueba(cli
     assert r_val["validacion"]["valido"] is True
     assert "[CUIT_OCULTO]" in r_val["borrador"]["texto_alineado_discourse"]
 
+    client.post("/chat", json={"session_id": sid, "accion": "continuar"})
     r_ok = client.post("/chat", json={"session_id": sid, "accion": "finalizar"}).json()
     assert r_ok["estado"] == EstadoFlujo.FINALIZADO
 
@@ -496,6 +497,7 @@ def test_aplicar_plantilla_conforme_inyecta_prompt_y_sobreescribe_borrador(clien
     assert resp_get_invalido.status_code == 409
 
     # Al volver a finalizar el borrador modificado
+    client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "continuar"})
     resp_confirmar = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "finalizar"})
     assert resp_confirmar.status_code == 200
     assert resp_confirmar.json()["estado"] == EstadoFlujo.FINALIZADO
@@ -652,6 +654,7 @@ def test_flujo_completo_con_cookies_sin_session_id_en_front(client, mock_buscado
         assert r_cont.json()["estado"] == EstadoFlujo.REVISION_BORRADOR
 
         # 3. Finalizar el borrador sin session_id
+        client.post("/chat", json={"accion": "continuar"})
         r3 = client.post("/chat", json={"accion": "finalizar"})
         assert r3.status_code == 200
         assert r3.json()["estado"] == EstadoFlujo.FINALIZADO
@@ -674,6 +677,7 @@ def test_flujo_completo_con_cookies_sin_session_id_en_front(client, mock_buscado
         assert SESIONES[cookie_sid].estado == EstadoFlujo.REVISION_BORRADOR
 
         # El usuario vuelve a finalizar el borrador con la plantilla aplicada
+        client.post("/chat", json={"accion": "continuar"})
         r_reconf = client.post("/chat", json={"accion": "finalizar"})
         assert r_reconf.status_code == 200
         assert r_reconf.json()["estado"] == EstadoFlujo.FINALIZADO
@@ -1248,6 +1252,7 @@ def test_registro_conformidad_al_confirmar(client):
         ),
     )
 
+    client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "continuar"})
     resp = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "finalizar"})
     assert resp.status_code == 200
     data = resp.json()
@@ -1299,6 +1304,7 @@ def test_invalida_conformidad_al_modificar_texto(client):
 
     # 2. Modificación programática / vía skill (actualizar_borrador_texto)
     # Primero volvemos a finalizar
+    client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "continuar"})
     client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "finalizar"})
     assert ses.borrador.finalizado is True
     assert ses.estado == EstadoFlujo.FINALIZADO

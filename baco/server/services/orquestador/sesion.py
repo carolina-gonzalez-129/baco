@@ -83,6 +83,7 @@ class SesionChat:
     texto_en_edicion: str = ""
     texto_editor: Optional[str] = None
     texto_original: Optional[str] = None
+    skill_aplicada: Optional[str] = None
     recursos: Dict[str, Recurso] = field(default_factory=dict)
     ultimo_id_recurso: int = 0
     orden_multimedia: List[int] = field(default_factory=list)
@@ -233,6 +234,7 @@ class SesionChat:
         texto_en_edicion: Optional[str] = None,
         texto_editor: Optional[str] = None,
         texto_original: Optional[str] = None,
+        skill_aplicada: Optional[str] = None,
         titulo: Optional[str] = None,
         categoria_id: Optional[int] = None,
         categoria_nombre: Optional[str] = None,
@@ -343,6 +345,11 @@ class SesionChat:
 
         if skill_pendiente is not None and self.borrador is not None:
             self.borrador.skill_pendiente = skill_pendiente
+
+        if skill_aplicada is not None:
+            self.skill_aplicada = skill_aplicada
+            if self.borrador is not None:
+                self.borrador.skill_aplicada = skill_aplicada
 
         if self.borrador and getattr(self.borrador, "finalizado", False):
             _invalidar_finalizado(self)
