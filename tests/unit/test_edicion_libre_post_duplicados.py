@@ -753,3 +753,124 @@ async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez
         assert spy_aplicar.call_count == 1
 
     assert resp.estado == EstadoFlujo.FINALIZADO
+
+
+@pytest.mark.anyio
+async def test_continuar_persiste_tags_editados_antes_de_avanzar():
+    buscador = MagicMock(spec=BuscadorDuplicados)
+
+    # 1. En revisión final (revision_intermedia=False) con accion="continuar"
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-final")
+    sesion.borrador.revision_intermedia = False
+    sesion.borrador.tipo_plantilla = "instructivo"
+    sesion.tipo_plantilla = "instructivo"
+    sesion.borrador.categoria_id = 20
+    sesion.borrador.categoria_nombre = "Ventas"
+    sesion.categoria_id = 20
+    sesion.categoria_nombre = "Ventas"
+    sesion.borrador.tags = ["instructivo", "ventas"]
+    sesion.tags = ["instructivo", "ventas"]
+    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+
+    req = ChatOrquestadorRequest(
+        session_id=sesion.session_id,
+        tags=["instructivo", "facturacion", "afip"],
+        accion="continuar",
+    )
+    resp = await manejar_turno(req, buscador)
+
+    assert resp.estado == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.tags == ["instructivo", "facturacion", "afip"]
+    assert sesion.tags == ["instructivo", "facturacion", "afip"]
+    assert resp.tags_acumulados == ["instructivo", "facturacion", "afip"]
+
+    # 2. En revisión intermedia (revision_intermedia=True) con accion="continuar_revision"
+    sesion_int = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-intermedia")
+    sesion_int.borrador.revision_intermedia = True
+    sesion_int.borrador.tipo_plantilla = "instructivo"
+    sesion_int.tipo_plantilla = "instructivo"
+    sesion_int.borrador.categoria_id = 20
+    sesion_int.borrador.categoria_nombre = "Ventas"
+    sesion_int.categoria_id = 20
+    sesion_int.categoria_nombre = "Ventas"
+    sesion_int.borrador.tags = ["instructivo"]
+    sesion_int.tags = ["instructivo"]
+    sesion_int.ultimas_opciones = ["aplicar_plantilla", "continuar_revision", "volver"]
+
+    req_int = ChatOrquestadorRequest(
+        session_id=sesion_int.session_id,
+        tags=["cobranzas", "recibos"],
+        accion="continuar_revision",
+    )
+    resp_int = await manejar_turno(req_int, buscador)
+
+    # Al tener ya categoria_id=20 y ahora >= 2 tags persistidos antes de avanzar, pasa directo a revisión final
+    assert resp_int.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion_int.borrador.revision_intermedia is False
+    assert sesion_int.borrador.tags == ["instructivo", "cobranzas", "recibos"]
+    assert sesion_int.tags == ["instructivo", "cobranzas", "recibos"]
+
+
+@pytest.mark.anyio
+async def test_continuar_valida_tags_solo_si_cambiaron():
+    from baco.server.services.orquestador.edicion import procesar_edicion_tags
+
+    buscador = MagicMock(spec=BuscadorDuplicados)
+
+    # Caso A: En revisión intermedia los tags guardados son ["instructivo"] (< TAGS_MIN).
+    # Si el request reenvía los mismos tags sin cambios y aprieta "Continuar", NO se validan y avanza a ESPERANDO_METADATOS.
+    sesion_sin_cambio = _crear_sesion_en_estado(
+        EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-sin-cambio"
+    )
+    sesion_sin_cambio.borrador.revision_intermedia = True
+    sesion_sin_cambio.borrador.tipo_plantilla = "instructivo"
+    sesion_sin_cambio.tipo_plantilla = "instructivo"
+    sesion_sin_cambio.borrador.tags = ["instructivo"]
+    sesion_sin_cambio.tags = ["instructivo"]
+    sesion_sin_cambio.ultimas_opciones = ["aplicar_plantilla", "continuar_revision", "volver"]
+
+    req_sin_cambio = ChatOrquestadorRequest(
+        session_id=sesion_sin_cambio.session_id,
+        tags=["instructivo"],
+        accion="continuar_revision",
+    )
+    with patch(
+        "baco.server.services.orquestador.edicion.procesar_edicion_tags",
+        wraps=procesar_edicion_tags,
+    ) as spy_proc_tags:
+        resp_sin_cambio = await manejar_turno(req_sin_cambio, buscador)
+        assert spy_proc_tags.call_count == 0
+
+    assert resp_sin_cambio.estado == EstadoFlujo.ESPERANDO_METADATOS
+
+    # Caso B: Si los tags sí cambiaron pero quedan con menos de TAGS_MIN, se validan, falla y no avanza ni pisa la sesión.
+    sesion_invalido = _crear_sesion_en_estado(
+        EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-invalido"
+    )
+    sesion_invalido.borrador.revision_intermedia = False
+    sesion_invalido.borrador.tipo_plantilla = "instructivo"
+    sesion_invalido.tipo_plantilla = "instructivo"
+    sesion_invalido.borrador.categoria_id = 20
+    sesion_invalido.borrador.categoria_nombre = "Ventas"
+    sesion_invalido.categoria_id = 20
+    sesion_invalido.categoria_nombre = "Ventas"
+    sesion_invalido.borrador.tags = ["instructivo", "ventas"]
+    sesion_invalido.tags = ["instructivo", "ventas"]
+    sesion_invalido.ultimas_opciones = ["auditar", "continuar", "volver"]
+
+    req_invalido = ChatOrquestadorRequest(
+        session_id=sesion_invalido.session_id,
+        tags=["instructivo"],
+        accion="continuar",
+    )
+    with patch(
+        "baco.server.services.orquestador.edicion.procesar_edicion_tags",
+        wraps=procesar_edicion_tags,
+    ) as spy_proc_tags_inv:
+        resp_invalido = await manejar_turno(req_invalido, buscador)
+        assert spy_proc_tags_inv.call_count == 1
+
+    assert resp_invalido.estado == EstadoFlujo.REVISION_BORRADOR
+    assert "Se requieren al menos" in resp_invalido.mensaje
+    assert sesion_invalido.borrador.tags == ["instructivo", "ventas"]
+    assert sesion_invalido.tags == ["instructivo", "ventas"]

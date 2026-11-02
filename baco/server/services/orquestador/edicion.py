@@ -25,6 +25,7 @@ from baco.server.services.orquestador.sesion import SesionChat
 from baco.server.services.orquestador.validaciones import (
     combinar_tags,
     extraer_tipo_plantilla,
+    interpretar_opcion,
     resolver_categoria,
     validar_longitud,
 )
@@ -379,7 +380,19 @@ def aplicar_edicion_campos(
     edita_titulo = titulo_difiere(req.titulo, tit_guardado)
     edita_texto = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
 
-    if not edita_titulo and not edita_texto:
+    es_continuar = interpretar_opcion(req) in ("continuar", "continuar_revision")
+    tags_guardados = (b.tags if b else sesion.tags) or []
+    plantilla_guardada = (
+        (b.tipo_plantilla if b else sesion.tipo_plantilla)
+        or extraer_tipo_plantilla(tags_guardados)
+    )
+    edita_tags = es_continuar and tags_difiere(
+        req.tags,
+        tags_guardados,
+        plantilla=plantilla_guardada,
+    )
+
+    if not edita_titulo and not edita_texto and not edita_tags:
         return ResultadoEdicion(ok=True)
 
     titulo_nuevo = None
@@ -414,7 +427,18 @@ def aplicar_edicion_campos(
         if err_txt:
             return ResultadoEdicion(ok=False, error=err_txt)
 
+    tags_nuevos = None
+    if edita_tags:
+        tags_nuevos, err_tags = procesar_edicion_tags(
+            req.tags,
+            plantilla=plantilla_guardada,
+        )
+        if err_tags:
+            return ResultadoEdicion(ok=False, error=err_tags)
+
     kwargs: Dict[str, Any] = {}
+    if tags_nuevos is not None:
+        kwargs["tags"] = tags_nuevos
     if edita_titulo:
         kwargs["titulo"] = titulo_nuevo
 
@@ -449,6 +473,7 @@ def aplicar_edicion_campos(
         recursos_nuevos=recursos_nuevos,
         txt_nuevo_limpio=txt_nuevo_limpio,
         ultimo_id_nuevo=ultimo_id_nuevo,
+        tags_nuevos=tags_nuevos,
     )
 
 
