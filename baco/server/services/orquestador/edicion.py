@@ -419,7 +419,8 @@ def aplicar_edicion_campos(
     )
 
     edita_titulo = titulo_difiere(req.titulo, tit_guardado)
-    edita_texto = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
+    texto_req = req.texto if req.texto is not None else req.texto_editor
+    edita_texto = texto_difiere(texto_req, txt_guardado, titulo_contexto=tit_guardado)
 
     opcion_actual = interpretar_opcion(req)
     es_continuar = opcion_actual in ("continuar", "continuar_revision", "finalizar", "editar")
@@ -529,7 +530,7 @@ def aplicar_edicion_campos(
             aviso_plantilla,
             err_txt,
         ) = procesar_edicion_texto(
-            req.texto,
+            texto_req,
             sesion,
             titulo_contexto=titulo_nuevo or tit_guardado,
             det_req=det_req,

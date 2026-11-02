@@ -68,10 +68,10 @@ from baco.server.services.orquestador.retroceso import (
     retroceder,
 )
 from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
+from baco.server.services.orquestador.continuar import continuar
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     actualizar_metadatos_sesion,
-    avanzar_a_metadatos_o_revision,
     cargar_datos_articulo,
     combinar_tags,
     consolidar_texto_enriquecimiento,
@@ -83,13 +83,14 @@ from baco.server.services.orquestador.validaciones import (
     validar_borrador,
     validar_longitud,
     validar_longitud_maxima,
+    verificar_compuerta_avance,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.edicion import (
     _sanitizar_tags_tematicos,
+    aplicar_edicion_campos,
     categoria_difiere,
     plantilla_difiere,
-    procesar_edicion_texto,
     tags_difiere,
     texto_difiere,
     tiene_resultado_skill_visible,
@@ -472,8 +473,8 @@ async def handle_decision_titulo(
                 if omitir_txt
                 else PREFIJO_SIN_DUPLICADOS
             )
-            return avanzar_a_metadatos_o_revision(
-                sesion, pref, aviso_privacidad=aviso_privacidad
+            return continuar(
+                sesion, prefijo=pref, aviso_privacidad=aviso_privacidad
             )
 
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
@@ -718,8 +719,8 @@ async def handle_esperando_texto(
             texto_editor=sanitizar_borrador(texto=req.texto)["texto_sanitizado"].strip() if req.texto is not None else None,
         )
         pref_enriq = prefijo_borrador_creado(sesion.borrador.articulo_original_id)
-        return avanzar_a_metadatos_o_revision(
-            sesion, pref_enriq, aviso_privacidad=aviso_priv
+        return continuar(
+            sesion, prefijo=pref_enriq, aviso_privacidad=aviso_priv
         )
 
     bloques_proc, recursos_finales, err_marcadores = procesar_recursos_y_bloques(
@@ -817,8 +818,8 @@ async def handle_esperando_texto(
     sesion.texto = sesion.borrador.texto_alineado_discourse
     pref_descarte = "Omití las coincidencias que ya descartaste. " if omitir_txt else ""
     pref_final = f"{pref_descarte}{PREFIJO_SIN_DUPLICADOS}"
-    return avanzar_a_metadatos_o_revision(
-        sesion, pref_final, aviso_privacidad=aviso_privacidad
+    return continuar(
+        sesion, prefijo=pref_final, aviso_privacidad=aviso_privacidad
     )
 
 
@@ -984,7 +985,7 @@ async def handle_decision_texto(
             tags=list(sesion.tags),
         )
         sesion.texto = sesion.borrador.texto_alineado_discourse
-        return avanzar_a_metadatos_o_revision(sesion, PREFIJO_CONTINUAR_PROPIO)
+        return continuar(sesion, prefijo=PREFIJO_CONTINUAR_PROPIO)
 
     if opcion == "volver":
         return retroceder(sesion)
@@ -1055,10 +1056,7 @@ async def handle_esperando_plantilla(
     sesion.tags = list(b.tags)
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
-    resp = avanzar_a_metadatos_o_revision(sesion)
-    if aviso_priv_tags and not resp.aviso_privacidad:
-        resp.aviso_privacidad = aviso_priv_tags
-    return resp
+    return continuar(sesion)
 
 
 async def handle_esperando_metadatos(
@@ -1066,7 +1064,7 @@ async def handle_esperando_metadatos(
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
     if opcion in ("aceptar", "aceptar_metadatos", "rechazar_metadatos"):
-        resp_meta = _gestionar_metadatos_heredados(sesion, opcion)
+        resp_meta = continuar(sesion, opcion=opcion)
         if resp_meta is not None:
             return resp_meta
     if opcion == "volver":
@@ -1135,9 +1133,7 @@ async def handle_esperando_metadatos(
                 b.categoria_nombre = res_chat.categoria_nombre
                 sesion.categoria_id = res_chat.categoria_id
                 sesion.categoria_nombre = res_chat.categoria_nombre
-                sesion.limpiar_fallos("ESPERANDO_METADATOS")
-                msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)
-                return construir_respuesta(sesion, msg, ops)
+                return continuar(sesion, prefijo=PREFIJO_METADATOS_REGISTRADOS)
             elif res_chat.estado == "ambiguo":
                 intento = sesion.registrar_fallo("ESPERANDO_METADATOS")
                 cands = [c.nombre for c in res_chat.candidatos]
@@ -1219,9 +1215,7 @@ async def handle_esperando_metadatos(
             msg = msg_pedir_tag_adicional(b.tipo_plantilla or "", intento)
         return construir_respuesta(sesion, msg, ["volver"], aviso_privacidad=aviso_priv_tags)
 
-    sesion.limpiar_fallos("ESPERANDO_METADATOS")
-    msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)
-    return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_priv_tags)
+    return continuar(sesion, prefijo=PREFIJO_METADATOS_REGISTRADOS)
 
 
 def _resolver_flujo_rechazo(
@@ -1256,36 +1250,6 @@ def _resolver_flujo_rechazo(
         "Por favor confirmá si querés descartar el artículo tocando **Sí, descartar** o **Volver** para continuar trabajando en él.",
         ["confirmar_rechazo", "volver"],
     )
-
-
-def _gestionar_metadatos_heredados(
-    sesion: SesionChat, opcion: str
-) -> Optional[ChatOrquestadorResponse]:
-    """Aísla la resolución de aceptar_metadatos / rechazar_metadatos."""
-    b = sesion.borrador
-    if not b or not b.metadatos_anteriores:
-        return None
-
-    if opcion in ("aceptar", "aceptar_metadatos"):
-        b.metadatos_heredados_revisados = True
-        sesion.metadatos_heredados_revisados = True
-        return avanzar_a_metadatos_o_revision(sesion, prefijo="Se confirmaron los metadatos de la versión anterior. ")
-
-    if opcion in ("rechazar_metadatos",) or (
-        opcion == "rechazar" and not b.metadatos_heredados_revisados
-    ):
-        b.metadatos_heredados_revisados = True
-        sesion.metadatos_heredados_revisados = True
-        b.tipo_plantilla = None
-        b.categoria_id = None
-        b.categoria_nombre = None
-        b.tags = []
-        sesion.categoria_id = None
-        sesion.categoria_nombre = None
-        sesion.tags = []
-        return avanzar_a_metadatos_o_revision(sesion, prefijo="Se descartaron los metadatos heredados. ")
-
-    return None
 
 
 def _ejecutar_sanitizacion_borrador(
@@ -1448,7 +1412,7 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
     if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return avanzar_a_metadatos_o_revision(sesion, "Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
+        return continuar(sesion, prefijo="Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización. ")
 
     from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
     adoptar_resultado_skill_pendiente(sesion)
@@ -1456,11 +1420,9 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
 
-    if not sesion.validacion or not sesion.validacion.valido or sesion.huella_difiere():
-        validar_borrador(sesion)
-    if not sesion.validacion or not sesion.validacion.valido:
-        msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
-        return construir_respuesta(sesion, msg, ops)
+    comp = verificar_compuerta_avance(sesion)
+    if comp is not None:
+        return comp
 
     limpio = sanitizar_borrador(texto=b.texto_limpio, titulo=b.titulo)
     titulo_conf = limpio["titulo_sanitizado"]
@@ -1491,41 +1453,11 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     )
 
 
-def _continuar_a_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
-    """Cierra la revisión intermedia: pide categoría y tags si faltan o pasa a la revisión final."""
-    b = sesion.borrador
-    if b.metadatos_anteriores and not b.metadatos_heredados_revisados:
-        return avanzar_a_metadatos_o_revision(
-            sesion, "Debés aceptar o rechazar los metadatos heredados antes de continuar. "
-        )
-
-    from baco.server.services.orquestador.edicion import adoptar_resultado_skill_pendiente
-    adoptar_resultado_skill_pendiente(sesion)
-
-    if not sesion.validacion or not sesion.validacion.valido or sesion.huella_difiere():
-        validar_borrador(sesion)
-    if not sesion.validacion or not sesion.validacion.valido:
-        msg, ops = validar_borrador(sesion, PREFIJO_ERROR_CONFORMIDAD)
-        return construir_respuesta(sesion, msg, ops)
-
-    b.revision_intermedia = False
-    b.texto_base_revision_final = b.texto_limpio
-    if b.categoria_id is None and sesion.categoria_id is not None:
-        b.categoria_id = sesion.categoria_id
-    if b.categoria_id is None or len(b.tags) < 2:
-        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-        return construir_respuesta(sesion, msg_pedir_metadatos(b.tipo_plantilla or ""), ["volver"])
-
-    # Metadatos ya completos (p. ej. heredados aceptados): directo a la revisión final.
-    msg, ops = validar_borrador(sesion, PREFIJO_METADATOS_REGISTRADOS)
-    return construir_respuesta(sesion, msg, ops)
-
-
 async def handle_revision_borrador(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
-    texto_edicion = req.texto
+    texto_edicion = req.texto if req.texto is not None else req.texto_editor
     if texto_edicion is None and opcion == "editar" and req.mensaje and req.mensaje.strip().lower() != "editar":
         texto_edicion = req.mensaje
 
@@ -1537,14 +1469,66 @@ async def handle_revision_borrador(
         return resp_rechazo
 
     # 2. Gestión de metadatos heredados de versión previa
-    resp_meta = _gestionar_metadatos_heredados(sesion, opcion)
-    if resp_meta is not None:
-        return resp_meta
+    if opcion in ("aceptar", "aceptar_metadatos", "rechazar_metadatos") or (
+        opcion == "rechazar" and b is not None and b.metadatos_anteriores and not b.metadatos_heredados_revisados
+    ):
+        resp_meta = continuar(sesion, opcion=opcion)
+        if resp_meta is not None:
+            return resp_meta
 
     # 3. Acción explícita o silenciosa de sanitización
     if opcion == "sanitizar":
         return _ejecutar_sanitizacion_borrador(sesion, req)
 
+    if opcion == "volver":
+        return retroceder(sesion)
+
+    if hubo_cambios:
+        req_edicion = req
+        if req.texto is None and texto_edicion is not None:
+            req_edicion = req.model_copy(update={"texto": texto_edicion})
+        res_edicion = aplicar_edicion_campos(sesion, req_edicion)
+        if not res_edicion.ok:
+            ops = (
+                OPCIONES_REVISION_VALIDO
+                if (sesion.validacion and sesion.validacion.valido)
+                else OPCIONES_REVISION_BLOQUEANTE
+            )
+            return construir_respuesta(sesion, res_edicion.error or "", ops)
+
+        if req.categoria_id is not None and b is not None:
+            res_cat = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
+            if res_cat.categoria_id is not None:
+                b.categoria_id = res_cat.categoria_id
+                b.categoria_nombre = res_cat.categoria_nombre
+                sesion.categoria_id = res_cat.categoria_id
+                sesion.categoria_nombre = res_cat.categoria_nombre
+
+        if req.tags is not None and b is not None:
+            plantilla_actual = b.tipo_plantilla or extraer_tipo_plantilla(req.tags)
+            tags_filtrados = [
+                t
+                for t in req.tags
+                if extraer_tipo_plantilla([t]) is None or (plantilla_actual and extraer_tipo_plantilla([t]) == plantilla_actual)
+            ]
+            tags_nuevos = combinar_tags(plantilla_actual, tags_filtrados)
+            b.tags = tags_nuevos
+            sesion.tags = tags_nuevos
+
+        if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
+            return continuar(sesion)
+
+        if opcion == "finalizar" and b is not None and b.revision_intermedia:
+            msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
+            return construir_respuesta(sesion, msg, ops)
+
+        if opcion in ("finalizar", "continuar", "continuar_revision"):
+            return _registrar_finalizado(sesion)
+
+        if opcion not in ("editar", "aplicar_plantilla", "auditar", "rechazar", "confirmar_rechazo"):
+            prefijo = PREFIJO_BORRADOR_ACTUALIZADO
+            msg, ops = validar_borrador(sesion, prefijo)
+            return construir_respuesta(sesion, msg, ops, aviso_privacidad=res_edicion.aviso_privacidad)
 
     # 5. Opciones estándar del estado de revisión
     if opcion == "editar":
@@ -1567,7 +1551,7 @@ async def handle_revision_borrador(
         return await ejecutar_skill(sesion, req, "auditor")
 
     if opcion in ("continuar_revision", "continuar") and b is not None and b.revision_intermedia:
-        return _continuar_a_metadatos(sesion)
+        return continuar(sesion)
 
     if opcion == "finalizar" and b is not None and b.revision_intermedia:
         msg, ops = validar_borrador(sesion, MSG_USAR_CONTINUAR)
