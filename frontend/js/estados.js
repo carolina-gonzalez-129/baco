@@ -29,6 +29,10 @@ BACO.ESTADOS = {
                         ayuda: 'Hay observaciones bloqueantes. Corregilas en el panel y guardá los cambios.' },
   APROBADO:           { etiqueta: 'Continuar',            tono: 'ok',      paso: 5,
                         ayuda: 'El artículo quedó con tu conformidad registrada y sanitizado.' },
+  EDICION_FINAL:      { etiqueta: 'Edición final',        tono: 'info',    paso: 5,
+                        ayuda: 'Revisá y editá los datos finales. Cuando esté listo, tocá Finalizar.' },
+  FINALIZADO:         { etiqueta: 'Finalizado',           tono: 'ok',      paso: 5,
+                        ayuda: 'Borrador registrado. La publicación la hace un moderador.' },
   RECHAZADO:          { etiqueta: 'Rechazado',           tono: 'alerta',  paso: 5,
                         ayuda: 'El borrador fue rechazado. Reiniciá para empezar otra carga.' }
 };
@@ -44,6 +48,8 @@ BACO.CAMPOS_ACTIVOS = {
   SUBSANANDO_BORRADOR: { titulo: true,  texto: true,  tags: true,  categoria: true },
   CONFORMIDAD_USUARIO: { titulo: false, texto: false, tags: false, categoria: false },
   APROBADO:            { titulo: false, texto: false, tags: false, categoria: false },
+  EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true },
+  FINALIZADO:          { titulo: false, texto: false, tags: false, categoria: false },
   RECHAZADO:           { titulo: false, texto: false, tags: false, categoria: false }
 };
 
@@ -52,7 +58,8 @@ BACO.ACCION_PRINCIPAL = {
   ESPERANDO_TEXTO:     { label: 'Confirmar texto',    campo: 'texto'  },
   ESPERANDO_METADATOS: { label: 'Enviar datos',       campo: 'tags'   },
   REVISION_BORRADOR:   { label: 'Guardar cambios',    campo: 'todo'   },
-  SUBSANANDO_BORRADOR: { label: 'Guardar cambios',    campo: 'todo'   }
+  SUBSANANDO_BORRADOR: { label: 'Guardar cambios',    campo: 'todo'   },
+  EDICION_FINAL:       { label: 'Guardar cambios',    campo: 'todo'   }
 };
 
 /* Cómo se muestra cada severidad que devuelve el validador */
@@ -158,7 +165,7 @@ BACO.store = (function () {
         const pr = document.getElementById('preview');
         const btnPr = document.getElementById('btnPreview');
         const previewActiva = Boolean((pr && !pr.hidden) || (btnPr && btnPr.classList.contains('sel')));
-        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_BORRADOR', 'SUBSANANDO_BORRADOR', 'CONFORMIDAD_USUARIO', 'FINALIZADO'];
+        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_BORRADOR', 'SUBSANANDO_BORRADOR', 'CONFORMIDAD_USUARIO', 'EDICION_FINAL', 'FINALIZADO'];
 
         let deshab;
         if (esEnriq && previewActiva) {

@@ -18,8 +18,8 @@ OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 
 OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision", "volver"]
 OPCIONES_REINICIAR = ["reiniciar"]
-OPCIONES_FINALIZADO = ["editar", "ver_articulo_final", "copiar_borrador"]
-OPCIONES_EDICION_FINAL = ["finalizar", "volver"]
+OPCIONES_FINALIZADO = ["ver_articulo_final"]
+OPCIONES_EDICION_FINAL = ["finalizar"]
 
 DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
@@ -120,13 +120,17 @@ PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = ""
 
 MSG_CATEGORIA_TAGS_COMPLETOS = (
-    "Perfecto! . Podés **Auditar** para mejorar tu artículo acorde a las pautas editoriales, o **Continuar** para enviarlo."
-    "Si  queres modificar lo que elegiste no hay problema, toca **Volver** para que lo arreglemos"
+    "¡Listo! Antes de seguir, ¿querés que revise tu artículo según las pautas editoriales? "
+    "Tocá **Auditar**.\n"
+    "Si preferís avanzar así, tocá **Continuar**.\n\n"
+    "¿Querés cambiar la categoría o los tags? Tocá **Volver**."
 )
+
 MSG_PLANTILLA_VALIDADA = (
-    "Podes **Aplicar Plantilla** para darle el formato estándar acorde a la plantilla, "
-    "o tocar **Continuar** si ya lo tiene.\n\n"
-    "Si queres modificar el tipo de plantilla, tocá **Volver**."
+    "¡Perfecto! ¿Querés que le dé a tu artículo el formato estándar de su tipo? "
+    "Tocá **Aplicar Plantilla**.\n"
+    "Si ya tiene ese formato, tocá **Continuar**.\n\n"
+    "¿Querés cambiar el tipo de plantilla? Tocá **Volver**."
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
@@ -134,14 +138,14 @@ MSG_USAR_CONTINUAR = (
     "Todavía faltan la categoría y las etiquetas: tocá **Continuar** para completarlas."
 )
 MSG_BORRADOR_FINALIZADO = (
-    "✅ Registramos tu borrador. Todavía no está publicado: "
-    "la aprobación y publicación final las hace un moderador."
+    "✅ Registramos tu borrador.\n\n"
+    "Todavía no está publicado: la aprobación y publicación final las hace un moderador."
 )
 
 
 MSG_EDICION_FINAL = (
-    "Podés revisar o editar el título, texto, categoría, etiquetas y plantilla antes de finalizar. "
-    "Cuando esté listo, tocá **Finalizar**."
+    "¡Último paso! Revisá tu artículo: podés editar el título, el texto, la categoría y los tags tematicos.\n\n"
+    "Cuando esté todo bien, tocá **Finalizar** para enviarlo a revisión."
 )
 
 
@@ -293,10 +297,9 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
-        f"{prefijo}🏷️ Asignamos el formato **{plantilla.capitalize()}**.\n\n"
-        "Para continuar, completá la clasificación:\n"
-        "• Sumá **al menos una etiqueta más** (o las que creas necesarias).\n"
-        "Podés indicarlas por aca o cargarlas en el menu desplegable."
+        f"{prefijo}🏷️ Le asignamos la plantilla **{plantilla.capitalize()}**.\n\n"
+        "Para seguir, sumá al menos una etiqueta más. Podés escribirla acá "
+        "o elegirla en el menú desplegable."
     )
 
 

@@ -2120,10 +2120,10 @@
       }
       return enviarTurno(payload, label);
     }
-    if (op === 'conforme' || op === 'aprobar' || op === 'continuar_revision') {
-      // 'continuar_revision' (revisión intermedia) y 'conforme' (revisión final) guardan antes
-      // los cambios pendientes de la Vista previa.
-      const accionFinal = op === 'continuar_revision' ? 'continuar_revision' : 'conforme';
+    if (op === 'conforme' || op === 'aprobar' || op === 'continuar_revision' || op === 'finalizar') {
+      // 'continuar_revision' (revisión intermedia), 'conforme' (revisión final) y 'finalizar'
+      // (edición final) guardan antes los cambios pendientes de la Vista previa.
+      const accionFinal = (op === 'continuar_revision' || op === 'finalizar') ? op : 'conforme';
       sincronizarTextoDesdePreview();
       const sAct = store.get();
       const textoVistaPrevia = (sAct.form && typeof sAct.form.texto === 'string') ? sAct.form.texto : '';
@@ -2137,7 +2137,13 @@
         (catBorrador == null || String(catForm) !== String(catBorrador))
       );
 
-      if (textoVistaPrevia !== textoServidor || cambioCategoria) {
+      // En edición final también cuentan título y etiquetas editados sin "Guardar cambios".
+      const cambioTituloOTags = op === 'finalizar' && Boolean(sAct.borrador) && (
+        (typeof sAct.form.titulo === 'string' && sAct.form.titulo !== (sAct.borrador.titulo || '')) ||
+        JSON.stringify(sAct.form.tags || []) !== JSON.stringify(sAct.borrador.tags || [])
+      );
+
+      if (textoVistaPrevia !== textoServidor || cambioCategoria || cambioTituloOTags) {
         const payloadGuardar = {
           titulo: sAct.form.titulo,
           texto: sAct.form.texto,
@@ -2155,7 +2161,8 @@
           (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)) ||
           (sPost.validacion && sPost.validacion.valido === false)
         );
-        const estadoNoRevision = (resGuardar.estado || sPost.flujo) !== 'REVISION_BORRADOR';
+        const estadoPost = resGuardar.estado || sPost.flujo;
+        const estadoNoRevision = estadoPost !== 'REVISION_BORRADOR' && estadoPost !== 'EDICION_FINAL';
 
         if (tieneBloqueantes || estadoNoRevision) {
           return;
