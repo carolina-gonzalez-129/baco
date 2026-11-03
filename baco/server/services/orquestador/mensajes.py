@@ -100,7 +100,8 @@ MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
 )
 MSG_ELEGIR_PLANTILLA = (
     "📋 Elegí el formato para tu artículo:\n\n"
-    "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta."
+    "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta.\n\n"
+    "Si querés corregir o editar tu texto, tocá **Volver**."
 )
 MSG_PEDIR_EDICION = "Hacé los cambios que necesites en el Editor."
 MSG_RECHAZADO = (
@@ -120,12 +121,12 @@ PREFIJO_ERROR_CONFORMIDAD = ""
 
 MSG_CATEGORIA_TAGS_COMPLETOS = (
     "Perfecto! . Podés **Auditar** para mejorar tu artículo acorde a las pautas editoriales, o **Continuar** para enviarlo."
-    "Si te confundiste en alguna parte, no hay problema, toca **Volver** para que lo arreglemos"
+    "Si  queres modificar lo que elegiste no hay problema, toca **Volver** para que lo arreglemos"
 )
 MSG_PLANTILLA_VALIDADA = (
-    "Podés **Aplicar** para darle el formato estándar acorde a la plantilla, "
-    "o tocar **Continuar** si ya lo tiene."
-    "Si queres elegir otra, no hay problema. Toca **Volver**"
+    "Podes **Aplicar Plantilla** para darle el formato estándar acorde a la plantilla, "
+    "o tocar **Continuar** si ya lo tiene.\n\n"
+    "Si queres modificar el tipo de plantilla, tocá **Volver**."
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
@@ -201,15 +202,15 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"📄 Cargué el artículo ('{titulo}') en la **Vista previa** del panel izquierdo.\n\n"
-        "Hacé los cambios que necesites y tocá **Confirmar texto**."
+        f"📄 Cargué el artículo ('{titulo}') en la **Vista previa** .\n\n"
+        "Hacé los cambios que necesites y toca **Confirmar texto**."
     )
 
 
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la **Vista previa** del panel izquierdo.\n\n'
-        "Hacé los cambios que necesites y tocá **Confirmar texto**."
+        f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la **Vista previa** .\n\n'
+        "Hace los cambios que necesites y toca **Confirmar texto**."
     )
 
 
@@ -240,9 +241,10 @@ OPCIONES_CONFIRMAR_METADATOS = ["enviar_datos", "volver"]
 def msg_confirmar_metadatos(categoria: str, tags: List[str]) -> str:
     """Carga por chat completa: se confirma con Enviar datos, igual que desde el panel."""
     tags_txt = ", ".join(tags) if tags else "sin etiquetas"
+    txt_etiqueta = "las etiquetas temáticas" if len(tags) > 1 else "la etiqueta temática"
     return (
-        f"Listo, cargué la categoría **{categoria}** y las etiquetas **{tags_txt}**. "
-        "Revisalas en el panel y tocá **Enviar datos** para seguir."
+        f"Listo, cargué la categoría **{categoria}** y {txt_etiqueta} **{tags_txt}**. "
+        "Editalas si lo precisas y tocá **Enviar datos** para seguir."
     )
 
 
