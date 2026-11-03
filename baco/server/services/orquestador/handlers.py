@@ -1010,17 +1010,7 @@ async def handle_esperando_plantilla(
     if opcion == "volver":
         return retroceder(sesion)
 
-    cat_guardada = b.categoria_id if b else sesion.categoria_id
-    if categoria_difiere(req.categoria_id, cat_guardada):
-        res_cat = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
-        if res_cat.categoria_id is not None:
-            b.categoria_id = res_cat.categoria_id
-            b.categoria_nombre = res_cat.categoria_nombre
-            sesion.categoria_id = res_cat.categoria_id
-            sesion.categoria_nombre = res_cat.categoria_nombre
-        else:
-            b.categoria_id = req.categoria_id
-
+    # Categoría y tags temáticos no se editan en ESPERANDO_PLANTILLA: se cargan en ESPERANDO_METADATOS.
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
     tiene_skill_vis = tiene_resultado_skill_visible(b)
     txt_guardado = (
@@ -1060,8 +1050,7 @@ async def handle_esperando_plantilla(
         for t in b.tags
         if extraer_tipo_plantilla([t]) is None or extraer_tipo_plantilla([t]) == plantilla
     ]
-    tags_req_sanit, aviso_priv_tags = _sanitizar_tags_tematicos(req.tags or [], plantilla=plantilla)
-    b.tags = combinar_tags(plantilla, tags_previos, tags_req_sanit)
+    b.tags = combinar_tags(plantilla, tags_previos)
     sesion.tags = list(b.tags)
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id

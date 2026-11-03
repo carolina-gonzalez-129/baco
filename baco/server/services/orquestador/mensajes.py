@@ -117,7 +117,7 @@ PREFIJO_CONTINUAR_PROPIO = ""
 PREFIJO_METADATOS_REGISTRADOS = ""
 PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
-PREFIJO_ERROR_CONFORMIDAD = ""
+PREFIJO_ERROR_CONFORMIDAD = "Tuvimos problemas al registrar tu conformidad"
 
 MSG_CATEGORIA_TAGS_COMPLETOS = (
     "¡Listo! Antes de seguir, ¿querés que revise tu artículo según las pautas editoriales? "
@@ -297,9 +297,9 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
-        f"{prefijo}🏷️ Le asignamos la plantilla **{plantilla.capitalize()}**.\n\n"
-        "Para seguir, sumá al menos una etiqueta más. Podés escribirla acá "
-        "o elegirla en el menú desplegable."
+        f"{prefijo}🏷️ Tipo de plantilla **{plantilla.capitalize()}**.\n\n"
+        "Para seguir, sumá al menos una etiqueta más y elegí la categoría. "
+        "Podés escribirlas acá o seleccionarlas directamente desde el menú."
     )
 
 

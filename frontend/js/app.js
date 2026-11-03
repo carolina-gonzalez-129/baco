@@ -524,6 +524,9 @@
     btnX.title = 'Eliminar recurso';
     btnX.setAttribute('aria-label', 'Eliminar recurso ' + (r.nombre || recId));
     if (b.cargando || deshabilitado) btnX.disabled = true;
+    // Ocultar la × si el texto no es editable en el estado actual
+    const actRec = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[store.get().flujo]) || {};
+    if (!actRec.texto) btnX.hidden = true;
     item.appendChild(btnX);
 
     // Asa de arrastre
@@ -1133,27 +1136,10 @@
     // Disponibilidad del botón de imagen decidida exclusivamente por actualizarDisponibilidadRecursos
     actualizarDisponibilidadRecursos(s);
 
-    const b = s.borrador;
-    const esEnriquecerOActualizar = b && (b.modo === 'enriquecimiento' || b.modo === 'actualizar' || b.articulo_original_id != null);
-    const tagsValidos = (s.form.tags || []).length >= cfg.MIN_TAGS;
-    const catValida = Number(s.form.categoria_id) > 1;
-    const etapaPostTexto = s.flujo !== 'ESPERANDO_TITULO' && s.flujo !== 'DECISION_TITULO' && s.flujo !== 'ESPERANDO_TEXTO' && s.flujo !== 'DECISION_TEXTO';
-
-    let mostrarCampoTags = false;
-    if (etapaPostTexto) {
-      if (s.flujo === 'ESPERANDO_METADATOS') {
-        mostrarCampoTags = true;
-      } else if (esEnriquecerOActualizar) {
-        mostrarCampoTags = !catValida || !tagsValidos;
-      } else {
-        mostrarCampoTags = true;
-      }
-    }
-
     const campoTags = $('#campoTags');
     if (campoTags) {
-      campoTags.hidden = !mostrarCampoTags;
-      campoTags.classList.toggle('activo', mostrarCampoTags && !!act.tags);
+      campoTags.hidden = false;
+      campoTags.classList.toggle('activo', Boolean(act.tags || act.categoria));
     }
     if ($('#tagBox')) $('#tagBox').classList.toggle('off', !act.tags);
 
@@ -1463,7 +1449,9 @@
       btnQuitar.setAttribute('aria-label', 'Eliminar ' + (r.nombre || r.referencia || r.id));
       btnQuitar.title = 'Eliminar recurso';
       btnQuitar.textContent = '×';
-      mediaEl.appendChild(btnQuitar);
+      // Mostrar la × solo si el texto es editable en el estado actual
+      const actPrev = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[store.get().flujo]) || {};
+      if (actPrev.texto) mediaEl.appendChild(btnQuitar);
 
       const contentEl = document.createElement('div');
       contentEl.className = 'preview-media-content';
@@ -1670,7 +1658,7 @@
 
     const cats = (s.categorias_disponibles && s.categorias_disponibles.length)
       ? s.categorias_disponibles
-      : [];
+      : ((BACO.datos && BACO.datos.categorias) ? BACO.datos.categorias : []);
 
     const actualId = (s.form.categoria_id && Number(s.form.categoria_id) > 1) ? Number(s.form.categoria_id) : null;
 
@@ -1687,6 +1675,11 @@
       if (!c.nombre) return false;
       return !/^categor[íi]a\s+\d+$/i.test(c.nombre.trim());
     });
+
+    if (actualId && !catsFiltradas.some((c) => Number(c.id) === actualId)) {
+      const nombreActual = (s.borrador && s.borrador.categoria_nombre) || nombreCategoria(s, actualId);
+      selHtml += '<option value="' + esc(actualId) + '" selected>' + esc(nombreActual) + '</option>';
+    }
 
     catsFiltradas.forEach((c) => {
       const selected = actualId && Number(c.id) === actualId;
@@ -1852,11 +1845,13 @@
   function hayCambios(s) {
     const b = s.borrador;
     if (!b) return true;
-    const mismosTags = (b.tags || []).length === s.form.tags.length &&
-      (b.tags || []).every((t, i) => t === s.form.tags[i]);
+    const tagsForm = s.form.tags || [];
+    const tagsBorrador = b.tags || [];
+    const mismosTags = tagsBorrador.length === tagsForm.length &&
+      tagsBorrador.every((t, i) => t === tagsForm[i]);
     return s.form.titulo !== b.titulo ||
            s.form.texto !== (b.texto_limpio || '') ||   // el editor solo tiene texto_limpio
-           Number(s.form.categoria_id) !== Number(b.categoria_id) ||
+           Number(s.form.categoria_id || 0) !== Number(b.categoria_id || 0) ||
            !mismosTags;
   }
 
@@ -1866,11 +1861,13 @@
     if (!box || !input) return;
     box.querySelectorAll('.tag').forEach((n) => n.remove());
     const plantilla = s.borrador && s.borrador.tipo_plantilla;
+    const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
 
     s.form.tags.forEach((t) => {
-      const esTipo = (t === plantilla);
+      const esTipo = (t === plantilla || t === 'instructivo' || t === 'soluciones');
       const chip = el('span', 'tag' + (esTipo ? ' tipo' : ''), esc(t));
-      if (!input.disabled) {
+      const puedeQuitar = !input.disabled && (act.tipo_plantilla || !esTipo);
+      if (puedeQuitar) {
         const x = el('button', 'x', '<svg width="9" height="9" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>');
         x.onclick = () => { store.setForm({ tags: s.form.tags.filter((v) => v !== t) }); };
         chip.appendChild(x);
@@ -1885,7 +1882,12 @@
         : ((BACO.datos && BACO.datos.etiquetas) ? BACO.datos.etiquetas.map((e) => e.tag) : []);
 
       const tagsOrdenados = [...new Set(tagsDisp)]
-        .filter((t) => t && typeof t === 'string' && t.trim() && s.form.tags.indexOf(t) === -1)
+        .filter((t) => {
+          if (!t || typeof t !== 'string' || !t.trim() || s.form.tags.indexOf(t) !== -1) return false;
+          const esEtiquetaPlantilla = (t === plantilla || t === 'instructivo' || t === 'soluciones');
+          if (!act.tipo_plantilla && esEtiquetaPlantilla) return false;
+          return true;
+        })
         .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
       const hayTags = (s.form.tags || []).length > 0;
@@ -2131,10 +2133,7 @@
       const catForm = sAct.form && sAct.form.categoria_id;
       const catBorrador = sAct.borrador && sAct.borrador.categoria_id;
       const cambioCategoria = Boolean(
-        catForm !== null &&
-        catForm !== undefined &&
-        catForm !== '' &&
-        (catBorrador == null || String(catForm) !== String(catBorrador))
+        sAct.borrador && String(catForm ?? '') !== String(catBorrador ?? '')
       );
 
       // En edición final también cuentan título y etiquetas editados sin "Guardar cambios".
@@ -3237,7 +3236,13 @@
           }
           e.target.value = '';
         } else if (e.key === 'Backspace' && !e.target.value && s.form.tags.length) {
-          store.setForm({ tags: s.form.tags.slice(0, -1) });
+          const ult = s.form.tags[s.form.tags.length - 1];
+          const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
+          const plantilla = s.borrador && s.borrador.tipo_plantilla;
+          const esEtiquetaPlantilla = (ult === plantilla || ult === 'instructivo' || ult === 'soluciones');
+          if (act.tipo_plantilla || !esEtiquetaPlantilla) {
+            store.setForm({ tags: s.form.tags.slice(0, -1) });
+          }
         }
       });
     }

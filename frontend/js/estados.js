@@ -38,19 +38,17 @@ BACO.ESTADOS = {
 };
 
 BACO.CAMPOS_ACTIVOS = {
-  ESPERANDO_TITULO:    { titulo: true,  texto: false, tags: false, categoria: false },
-  DECISION_TITULO:     { titulo: false, texto: false, tags: false, categoria: false },
-  ESPERANDO_TEXTO:     { titulo: false, texto: true,  tags: false, categoria: false },
-  DECISION_TEXTO:      { titulo: false, texto: false, tags: false, categoria: false },
-  ESPERANDO_PLANTILLA: { titulo: false, texto: false, tags: false, categoria: false },
-  ESPERANDO_METADATOS: { titulo: false, texto: false, tags: true,  categoria: true },
-  REVISION_BORRADOR:   { titulo: true,  texto: true,  tags: true,  categoria: true },
-  SUBSANANDO_BORRADOR: { titulo: true,  texto: true,  tags: true,  categoria: true },
-  CONFORMIDAD_USUARIO: { titulo: false, texto: false, tags: false, categoria: false },
-  APROBADO:            { titulo: false, texto: false, tags: false, categoria: false },
-  EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true },
-  FINALIZADO:          { titulo: false, texto: false, tags: false, categoria: false },
-  RECHAZADO:           { titulo: false, texto: false, tags: false, categoria: false }
+  ESPERANDO_TITULO:    { titulo: true,  texto: false, tags: false, categoria: false, tipo_plantilla: false },
+  DECISION_TITULO:     { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
+  ESPERANDO_TEXTO:     { titulo: false, texto: true,  tags: false, categoria: false, tipo_plantilla: false },
+  DECISION_TEXTO:      { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
+  ESPERANDO_PLANTILLA: { titulo: true,  texto: true,  tags: false,  categoria: false,  tipo_plantilla: true },
+  ESPERANDO_METADATOS: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
+  REVISION_BORRADOR:   { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
+  SUBSANANDO_BORRADOR: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
+  EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
+  FINALIZADO:          { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
+  RECHAZADO:           { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false }
 };
 
 /* Etiqueta y payload del botón principal, según el estado */

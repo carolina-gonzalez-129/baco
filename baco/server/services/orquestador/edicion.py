@@ -431,6 +431,8 @@ def aplicar_edicion_campos(
     es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR, EstadoFlujo.EDICION_FINAL)
     if es_edicion_final:
         es_continuar = True
+    # En ESPERANDO_PLANTILLA no se aceptan categoría ni tags temáticos (se cargan en ESPERANDO_METADATOS).
+    permite_metadatos = sesion.estado != EstadoFlujo.ESPERANDO_PLANTILLA
 
     edita_plantilla = False
     tipo_plantilla_nueva = None
@@ -454,7 +456,7 @@ def aplicar_edicion_campos(
     edita_categoria = False
     categoria_id_nueva = None
     categoria_nombre_nuevo = None
-    if es_continuar and categoria_difiere(req.categoria_id, cat_guardada):
+    if permite_metadatos and es_continuar and categoria_difiere(req.categoria_id, cat_guardada):
         edita_categoria = True
         categoria_id_nueva, categoria_nombre_nuevo, err_cat = procesar_edicion_categoria(
             req.categoria_id,
@@ -475,7 +477,7 @@ def aplicar_edicion_campos(
     edita_tags = False
     tags_nuevos = None
     aviso_priv_tags = None
-    if es_continuar and tags_difiere(
+    if permite_metadatos and es_continuar and tags_difiere(
         req.tags,
         tags_guardados,
         plantilla=plantilla_efectiva,
