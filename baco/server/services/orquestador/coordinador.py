@@ -122,7 +122,11 @@ async def manejar_turno(
             and not (req.mensaje and req.mensaje.strip())
             and tiene_campos_req
             and not es_paso_metadatos_o_plantilla
-            and sesion.estado != EstadoFlujo.EDICION_FINAL
+            # En EDICION_FINAL, un cambio de plantilla sigue yendo al handler (reaplica la skill).
+            and not (
+                sesion.estado == EstadoFlujo.EDICION_FINAL
+                and res_edicion.tipo_plantilla_nueva is not None
+            )
         )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones

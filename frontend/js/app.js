@@ -1557,11 +1557,11 @@
         if (idx < estadoVistaPrevia.bloques_texto.length) {
           estadoVistaPrevia.bloques_texto[idx] = nuevoMd;
         }
+        // No se pisa borrador.texto_limpio: es la referencia del servidor para detectar cambios.
         if (st && st.borrador) {
           st.borrador.bloques_texto = estadoVistaPrevia.bloques_texto.slice();
-          st.borrador.texto_limpio = estadoVistaPrevia.bloques_texto.join('\n\n').trim();
         }
-        store.setForm({ texto: st.borrador ? st.borrador.texto_limpio : '' });
+        store.setForm({ texto: estadoVistaPrevia.bloques_texto.join('\n\n').trim() });
       } else {
         if (idx < estadoEditor.bloques_texto.length) {
           estadoEditor.bloques_texto[idx] = nuevoMd;
@@ -1608,11 +1608,11 @@
           estadoVistaPrevia.bloques_texto[idx] = nuevoMd;
         }
       });
+      // No se pisa borrador.texto_limpio: es la referencia del servidor para detectar cambios.
       if (st && st.borrador) {
         st.borrador.bloques_texto = estadoVistaPrevia.bloques_texto.slice();
-        st.borrador.texto_limpio = estadoVistaPrevia.bloques_texto.join('\n\n').trim();
       }
-      store.setForm({ texto: st.borrador ? st.borrador.texto_limpio : '' });
+      store.setForm({ texto: estadoVistaPrevia.bloques_texto.join('\n\n').trim() });
     } else {
       bloquesEditables.forEach((bDiv) => {
         const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
