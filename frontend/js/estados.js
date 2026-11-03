@@ -280,7 +280,7 @@ BACO.store = (function () {
         sincronizarEstructuraBorrador(r.borrador);
         estado.form.titulo = r.borrador.titulo || '';
         estado.form.texto = r.borrador.texto_limpio || '';
-        if (r.borrador.modo === 'enriquecimiento') {
+        if (r.borrador.modo === 'enriquecimiento' || r.borrador.resultado_skill_pendiente === true) {
           estado.form.texto_editor = (typeof r.borrador.texto_editor === 'string')
             ? r.borrador.texto_editor
             : (estado.form.texto_editor || '');

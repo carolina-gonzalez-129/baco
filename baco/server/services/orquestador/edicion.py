@@ -409,11 +409,8 @@ def aplicar_edicion_campos(
 
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
     tiene_skill_vis = tiene_resultado_skill_visible(b)
-    txt_guardado = (
-        b.texto_editor
-        if (b and b.texto_editor and tiene_skill_vis)
-        else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
-    ) or ""
+    # Con resultado de skill visible, req.texto es el de la Vista previa: se compara contra él.
+    txt_guardado = (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto)) or ""
     cat_guardada = b.categoria_id if b else sesion.categoria_id
     tags_guardados = (b.tags if b else sesion.tags) or []
     plantilla_guardada = (
@@ -422,8 +419,13 @@ def aplicar_edicion_campos(
     )
 
     edita_titulo = titulo_difiere(req.titulo, tit_guardado)
-    texto_req = req.texto if req.texto is not None else req.texto_editor
+    texto_req = req.texto if (req.texto is not None or tiene_skill_vis) else req.texto_editor
     edita_texto = texto_difiere(texto_req, txt_guardado, titulo_contexto=tit_guardado)
+    # Con skill visible, el Editor conserva el texto fuente (no se envía; se usa para re-ejecutar la skill).
+    edita_editor = bool(
+        tiene_skill_vis and b is not None and req.texto_editor is not None
+        and texto_difiere(req.texto_editor, b.texto_editor or "", titulo_contexto=tit_guardado)
+    )
 
     opcion_actual = interpretar_opcion(req)
     es_continuar = opcion_actual in ("continuar", "continuar_revision", "finalizar", "editar")
@@ -511,6 +513,7 @@ def aplicar_edicion_campos(
         and not edita_tags
         and not edita_categoria
         and not edita_plantilla
+        and not edita_editor
     ):
         return ResultadoEdicion(
             ok=True,
@@ -573,17 +576,17 @@ def aplicar_edicion_campos(
         kwargs["bloques_texto"] = bloques_nuevos
         kwargs["recursos"] = recursos_nuevos
         kwargs["ultimo_id_recurso"] = ultimo_id_nuevo
-        if txt_nuevo_limpio is not None:
+        # Con skill visible, la edición es de la Vista previa: no pisa el texto fuente del Editor
+        # y el resultado de la skill sigue pendiente de adoptar.
+        if txt_nuevo_limpio is not None and not tiene_skill_vis:
             kwargs["texto_base_limpio"] = txt_nuevo_limpio
             kwargs["texto_editor"] = txt_nuevo_limpio
             kwargs["texto_original"] = txt_nuevo_limpio
-        if tiene_skill_vis:
-            kwargs["resultado_skill_desactualizado"] = False
-            kwargs["resultado_skill_pendiente"] = False
-            if b is not None:
-                b.resultado_skill_desactualizado = False
-                b.resultado_skill_pendiente = False
-                b.skill_pendiente = None
+
+    if edita_editor:
+        txt_editor_san = sanitizar_borrador(texto=req.texto_editor)["texto_sanitizado"].strip()
+        kwargs["texto_editor"] = txt_editor_san
+        kwargs["texto_original"] = txt_editor_san
 
     if kwargs:
         sesion.actualizar_contenido_borrador(**kwargs)
@@ -738,9 +741,9 @@ async def ejecutar_skill(
             resultado = (texto_corr or dictamen or "").strip()
         else:
             from baco.server.services.agente_service import ejecutar_skill_plantillas
-        resultado = (await asyncio.wait_for(
-            run_in_threadpool(ejecutar_skill_plantillas, sesion.session_id, b, baco), timeout=180
-        ) or "").strip()
+            resultado = (await asyncio.wait_for(
+                run_in_threadpool(ejecutar_skill_plantillas, sesion.session_id, b, baco), timeout=180
+            ) or "").strip()
 
 
         if not resultado:
@@ -787,9 +790,13 @@ async def ejecutar_skill(
         )
     else:
         msg = (
-            "🤖 Apliqué la **plantilla**. Si lo necesitas edita lo que precises y tocá **Continuar**."
+            "🤖 Apliqué la **plantilla**. El resultado está en la **Vista previa** y tu texto original "
+            "quedó intacto en el **Editor**. Solo se enviará el texto de la Vista previa; podés editar "
+            "ambos. Si volvés a aplicar la skill, se usa el texto del Editor. Tocá **Continuar** cuando esté listo."
             if not es_auditor
-            else "Listo, revisé el texto. Mirá el resultado y tocá **Continuar**."
+            else "🤖 Revisé el texto. El resultado está en la **Vista previa** y tu texto original quedó "
+            "intacto en el **Editor**. Solo se enviará el texto de la Vista previa; podés editar ambos. "
+            "Tocá **Continuar** cuando esté listo."
         )
 
     sesion.ultimas_opciones = list(opciones)

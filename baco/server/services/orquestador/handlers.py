@@ -1013,11 +1013,8 @@ async def handle_esperando_plantilla(
     # Categoría y tags temáticos no se editan en ESPERANDO_PLANTILLA: se cargan en ESPERANDO_METADATOS.
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
     tiene_skill_vis = tiene_resultado_skill_visible(b)
-    txt_guardado = (
-        b.texto_editor
-        if (b and b.texto_editor and tiene_skill_vis)
-        else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
-    ) or ""
+    # Con resultado de skill visible, req.texto es el de la Vista previa: se compara contra él.
+    txt_guardado = (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto)) or ""
     edita_txt_req = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
 
     if b and req.texto is not None and req.texto.strip() and edita_txt_req:
@@ -1146,11 +1143,8 @@ async def handle_esperando_metadatos(
 
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
     tiene_skill_vis = tiene_resultado_skill_visible(b)
-    txt_guardado = (
-        b.texto_editor
-        if (b and b.texto_editor and tiene_skill_vis)
-        else (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto))
-    ) or ""
+    # Con resultado de skill visible, req.texto es el de la Vista previa: se compara contra él.
+    txt_guardado = (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto)) or ""
     edita_txt_req = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
     texto_fallback_efectivo = req.texto if edita_txt_req else None
 

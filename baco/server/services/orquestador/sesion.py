@@ -524,6 +524,13 @@ class GestorSesiones:
         sesion = self._sesiones[session_id]
         if sesion.borrador is not None:
             texto_strip = (nuevo_texto or "").strip()
+            # El texto fuente (Editor) se conserva: la skill solo va a la Vista previa.
+            origen = (sesion.borrador.texto_editor or sesion.borrador.texto_limpio or "").strip()
+            if origen:
+                sesion.borrador.texto_editor = origen
+                sesion.borrador.texto_original = origen
+                sesion.texto_editor = origen
+                sesion.texto_original = origen
             sesion.borrador.bloques_texto = [texto_strip] if texto_strip else []
             sesion.bloques_texto = list(sesion.borrador.bloques_texto)
             sesion.borrador.resultado_skill_pendiente = True

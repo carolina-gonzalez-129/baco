@@ -166,6 +166,13 @@
     menuAbiertoPos: null
   };
 
+  /* Editor y Vista previa se separan en enriquecimiento y mientras hay un resultado de skill pendiente:
+     el Editor conserva el texto fuente y la Vista previa muestra el texto que se enviará. */
+  function separaPaneles(b) {
+    return Boolean(b && (b.modo === 'enriquecimiento' || b.resultado_skill_pendiente === true));
+  }
+  BACO.separaPaneles = separaPaneles;
+
   const estadoVistaPrevia = {
     bloques_texto: [''],
     recursos: []
@@ -437,7 +444,7 @@
   function sincronizarTextoConStore() {
     const limpio = componerTextoDesdeBloques();
     const s = store.get();
-    const esEnriquecer = Boolean(s && s.borrador && s.borrador.modo === 'enriquecimiento');
+    const esEnriquecer = separaPaneles(s && s.borrador);
     if (esEnriquecer) {
       store.setForm({ texto_editor: limpio });
     } else {
@@ -524,9 +531,10 @@
     btnX.title = 'Eliminar recurso';
     btnX.setAttribute('aria-label', 'Eliminar recurso ' + (r.nombre || recId));
     if (b.cargando || deshabilitado) btnX.disabled = true;
-    // Ocultar la × si el texto no es editable en el estado actual
-    const actRec = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[store.get().flujo]) || {};
-    if (!actRec.texto) btnX.hidden = true;
+    // Ocultar la × si el texto no es editable en el estado actual o si se está enviando
+    const sActual = store.get();
+    const actRec = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[sActual.flujo]) || {};
+    if (!actRec.texto || sActual.enviando) btnX.hidden = true;
     item.appendChild(btnX);
 
     // Asa de arrastre
@@ -656,7 +664,7 @@
   function aplicarEstadoRecursosServidor(res) {
     if (!res) return;
     const st = store.get();
-    const esEnriquecer = Boolean(st && st.borrador && st.borrador.modo === 'enriquecimiento');
+    const esEnriquecer = separaPaneles(st && st.borrador);
 
     if (Array.isArray(res.recursos)) {
       estadoVistaPrevia.recursos = ordenarRecursosPorPosicionYOrden(res.recursos);
@@ -934,7 +942,7 @@
 
     if (sesionCambio) {
       sesionCargadaId = s.session_id;
-      if (b && b.modo === 'enriquecimiento') {
+      if (separaPaneles(b)) {
         const textoUsuario = (typeof b.texto_editor === 'string') ? b.texto_editor : '';
         reconstruirBloques([textoUsuario], [], b);
         estadoVistaPrevia.bloques_texto = Array.isArray(b.bloques_texto) ? b.bloques_texto.map((t) => String(t == null ? '' : t)) : [''];
@@ -944,7 +952,7 @@
       }
       renderBloques();
     } else if (!estadoEditor.bloques_texto || !estadoEditor.bloques_texto.length) {
-      if (b && b.modo === 'enriquecimiento') {
+      if (separaPaneles(b)) {
         const textoUsuario = (typeof b.texto_editor === 'string') ? b.texto_editor : '';
         reconstruirBloques([textoUsuario], [], b);
         estadoVistaPrevia.bloques_texto = Array.isArray(b.bloques_texto) ? b.bloques_texto.map((t) => String(t == null ? '' : t)) : [''];
@@ -1015,7 +1023,7 @@
       ultimoFallo = null;
       if (r && (r.borrador || typeof r.texto_limpio === 'string')) {
         const b = r.borrador;
-        if (b && b.modo === 'enriquecimiento') {
+        if (separaPaneles(b)) {
           const textoUsuario = (typeof b.texto_editor === 'string') ? b.texto_editor : '';
           reconstruirBloques([textoUsuario], [], b);
           if (Array.isArray(b.bloques_texto)) {
@@ -1118,6 +1126,15 @@
     if (contBloques) {
       contBloques.querySelectorAll('.bloque-textarea').forEach((ta) => {
         ta.disabled = txtDeshab;
+      });
+      contBloques.querySelectorAll('.bloque-eliminar-btn').forEach((btn) => {
+        btn.hidden = !act.texto || !!s.enviando;
+      });
+    }
+    const prevEl = $('#preview');
+    if (prevEl) {
+      prevEl.querySelectorAll('.preview-media-quitar').forEach((btn) => {
+        btn.hidden = !act.texto || !!s.enviando;
       });
     }
     if (tInp) tInp.disabled = !act.tags || s.enviando;
@@ -1272,7 +1289,7 @@
 
   /* Vista previa reactiva que respeta el orden exacto (posicion, orden) intercalado con bloques_texto */
   function textoVistaPrevia(s) {
-    const esEnriquecer = Boolean(s && s.borrador && s.borrador.modo === 'enriquecimiento');
+    const esEnriquecer = separaPaneles(s && s.borrador);
     const cuerpo = esEnriquecer
       ? ((estadoVistaPrevia.bloques_texto && estadoVistaPrevia.bloques_texto.length)
           ? estadoVistaPrevia.bloques_texto.join('\n\n')
@@ -1404,7 +1421,7 @@
 
     const st = s || store.get();
     const b = st && st.borrador;
-    const esEnriquecer = Boolean(b && b.modo === 'enriquecimiento');
+    const esEnriquecer = separaPaneles(b);
 
     const bloquesTxt = esEnriquecer
       ? (Array.isArray(estadoVistaPrevia.bloques_texto) && estadoVistaPrevia.bloques_texto.length
@@ -1449,9 +1466,9 @@
       btnQuitar.setAttribute('aria-label', 'Eliminar ' + (r.nombre || r.referencia || r.id));
       btnQuitar.title = 'Eliminar recurso';
       btnQuitar.textContent = '×';
-      // Mostrar la × solo si el texto es editable en el estado actual
-      const actPrev = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[store.get().flujo]) || {};
-      if (actPrev.texto) mediaEl.appendChild(btnQuitar);
+      // Mostrar la × solo si el texto es editable en el estado actual y no se está enviando
+      const actPrev = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[st.flujo]) || {};
+      if (actPrev.texto && !st.enviando) mediaEl.appendChild(btnQuitar);
 
       const contentEl = document.createElement('div');
       contentEl.className = 'preview-media-content';
@@ -1546,7 +1563,7 @@
 
       const nuevoMd = extraerMarkdownDeBloque(bDiv);
       const st = store.get();
-      const esEnriquecer = Boolean(st && st.borrador && st.borrador.modo === 'enriquecimiento');
+      const esEnriquecer = separaPaneles(st && st.borrador);
 
       if (esEnriquecer) {
         if (!Array.isArray(estadoVistaPrevia.bloques_texto) || !estadoVistaPrevia.bloques_texto.length) {
@@ -1592,7 +1609,7 @@
     if (!bloquesEditables.length) return;
 
     const st = store.get();
-    const esEnriquecer = Boolean(st && st.borrador && st.borrador.modo === 'enriquecimiento');
+    const esEnriquecer = separaPaneles(st && st.borrador);
 
     if (esEnriquecer) {
       if (!Array.isArray(estadoVistaPrevia.bloques_texto) || !estadoVistaPrevia.bloques_texto.length) {
@@ -1851,6 +1868,7 @@
       tagsBorrador.every((t, i) => t === tagsForm[i]);
     return s.form.titulo !== b.titulo ||
            s.form.texto !== (b.texto_limpio || '') ||   // el editor solo tiene texto_limpio
+           (separaPaneles(b) && (s.form.texto_editor || '') !== (b.texto_editor || '')) ||
            Number(s.form.categoria_id || 0) !== Number(b.categoria_id || 0) ||
            !mismosTags;
   }
@@ -1866,7 +1884,7 @@
     s.form.tags.forEach((t) => {
       const esTipo = (t === plantilla || t === 'instructivo' || t === 'soluciones');
       const chip = el('span', 'tag' + (esTipo ? ' tipo' : ''), esc(t));
-      const puedeQuitar = !input.disabled && (act.tipo_plantilla || !esTipo);
+      const puedeQuitar = !s.enviando && (esTipo ? Boolean(act.tipo_plantilla) : Boolean(act.tags));
       if (puedeQuitar) {
         const x = el('button', 'x', '<svg width="9" height="9" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>');
         x.onclick = () => { store.setForm({ tags: s.form.tags.filter((v) => v !== t) }); };
@@ -2142,10 +2160,13 @@
         JSON.stringify(sAct.form.tags || []) !== JSON.stringify(sAct.borrador.tags || [])
       );
 
-      if (textoVistaPrevia !== textoServidor || cambioCategoria || cambioTituloOTags) {
+      const separado = separaPaneles(sAct.borrador);
+      const cambioEditor = separado && (sAct.form.texto_editor || '') !== (sAct.borrador.texto_editor || '');
+      if (textoVistaPrevia !== textoServidor || cambioCategoria || cambioTituloOTags || cambioEditor) {
         const payloadGuardar = {
           titulo: sAct.form.titulo,
           texto: sAct.form.texto,
+          texto_editor: separado ? sAct.form.texto_editor : undefined,
           tags: sAct.form.tags,
           categoria_id: sAct.form.categoria_id
         };
@@ -2283,6 +2304,7 @@
     }
     return enviarTurno({
       titulo: s.form.titulo, texto: s.form.texto,
+      texto_editor: separaPaneles(s.borrador) ? s.form.texto_editor : undefined,
       tags: s.form.tags, categoria_id: s.form.categoria_id
     }, 'Guardar cambios');
   }
@@ -2293,6 +2315,29 @@
   }
 
   /* Cuando una skill devuelve texto, se vuelca en el panel izquierdo como un único bloque de texto (bloques_texto = [resultado]) */
+  /* Resultado de skill (vía barra lateral): va solo a la Vista previa; el Editor conserva el texto fuente. */
+  function mostrarResultadoSkillEnVistaPrevia(texto) {
+    const s = store.get();
+    const b = s.borrador;
+    if (!b) return;
+    const textoLimpio = limpiarMarcadoresSeccion(texto);
+    const textoEditor = componerTextoDesdeBloques();
+    b.resultado_skill_pendiente = true;
+    b.skill_pendiente = 'plantilla';
+    b.texto_editor = textoEditor;
+    b.bloques_texto = [texto];
+    b.texto_limpio = textoLimpio;
+    estadoVistaPrevia.bloques_texto = [texto];
+    estadoVistaPrevia.recursos = ordenarRecursosPorPosicionYOrden(Array.isArray(b.multimedia) ? b.multimedia : Object.values(b.recursos || {}));
+    store.setForm({ texto: textoLimpio, texto_editor: textoEditor });
+    const prev = $('#preview');
+    if (prev && !prev.hidden) {
+      prev.innerHTML = renderMd(textoVistaPrevia(store.get()));
+      renderVistaPreviaEditable(store.get());
+      conectarEventosVistaPrevia();
+    }
+  }
+
   function transferirTextoAlPanelIzquierdo(texto, avisoToast = true) {
     const s = store.get();
     const textoLimpio = limpiarMarcadoresSeccion(texto);
@@ -2339,6 +2384,7 @@
       const payloadGuardar = {
         titulo: sAct.form.titulo,
         texto: sAct.form.texto,
+        texto_editor: separaPaneles(sAct.borrador) ? sAct.form.texto_editor : undefined,
         tags: sAct.form.tags,
         categoria_id: sAct.form.categoria_id
       };
@@ -2362,25 +2408,15 @@
       const textoRespuesta = (r && (r.texto_resultante || r.response)) || '';
 
       if (textoRespuesta && metodo === 'aplicarPlantilla') {
-        transferirTextoAlPanelIzquierdo(textoRespuesta, true);
+        mostrarResultadoSkillEnVistaPrevia(textoRespuesta);
       }
 
       const textoChat = (metodo === 'aplicarPlantilla')
-        ? '🤖 Apliqué la **skill** y los resultados fueron transferidos al panel de carga'
+        ? '🤖 Apliqué la **plantilla**. El resultado está en la **Vista previa** y tu texto original quedó intacto en el **Editor**. Solo se enviará el texto de la Vista previa; podés editar ambos. Si volvés a aplicar la skill, se usa el texto del Editor.'
         : (r && r.response ? r.response : (r && r.mensaje ? r.mensaje : ''));
 
-      const labelBotonTransf = '↖ Transferido al panel de carga (clic para volver a transferir)';
-      const msgHtml = '<div class="respuesta-agente">' + nl2br(textoChat) + '</div>' +
-        (metodo === 'aplicarPlantilla' ? '<div style="margin-top:8px;"><button type="button" class="btn btn-sm btn-ghost btn-transferir-panel" style="font-size:12px; cursor:pointer;">' + labelBotonTransf + '</button></div>' : '');
-      const bubbleEl = decir(msgHtml, [], true);
-      if (bubbleEl && metodo === 'aplicarPlantilla') {
-        const btnTransf = bubbleEl.querySelector('.btn-transferir-panel');
-        if (btnTransf) {
-          btnTransf.onclick = () => {
-            transferirTextoAlPanelIzquierdo(textoRespuesta, true);
-          };
-        }
-      }
+      const msgHtml = '<div class="respuesta-agente">' + nl2br(textoChat) + '</div>';
+      decir(msgHtml, [], true);
     } catch (e) {
       esperando.remove();
       estadoEditor.enviando = false;
