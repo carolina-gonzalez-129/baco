@@ -9,6 +9,7 @@ MENSAJE_BIENVENIDA = (
     "Una buena fórmula es incluir la acción y el módulo (por ejemplo: *Configurar punto de venta en Ventas*).\n\n"
 )
 
+MSG_CAMBIOS_GUARDADOS = "Guardé los cambios del artículo. Cuando esté todo listo, tocá **Finalizar**."
 OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
 OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
 OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
@@ -69,6 +70,7 @@ MSG_VOLVER_ENRIQUECER_O_DESCARTAR = (
 MSG_OPERACION_CANCELADA = (
     "Operación cancelada. Mantenemos tu borrador intacto:\n\n"
 )
+
 
 MSG_SIN_COINCIDENCIAS_TITULO = (
     "No encontré nada parecido. Por favor, enviame el texto o desarrollo del artículo."

@@ -128,10 +128,14 @@ async def manejar_turno(
                 and res_edicion.tipo_plantilla_nueva is not None
             )
         )
+        MSG_FINAL = (
+            "Guardé los cambios del artículo.\n\n"
+            "Cuando esté todo listo, tocá **Finalizar**."
+        )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones
             sesion.ultimas_opciones = list(opciones_edicion)
-            mensaje_edicion = res_edicion.aviso_skill_desactualizada or res_edicion.aviso or ""
+            mensaje_edicion = res_edicion.aviso_skill_desactualizada or res_edicion.aviso or  MSG_FINAL
             return construir_respuesta(
                 sesion,
                 mensaje_edicion,
