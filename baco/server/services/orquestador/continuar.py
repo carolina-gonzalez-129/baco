@@ -270,6 +270,35 @@ def _resp_paso_finalizado(
     )
 
 
+def _verificar_obligatorios_finalizar(sesion: SesionChat) -> Optional[ChatOrquestadorResponse]:
+    """Parte 3: al tocar Finalizar reutiliza la validación de obligatorios del flujo.
+    Si falta algo, queda en EDICION_FINAL con un aviso accionable y OPCIONES_EDICION_FINAL.
+    """
+    from baco.server.services.orquestador.mensajes import OPCIONES_EDICION_FINAL
+    from baco.server.services.orquestador.validaciones import validar_borrador
+
+    validar_borrador(sesion)
+    v = sesion.validacion
+    if v is not None and v.valido:
+        return None
+
+    def _campo(f, k):
+        return f.get(k) if isinstance(f, dict) else getattr(f, k, None)
+
+    bloqueantes = [f for f in (v.findings if v else []) if _campo(f, "severity") == "Bloqueante"]
+    lineas = []
+    for f in bloqueantes:
+        accion = _campo(f, "action")
+        lineas.append(f"- {_campo(f, 'description')}" + (f" ({accion})" if accion else ""))
+    detalle = "\n".join(lineas) or "- Hay campos obligatorios sin completar."
+    msg = (
+        f"Antes de finalizar falta completar:\n{detalle}\n\n"
+        "Corregilo en el panel del borrador y tocá **Finalizar** de nuevo."
+    )
+    sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+    return construir_respuesta(sesion, msg, OPCIONES_EDICION_FINAL)
+
+
 def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     """Registra la finalización del borrador aplicando sanitización silenciosa final si corresponde."""
     b = sesion.borrador
@@ -443,6 +472,11 @@ def continuar(
                 prefijo="Antes de seguir, decidí si mantenés los metadatos heredados. ",
             )
         comp = verificar_compuerta_avance(sesion)
+        if comp is not None:
+            return comp
+
+    elif sesion.estado == EstadoFlujo.EDICION_FINAL:
+        comp = _verificar_obligatorios_finalizar(sesion)
         if comp is not None:
             return comp
 

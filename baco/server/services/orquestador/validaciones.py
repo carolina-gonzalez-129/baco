@@ -858,6 +858,7 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "instructivo": "instructivo", "instructivos": "instructivo",
         "soluciones": "soluciones", "solucion": "soluciones", "solución": "soluciones",
         "aplicar_plantilla": "aplicar_plantilla", "aplicar plantilla": "aplicar_plantilla",
+        "confirmar_plantilla": "confirmar_plantilla", "cancelar_plantilla": "cancelar_plantilla",
         "auditar": "auditar", "auditoria": "auditar", "auditar calidad": "auditar", "auditar_calidad": "auditar",
     }
     return mapa.get(bruto, bruto)

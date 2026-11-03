@@ -14,7 +14,10 @@ from baco.server.services.orquestador.edicion import (
     tags_difiere,
 )
 from baco.server.services.orquestador.validaciones import extraer_tipo_plantilla
-from baco.server.services.orquestador.handlers import STATE_HANDLERS
+from baco.server.services.orquestador.handlers import (
+    STATE_HANDLERS,
+    gestionar_cambio_plantilla_pendiente,
+)
 from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
     MSG_BORRADOR_FINALIZADO,
@@ -65,6 +68,11 @@ async def manejar_turno(
             MSG_BORRADOR_FINALIZADO,
             OPCIONES_FINALIZADO,
         )
+
+    if sesion.estado == EstadoFlujo.EDICION_FINAL:
+        resp_plantilla, req = await gestionar_cambio_plantilla_pendiente(sesion, req, opcion)
+        if resp_plantilla is not None:
+            return resp_plantilla
 
     res_edicion = None
     if sesion.estado in ESTADOS_EDICION_LIBRE or sesion.estado == EstadoFlujo.EDICION_FINAL:
@@ -129,8 +137,8 @@ async def manejar_turno(
             )
         )
         MSG_FINAL = (
-            "Guardé los cambios del artículo.\n\n"
-            "Cuando esté todo listo, tocá **Finalizar**."
+            "Guarde tus cambios del artículo."
+
         )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones

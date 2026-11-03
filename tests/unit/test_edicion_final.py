@@ -11,6 +11,7 @@ from baco.server.services.orquestador.coordinador import manejar_turno
 from baco.server.services.orquestador.continuar import continuar_desde_revision
 from baco.server.services.orquestador.mensajes import (
     MSG_EDICION_FINAL,
+    OPCIONES_CONFIRMAR_PLANTILLA,
     OPCIONES_EDICION_FINAL,
 )
 from baco.server.services.orquestador.sesion import SesionChat, gestor_sesiones
@@ -142,78 +143,117 @@ async def test_3_eliminar_manejo_finalizar_en_handle_revision_borrador():
     assert resp.borrador.finalizado is False
 
 
+async def _pedir_cambio_plantilla(sesion, buscador, agente, **campos):
+    req = ChatOrquestadorRequest(session_id=sesion.session_id, tipo_plantilla="soluciones", **campos)
+    req._baco_agent = agente
+    return await manejar_turno(req, buscador)
+
+
+async def _accion(sesion, buscador, agente, accion):
+    req = ChatOrquestadorRequest(session_id=sesion.session_id, accion=accion)
+    req._baco_agent = agente
+    return await manejar_turno(req, buscador)
+
+
 @pytest.mark.anyio
-async def test_4_cambio_plantilla_con_skill_la_reaplica_automaticamente_desde_texto_original():
-    """4. Si en EDICION_FINAL cambia el tipo de plantilla y había una skill aplicada,
-    handlers.py la reaplica automáticamente desde texto_original."""
+async def test_4_cambio_plantilla_pide_confirmacion_y_al_confirmar_reaplica_desde_texto_original():
+    """4. En EDICION_FINAL el cambio de tipo queda pendiente hasta confirmar; al confirmar se reaplica la skill."""
     sesion = _crear_sesion_edicion_final("test-reaplicar-ef")
     sesion.texto_original = "Texto original base para skill"
     sesion.borrador.texto_original = "Texto original base para skill"
     sesion.borrador.bloques_texto = ["## Pasos\n1. Formato anterior de plantilla instructivo"]
     sesion.borrador.skill_aplicada = "plantilla"
     sesion.skill_aplicada = "plantilla"
-
     buscador = MagicMock(spec=BuscadorDuplicados)
     mock_agente = MagicMock(return_value="## Solución\nNueva plantilla aplicada desde texto_original")
 
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="soluciones",
-    )
-    req._baco_agent = mock_agente
+    resp = await _pedir_cambio_plantilla(sesion, buscador, mock_agente)
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert resp.opciones == OPCIONES_CONFIRMAR_PLANTILLA
+    assert "CUIDADO" in resp.mensaje
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    assert sesion.plantilla_pendiente == "soluciones"
+    mock_agente.assert_not_called()
 
-    resp = await manejar_turno(req, buscador)
-
+    resp = await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
     assert resp.estado == EstadoFlujo.EDICION_FINAL
     assert resp.borrador.tipo_plantilla == "soluciones"
     assert "Nueva plantilla aplicada desde texto_original" in resp.borrador.bloques_texto[0]
+    assert "Texto original base para skill" in mock_agente.call_args[0][0]
     assert resp.opciones == OPCIONES_EDICION_FINAL
+    assert sesion.plantilla_pendiente is None
 
 
 @pytest.mark.anyio
-async def test_4_texto_editado_despues_de_skill_es_nuevo_original():
-    """4. Si el texto se editó después de aplicar la skill, ese texto editado es el nuevo original."""
+async def test_4_cancelar_cambio_plantilla_deja_todo_igual():
+    sesion = _crear_sesion_edicion_final("test-cancelar-plantilla")
+    bloques_previos = list(sesion.borrador.bloques_texto)
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    await _pedir_cambio_plantilla(sesion, buscador, mock_agente)
+    resp = await _accion(sesion, buscador, mock_agente, "cancelar_plantilla")
+
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    assert resp.borrador.bloques_texto == bloques_previos
+    assert resp.opciones == OPCIONES_EDICION_FINAL
+    assert sesion.plantilla_pendiente is None
+    mock_agente.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_4_finalizar_con_cambio_plantilla_no_finaliza_sin_confirmar():
+    sesion = _crear_sesion_edicion_final("test-finalizar-con-cambio")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    req = ChatOrquestadorRequest(session_id=sesion.session_id, accion="finalizar", tipo_plantilla="soluciones")
+    req._baco_agent = mock_agente
+    resp = await manejar_turno(req, buscador)
+
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert resp.opciones == OPCIONES_CONFIRMAR_PLANTILLA
+    assert resp.borrador.finalizado is False
+    mock_agente.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_4_texto_editado_junto_al_cambio_se_aplica_y_es_el_nuevo_original():
+    """4. El texto editado en el mismo turno se aplica ya; al confirmar, la skill parte de él."""
     sesion = _crear_sesion_edicion_final("test-edit-luego-skill")
     sesion.borrador.skill_aplicada = "plantilla"
     sesion.skill_aplicada = "plantilla"
     buscador = MagicMock(spec=BuscadorDuplicados)
-
     texto_editado = "Nuevo texto editado por el usuario en el Editor con suficientes caracteres válidos."
     mock_agente = MagicMock(return_value="## Resultado con nuevo original")
 
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        texto=texto_editado,
-        tipo_plantilla="soluciones",
-    )
-    req._baco_agent = mock_agente
-
-    resp = await manejar_turno(req, buscador)
+    await _pedir_cambio_plantilla(sesion, buscador, mock_agente, texto=texto_editado)
+    assert sesion.texto_original == texto_editado
+    resp = await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
 
     assert sesion.texto_original == texto_editado
-    assert sesion.borrador.texto_original == texto_editado
+    assert texto_editado in mock_agente.call_args[0][0]
     assert resp.estado == EstadoFlujo.EDICION_FINAL
     assert resp.opciones == OPCIONES_EDICION_FINAL
 
 
 @pytest.mark.anyio
-async def test_4_sin_texto_original_no_lo_crea_y_se_detiene():
-    """4. Si texto_original no existe en la sesión, no lo crees: detenete y reportalo."""
+async def test_4_sin_texto_original_reaplica_desde_el_editor():
+    """4. Sin texto_original (p. ej. artículo enriquecido) no se corta: se reaplica desde el Editor."""
     sesion = _crear_sesion_edicion_final("test-sin-texto-orig")
     sesion.texto_original = None
     sesion.borrador.texto_original = None
-    sesion.borrador.skill_aplicada = "plantilla"
-
     buscador = MagicMock(spec=BuscadorDuplicados)
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        tipo_plantilla="soluciones",
-    )
+    mock_agente = MagicMock(return_value="## Resultado desde el Editor")
 
-    with pytest.raises(ValueError, match="texto_original no existe en la sesión"):
-        await manejar_turno(req, buscador)
+    await _pedir_cambio_plantilla(sesion, buscador, mock_agente)
+    resp = await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
 
-    assert sesion.texto_original is None
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert resp.borrador.tipo_plantilla == "soluciones"
+    assert "Resultado desde el Editor" in resp.borrador.bloques_texto[0]
+    mock_agente.assert_called_once()
 
 
 @pytest.mark.anyio

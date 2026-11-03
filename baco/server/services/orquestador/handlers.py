@@ -364,8 +364,9 @@ async def handle_decision_titulo(
             ultimo_id_recurso=max_id,
             contenido_adicional=list(sesion.contenido_adicional),
             tipo_plantilla=extraer_tipo_plantilla(tags_ini),
-            categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
-            tags=tags_ini,
+            # Los heredados no se precargan: se muestran y deciden en el paso de metadatos.
+            categoria_id=(req.categoria_id or sesion.categoria_id) if meta_ant else (req.categoria_id or cat_db or sesion.categoria_id),
+            tags=[t for t in (tags_ini or []) if t not in (tags_db or [])] if meta_ant else tags_ini,
             metadatos_anteriores=meta_ant,
             metadatos_heredados_revisados=False,
         )
@@ -931,8 +932,9 @@ async def handle_decision_texto(
             ultimo_id_recurso=max_id,
             contenido_adicional=list(sesion.contenido_adicional),
             tipo_plantilla=extraer_tipo_plantilla(tags_ini),
-            categoria_id=req.categoria_id or cat_db or sesion.categoria_id,
-            tags=tags_ini,
+            # Los heredados no se precargan: se muestran y deciden en el paso de metadatos.
+            categoria_id=(req.categoria_id or sesion.categoria_id) if meta_ant else (req.categoria_id or cat_db or sesion.categoria_id),
+            tags=[t for t in (tags_ini or []) if t not in (tags_db or [])] if meta_ant else tags_ini,
             metadatos_anteriores=meta_ant,
             metadatos_heredados_revisados=False,
         )
@@ -1561,6 +1563,81 @@ async def handle_revision_borrador(
     return construir_respuesta(sesion, msg, ops)
 
 
+async def gestionar_cambio_plantilla_pendiente(
+    sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str
+) -> Tuple[Optional[ChatOrquestadorResponse], ChatOrquestadorRequest]:
+    """Parte 4: en EDICION_FINAL el cambio de tipo de plantilla requiere confirmación del backend.
+    Devuelve (respuesta, req). Si respuesta no es None, el turno termina ahí.
+    """
+    from baco.server.services.orquestador.edicion import (
+        aplicar_edicion_campos,
+        ejecutar_skill,
+        plantilla_difiere,
+    )
+    from baco.server.services.orquestador.mensajes import (
+        MSG_CAMBIO_PLANTILLA_CANCELADO,
+        MSG_EDICION_FINAL,
+        OPCIONES_CONFIRMAR_PLANTILLA,
+        OPCIONES_EDICION_FINAL,
+        msg_confirmar_cambio_plantilla,
+    )
+
+    b = sesion.borrador
+    if b is None:
+        return None, req
+    pendiente = sesion.plantilla_pendiente
+
+    if opcion == "cancelar_plantilla":
+        sesion.plantilla_pendiente = None
+        sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+        return construir_respuesta(sesion, MSG_CAMBIO_PLANTILLA_CANCELADO, OPCIONES_EDICION_FINAL), req
+
+    if opcion == "confirmar_plantilla":
+        sesion.plantilla_pendiente = None
+        if not pendiente:
+            sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+            return construir_respuesta(sesion, MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL), req
+        req_tipo = req.model_copy(update={
+            "tipo_plantilla": pendiente, "titulo": None, "texto": None, "texto_editor": None,
+            "categoria_id": None, "tags": None,
+        })
+        res = aplicar_edicion_campos(sesion, req_tipo)
+        if not res.ok:
+            sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+            return construir_respuesta(sesion, res.error or "", OPCIONES_EDICION_FINAL), req
+        # Siempre se reaplica la skill de plantillas (desde texto_original o, si no existe, el Editor).
+        return await ejecutar_skill(sesion, req, skill="plantilla", es_reaplicacion=True), req
+
+    # Cualquier otra interacción descarta un pendiente previo (cancelación implícita).
+    sesion.plantilla_pendiente = None
+    if req.tipo_plantilla is None or opcion == "volver":
+        return None, req
+
+    plantilla_act = (
+        b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags or [])
+    )
+    try:
+        difiere = plantilla_difiere(req.tipo_plantilla, plantilla_act)
+    except ValueError:
+        return None, req  # el flujo normal informa el error de validación
+    if not difiere:
+        return None, req
+
+    nueva = req.tipo_plantilla.strip().lower()
+    req_sin_plantilla = req.model_copy(update={"tipo_plantilla": None})
+    # Los demás campos editados en el mismo turno se aplican igual.
+    res = aplicar_edicion_campos(sesion, req_sin_plantilla)
+    if not res.ok:
+        sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+        return construir_respuesta(sesion, res.error or "", OPCIONES_EDICION_FINAL), req
+    sesion.plantilla_pendiente = nueva
+    sesion.ultimas_opciones = list(OPCIONES_CONFIRMAR_PLANTILLA)
+    msg = msg_confirmar_cambio_plantilla(plantilla_act or "", nueva)
+    return construir_respuesta(
+        sesion, msg, OPCIONES_CONFIRMAR_PLANTILLA, aviso_privacidad=res.aviso_privacidad
+    ), req
+
+
 async def handle_edicion_final(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
@@ -1589,34 +1666,8 @@ async def handle_edicion_final(
                 from baco.server.services.orquestador.mensajes import OPCIONES_EDICION_FINAL
                 return construir_respuesta(sesion, res_edicion.error or "", OPCIONES_EDICION_FINAL)
 
-    # 3. Si en EDICION_FINAL cambia el tipo de plantilla y había una skill aplicada,
-    # handlers.py (no continuar.py) la reaplica automáticamente desde texto_original.
-    cambio_plantilla = bool(res_edicion and res_edicion.tipo_plantilla_nueva is not None)
-    habia_skill = bool(
-        getattr(b, "skill_aplicada", None)
-        or getattr(b, "skill_pendiente", None)
-        or getattr(sesion, "skill_aplicada", None)
-        or getattr(b, "resultado_skill_pendiente", False)
-        or getattr(b, "resultado_skill_desactualizado", False)
-    )
-
-    if cambio_plantilla and habia_skill:
-        # Si texto_original no existe en la sesión, no lo crees: detenete y reportalo.
-        if not hasattr(sesion, "texto_original") or sesion.texto_original is None:
-            raise ValueError("texto_original no existe en la sesión")
-
-        skill_nombre = (
-            getattr(b, "skill_aplicada", None)
-            or getattr(b, "skill_pendiente", None)
-            or getattr(sesion, "skill_aplicada", None)
-            or "plantilla"
-        )
-        from baco.server.services.orquestador.edicion import ejecutar_skill
-        resp_skill = await ejecutar_skill(sesion, req, skill=skill_nombre, es_reaplicacion=True)
-        if opcion == "finalizar":
-            adoptar_resultado_skill_pendiente(sesion)
-            return _registrar_finalizado(sesion)
-        return resp_skill
+    # 3. El cambio de tipo de plantilla se resuelve antes, con confirmación explícita
+    # (gestionar_cambio_plantilla_pendiente, invocado desde coordinador.py).
 
     # 4. Solo "Finalizar" de EDICION_FINAL llama a _registrar_finalizado
     if opcion == "finalizar":

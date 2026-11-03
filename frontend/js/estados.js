@@ -46,9 +46,19 @@ BACO.CAMPOS_ACTIVOS = {
   ESPERANDO_METADATOS: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
   REVISION_BORRADOR:   { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
   SUBSANANDO_BORRADOR: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
-  EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
+  EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: true },
   FINALIZADO:          { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
   RECHAZADO:           { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false }
+};
+
+/* Campos activos efectivos: en revisión intermedia (paso 2) categoría, etiquetas y
+   plantilla no se editan; se definen en el paso de metadatos. */
+BACO.camposActivos = function (s) {
+  const base = (s && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
+  if (s && s.flujo === 'REVISION_BORRADOR' && s.borrador && s.borrador.revision_intermedia) {
+    return Object.assign({}, base, { tags: false, categoria: false, tipo_plantilla: false });
+  }
+  return base;
 };
 
 /* Etiqueta y payload del botón principal, según el estado */
@@ -71,6 +81,8 @@ BACO.SEVERIDAD = {
 /* Texto de cada botón de `opciones` que devuelve el backend */
 BACO.OPCIONES = {
   finalizar:         { label: 'Finalizar',               estilo: 'btn-primary' },
+  confirmar_plantilla: { label: 'Sí, cambiar plantilla', estilo: 'btn-peligro' },
+  cancelar_plantilla:  { label: 'Cancelar',              estilo: 'btn-ghost' },
   aceptar:           { label: 'Aceptar',                 estilo: 'btn-primary' },
   aceptar_metadatos: { label: 'Aceptar metadatos heredados', estilo: 'btn-primary' },
   rechazar_metadatos:{ label: 'Rechazar metadatos heredados', estilo: 'btn-secondary' },

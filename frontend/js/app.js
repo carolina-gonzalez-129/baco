@@ -1110,7 +1110,7 @@
 
     pintarTagsAcumuladosRail(s);
 
-    const act = BACO.CAMPOS_ACTIVOS[s.flujo] || {};
+    const act = BACO.camposActivos(s);
     const fTit = $('#fTitulo');
     const fCue = $('#fCuerpo');
     const tInp = $('#tagInput');
@@ -1879,10 +1879,20 @@
     if (!box || !input) return;
     box.querySelectorAll('.tag').forEach((n) => n.remove());
     const plantilla = s.borrador && s.borrador.tipo_plantilla;
-    const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
+    const act = BACO.camposActivos(s);
+    // En el turno de plantilla y en la revisión intermedia solo se ve el chip del tipo de plantilla.
+    const soloPlantilla = s.flujo === 'ESPERANDO_PLANTILLA' ||
+      (s.flujo === 'REVISION_BORRADOR' && Boolean(s.borrador && s.borrador.revision_intermedia));
+    const flechaCat = $('#btnFlechaCat');
+    if (flechaCat) flechaCat.style.display = soloPlantilla ? 'none' : '';
+    ['#fTagsSelect', '#btnFlechaTags', '#tagInput'].forEach((sel) => {
+      const n = $(sel);
+      if (n) n.style.display = soloPlantilla ? 'none' : '';
+    });
 
     s.form.tags.forEach((t) => {
       const esTipo = (t === plantilla || t === 'instructivo' || t === 'soluciones');
+      if (soloPlantilla && !esTipo) return;
       const chip = el('span', 'tag' + (esTipo ? ' tipo' : ''), esc(t));
       const puedeQuitar = !s.enviando && (esTipo ? Boolean(act.tipo_plantilla) : Boolean(act.tags));
       if (puedeQuitar) {
@@ -2175,7 +2185,11 @@
           return;
         }
         const sPost = store.get();
-        const tieneBloqueantes = Boolean(
+        // En 'finalizar' los obligatorios los valida el backend al finalizar (parte 3):
+        // solo se frena si el guardado no ofrece Finalizar (p. ej. confirmación de plantilla).
+        const tieneBloqueantes = accionFinal === 'finalizar'
+          ? (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal))
+          : Boolean(
           (resGuardar.validacion && resGuardar.validacion.valido === false) ||
           (resGuardar.validacion && Array.isArray(resGuardar.validacion.findings) && resGuardar.validacion.findings.some((f) => f.severity === 'Bloqueante')) ||
           (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)) ||
@@ -3273,7 +3287,7 @@
           e.target.value = '';
         } else if (e.key === 'Backspace' && !e.target.value && s.form.tags.length) {
           const ult = s.form.tags[s.form.tags.length - 1];
-          const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
+          const act = BACO.camposActivos(s);
           const plantilla = s.borrador && s.borrador.tipo_plantilla;
           const esEtiquetaPlantilla = (ult === plantilla || ult === 'instructivo' || ult === 'soluciones');
           if (act.tipo_plantilla || !esEtiquetaPlantilla) {

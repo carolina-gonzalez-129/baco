@@ -84,6 +84,8 @@ class SesionChat:
     texto_editor: Optional[str] = None
     texto_original: Optional[str] = None
     skill_aplicada: Optional[str] = None
+    # Parte 4: tipo de plantilla pedido en EDICION_FINAL, a la espera de confirmación explícita.
+    plantilla_pendiente: Optional[str] = None
     recursos: Dict[str, Recurso] = field(default_factory=dict)
     ultimo_id_recurso: int = 0
     orden_multimedia: List[int] = field(default_factory=list)

@@ -21,6 +21,7 @@ OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision"
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["ver_articulo_final"]
 OPCIONES_EDICION_FINAL = ["finalizar"]
+OPCIONES_CONFIRMAR_PLANTILLA = ["confirmar_plantilla", "cancelar_plantilla"]
 
 DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
@@ -47,6 +48,8 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "reiniciar": {"accion": "reiniciar", "label": "Empezar de nuevo", "estilo": "btn-ghost"},
     "ver_articulo_final": {"accion": "ver_articulo_final", "label": "Ver artículo", "estilo": "btn-primary"},
     "finalizar": {"accion": "finalizar", "label": "Finalizar", "estilo": "btn-primary"},
+    "confirmar_plantilla": {"accion": "confirmar_plantilla", "label": "Sí, cambiar plantilla", "estilo": "btn-peligro"},
+    "cancelar_plantilla": {"accion": "cancelar_plantilla", "label": "Cancelar", "estilo": "btn-ghost"},
 }
 
 MSG_VOLVER_TITULO = (
@@ -146,7 +149,7 @@ MSG_BORRADOR_FINALIZADO = (
 
 
 MSG_EDICION_FINAL = (
-    "¡Último paso! Revisá tu artículo: podés editar el título, el texto, la categoría y los tags tematicos.\n\n"
+    "¡Último paso! Revisá tu artículo: podés editar el título, el texto, la categoría, el tipo de plantilla y los tags tematicos.\n\n"
     "Cuando esté todo bien, tocá **Finalizar** para enviarlo a revisión."
 )
 
@@ -406,4 +409,18 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
     return (
         "💡 Podés continuar escribiendo o tocar **Empezar de nuevo** para reiniciar.",
         OPCIONES_REINICIAR,
+    )
+
+MSG_CAMBIO_PLANTILLA_CANCELADO = (
+    "Listo, **no cambié** el tipo de plantilla. Todo quedó como estaba.\n\n"
+    "Cuando esté todo listo, tocá **Finalizar**."
+)
+
+
+def msg_confirmar_cambio_plantilla(actual: str, nueva: str) -> str:
+    return (
+        f"⚠️ **CUIDADO:** estás por modificar el tipo de plantilla de **{actual or 'sin plantilla'}** "
+        f"a **{nueva}**. Vamos a necesitar **reaplicar la skill** de plantillas sobre tu texto del **Editor**.\n\n"
+        "Se van a perder las ediciones que hiciste en la **Vista previa** y el resultado del **auditor** "
+        "(no se vuelve a correr).\n\n¿Estás seguro?"
     )

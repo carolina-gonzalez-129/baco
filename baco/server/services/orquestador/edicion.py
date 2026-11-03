@@ -518,7 +518,7 @@ def aplicar_edicion_campos(
         return ResultadoEdicion(
             ok=True,
             aviso_privacidad=det_req,
-            opciones_sugeridas=(["finalizar", "volver"] if es_edicion_final else None),
+            opciones_sugeridas=(["finalizar"] if es_edicion_final else None),
         )
 
     titulo_nuevo = None
@@ -598,8 +598,9 @@ def aplicar_edicion_campos(
 
     return ResultadoEdicion(
         ok=True,
-        opciones_sugeridas=(["finalizar", "volver"] if es_edicion_final else None),
-        aviso=aviso_plantilla,
+        opciones_sugeridas=(["finalizar"] if es_edicion_final else None),
+        # Parte 3: en EDICION_FINAL el guardado es silencioso (sin aviso de estructura).
+        aviso=(None if es_edicion_final else aviso_plantilla),
         aviso_privacidad=aviso_priv_total,
         titulo_nuevo=titulo_nuevo,
         bloques_nuevos=bloques_nuevos,
@@ -684,7 +685,20 @@ async def ejecutar_skill(
             )
             return construir_respuesta(sesion, msg_falta_meta, sesion.ultimas_opciones)
 
-    if es_reaplicacion and (getattr(sesion, "texto_original", None) or getattr(b, "texto_original", None)):
+    # Encadenamiento: el auditor audita la salida de plantillas pendiente (Vista previa, con retoques).
+    plantilla_pendiente_visible = (
+        es_auditor
+        and not es_reaplicacion
+        and getattr(b, "resultado_skill_pendiente", False)
+        and (getattr(b, "skill_pendiente", None) or "").lower() == "plantilla"
+        and bool(b.texto_limpio)
+    )
+    if plantilla_pendiente_visible:
+        texto_vigente = b.texto_limpio.strip()
+    elif es_auditor and es_reaplicacion and (b.texto_editor or sesion.texto_editor):
+        # Reauditar usa el Editor (entrada previa del auditor), no el original verdadero.
+        texto_vigente = (b.texto_editor or sesion.texto_editor or "").strip()
+    elif es_reaplicacion and (getattr(sesion, "texto_original", None) or getattr(b, "texto_original", None)):
         texto_vigente = (getattr(sesion, "texto_original", None) or getattr(b, "texto_original", None) or "").strip()
     elif getattr(b, "resultado_skill_pendiente", False) and (
         getattr(b, "texto_original", None)
@@ -711,8 +725,10 @@ async def ejecutar_skill(
         ).strip()
 
     texto_origen = texto_efectivo_sin_marcadores(texto_vigente)
-    sesion.texto_original = texto_origen
-    b.texto_original = texto_origen
+    # El auditor no pisa el original verdadero (solo lo lee plantillas al reaplicar).
+    if not es_auditor or not (b.texto_original or sesion.texto_original):
+        sesion.texto_original = texto_origen
+        b.texto_original = texto_origen
 
     baco = getattr(req, "_baco_agent", None) or getattr(sesion, "_baco_agent", None)
     if baco is None:
@@ -761,8 +777,9 @@ async def ejecutar_skill(
     b.bloques_texto = [resultado]
     sesion.bloques_texto = [resultado]
 
-    b.texto_original = texto_origen
-    sesion.texto_original = texto_origen
+    if not es_auditor or not (b.texto_original or sesion.texto_original):
+        b.texto_original = texto_origen
+        sesion.texto_original = texto_origen
     b.texto_editor = texto_origen
     sesion.texto_editor = texto_origen
     b.texto_base_limpio = texto_origen
@@ -775,7 +792,8 @@ async def ejecutar_skill(
     sesion.skill_aplicada = skill_nombre
 
     if sesion.estado == EstadoFlujo.EDICION_FINAL:
-        opciones = ["finalizar", "volver"]
+        from baco.server.services.orquestador.mensajes import OPCIONES_EDICION_FINAL
+        opciones = list(OPCIONES_EDICION_FINAL)
     else:
         opciones = (
         ["continuar_revision", "volver"]
