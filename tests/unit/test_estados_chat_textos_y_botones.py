@@ -172,11 +172,10 @@ def test_estado_plantilla_validada_texto_y_botones(client, mock_buscador):
 def test_estado_categoria_y_tags_completos_texto_y_botones(client, mock_buscador):
     """
     2) Estado 'categoría y tags temáticos completos':
-       - Mensaje exacto (una sola vez, sin duplicados): '¡Perfecto! Si querés, podés auditar la calidad editorial del contenido, o podés **Continuar** si ya la tiene.'
-       - Botones exactos en orden: Auditar | Continuar | Volver
+       - Mensaje exacto: MSG_CATEGORIA_TAGS_COMPLETOS (Auditar / Continuar / editar en el panel y Guardar cambios).
+       - Botones exactos en orden: Auditar | Continuar (sin Volver: los cambios se hacen en el panel)
        - Sin 'Finalizar' ni 'Seguir editando'.
        - 'Continuar' ejecuta lo que antes ejecutaba Finalizar (finaliza el borrador).
-       - 'Volver' tiene el mismo comportamiento fallback que en los demás estados.
        - Si no hay agente, 'auditar' retorna mensaje amable sin modificar Editor ni Vista previa.
        - Con agente mockeado, primera aplicación de auditar:
          * Ejecuta la skill y preserva original en texto_editor y texto_base_limpio.
@@ -199,17 +198,17 @@ def test_estado_categoria_y_tags_completos_texto_y_botones(client, mock_buscador
     assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
 
     # Verificación del mensaje exacto
-    mensaje_esperado = "Ya está todo completo. Podés Auditar el texto para mejorar su redacción, o tocar Continuar para enviarlo."
+    mensaje_esperado = MSG_CATEGORIA_TAGS_COMPLETOS
     assert r_meta["mensaje"] == mensaje_esperado
-    assert r_meta["mensaje"] == MSG_CATEGORIA_TAGS_COMPLETOS
+    assert "Volver" not in r_meta["mensaje"]
     assert "El borrador superó las validaciones." not in r_meta["mensaje"]
 
     # Verificación de la lista exacta de botones y su orden
     labels_botones = [b["label"] for b in r_meta.get("botones", [])]
-    assert labels_botones == ["Auditar", "Continuar", "Volver"]
+    assert labels_botones == ["Auditar", "Continuar"]
 
     acciones_botones = [b["accion"] for b in r_meta.get("botones", [])]
-    assert acciones_botones == ["auditar", "continuar", "volver"]
+    assert acciones_botones == ["auditar", "continuar"]
 
     # Verificar que NO están "Finalizar" ni "Seguir editando"
     assert "Finalizar" not in labels_botones
@@ -222,7 +221,7 @@ def test_estado_categoria_y_tags_completos_texto_y_botones(client, mock_buscador
         r_err = client.post("/chat", json={"session_id": sid, "accion": "auditar"}).json()
         assert r_err["estado"] == EstadoFlujo.REVISION_BORRADOR
         assert "No pudimos auditar el artículo en este momento" in r_err["mensaje"]
-        assert [b["label"] for b in r_err.get("botones", [])] == ["Auditar", "Continuar", "Volver"]
+        assert [b["label"] for b in r_err.get("botones", [])] == ["Auditar", "Continuar"]
         # Vista previa y flags permanecen intactos
         assert r_err["borrador"]["bloques_texto"] == [TEXTO_VALIDO]
         assert r_err["borrador"]["resultado_skill_pendiente"] is False
@@ -247,18 +246,6 @@ def test_estado_categoria_y_tags_completos_texto_y_botones(client, mock_buscador
     assert "Pasos de Configuración Editados" in r_aud["borrador"]["bloques_texto"][0]
     assert r_aud["borrador"]["resultado_skill_pendiente"] is True
     assert r_aud["borrador"]["skill_pendiente"] == "auditor"
-
-    # 5. Acción "volver": comportamiento fallback (vuelve a ESPERANDO_METADATOS)
-    r_vol = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
-    assert r_vol["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-
-    # Volver a ingresar metadatos para llegar de nuevo a revisión final
-    r_meta2 = client.post(
-        "/chat",
-        json={"session_id": sid, "mensaje": "Ventas", "categoria_id": 5, "tags": ["instructivo", "ventas"]},
-    ).json()
-    assert r_meta2["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_meta2["mensaje"] == mensaje_esperado
 
     # 6. "Continuar" lleva a EDICION_FINAL y luego "Finalizar" finaliza el borrador
     r_ed = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()

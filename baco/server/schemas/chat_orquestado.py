@@ -817,6 +817,10 @@ class ChatOrquestadorResponse(BaseModel):
         default=None,
         description="Texto actual destinado al Editor, separado del resultado en Vista previa.",
     )
+    plantilla_pendiente: Optional[str] = Field(
+        default=None,
+        description="Tipo de plantilla pedido en EDICION_FINAL que espera Confirmar/Cancelar (aún no aplicado).",
+    )
     frenar_finalizar: bool = Field(
         default=False,
         description="True si el guardado previo a Finalizar dejó un aviso que la persona debe leer (p. ej. plantilla obligatoria): el front no encadena Finalizar.",

@@ -24,6 +24,7 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_FINALIZADO,
     MSG_SESION_EXPIRADA,
     OPCIONES_REINICIAR,
+    msg_cambios_guardados,
     msg_sesion_finalizada,
     obtener_ayuda_contextual,
 )
@@ -136,14 +137,13 @@ async def manejar_turno(
                 and res_edicion.tipo_plantilla_nueva is not None
             )
         )
-        MSG_FINAL = (
-            "Guarde tus cambios del artículo."
-
-        )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones
             sesion.ultimas_opciones = list(opciones_edicion)
-            mensaje_edicion = res_edicion.aviso_skill_desactualizada or res_edicion.aviso or  MSG_FINAL
+            # Detalle de lo guardado/descartado, seguido de los avisos que correspondan.
+            partes_msg = [msg_cambios_guardados(res_edicion.cambios, res_edicion.descartes)]
+            partes_msg += [a for a in (res_edicion.aviso_skill_desactualizada, res_edicion.aviso) if a]
+            mensaje_edicion = "\n\n".join(partes_msg)
             return construir_respuesta(
                 sesion,
                 mensaje_edicion,

@@ -318,7 +318,7 @@ async def handle_decision_titulo(
             return construir_respuesta(
                 sesion,
                 msg_carga,
-                ['confirmar_texto', 'descartar', 'volver'],
+                ['confirmar_texto', 'descartar'],
             )
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
         texto_base = (texto_db or "").strip()
@@ -386,7 +386,7 @@ async def handle_decision_titulo(
         err = validar_longitud(texto_limpio, TEXTO_MIN, TEXTO_MAX_PERCENTIL_99, "texto")
         if err:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-            return construir_respuesta(sesion, err, ["confirmar_texto", "descartar", "volver"])
+            return construir_respuesta(sesion, err, ["confirmar_texto", "descartar"])
 
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
         sesion.texto_en_edicion = texto_enviado
@@ -398,7 +398,7 @@ async def handle_decision_titulo(
         return construir_respuesta(
             sesion,
             msg_carga,
-            ["confirmar_texto", "descartar", "volver"],
+            ["confirmar_texto", "descartar"],
             aviso_privacidad=aviso_priv,
         )
 
@@ -518,7 +518,7 @@ async def handle_esperando_texto(
             )
 
     ops_texto = (
-        ["confirmar_texto", "descartar", "volver"]
+        ["confirmar_texto", "descartar"]
         if (sesion.borrador and sesion.borrador.modo == "enriquecimiento")
         else ["confirmar_texto", "volver"]
     )
@@ -873,7 +873,7 @@ async def handle_decision_texto(
             return construir_respuesta(
                 sesion,
                 msg_carga,
-                ['confirmar_texto', 'descartar', 'volver'],
+                ['confirmar_texto', 'descartar'],
             )
         texto_db, cat_db, tags_db = await cargar_datos_articulo(buscador, elegido.id)
         texto_base = (texto_db or "").strip()
@@ -954,7 +954,7 @@ async def handle_decision_texto(
         err = validar_longitud(texto_limpio, TEXTO_MIN, TEXTO_MAX_PERCENTIL_99, "texto")
         if err:
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
-            return construir_respuesta(sesion, err, ["confirmar_texto", "descartar", "volver"])
+            return construir_respuesta(sesion, err, ["confirmar_texto", "descartar"])
 
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
         sesion.texto_en_edicion = texto_aporte
@@ -966,7 +966,7 @@ async def handle_decision_texto(
         return construir_respuesta(
             sesion,
             msg_carga,
-            ["confirmar_texto", "descartar", "volver"],
+            ["confirmar_texto", "descartar"],
             aviso_privacidad=aviso_priv,
         )
 
@@ -1012,31 +1012,9 @@ async def handle_esperando_plantilla(
     if opcion == "volver":
         return retroceder(sesion)
 
-    # Categoría y tags temáticos no se editan en ESPERANDO_PLANTILLA: se cargan en ESPERANDO_METADATOS.
-    tit_guardado = (b.titulo if b else sesion.titulo) or ""
-    tiene_skill_vis = tiene_resultado_skill_visible(b)
-    # Con resultado de skill visible, req.texto es el de la Vista previa: se compara contra él.
-    txt_guardado = (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto)) or ""
-    edita_txt_req = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
-
-    if b and req.texto is not None and req.texto.strip() and edita_txt_req:
-        ultimo_id_p = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
-        bloques_plant, recs_plant, _ = procesar_recursos_y_bloques(
-            req.texto.strip(),
-            recursos_previos=b.recursos,
-            ultimo_id=ultimo_id_p,
-            validar_marcadores_existentes=False,
-        )
-        tl_plant = "\n\n".join(bloques_plant).strip()
-        sesion.actualizar_contenido_borrador(
-            bloques_texto=bloques_plant,
-            texto_base_limpio=tl_plant if b.modo == "enriquecimiento" else None,
-            recursos=recs_plant,
-            ultimo_id_recurso=max(ultimo_id_p, _max_num_recurso(recs_plant)),
-        )
-
-    texto_para_plantilla = req.texto if edita_txt_req else None
-    opcion_plantilla = opcion or req.tipo_plantilla or req.mensaje or texto_para_plantilla or ""
+    # En ESPERANDO_PLANTILLA no se editan título, texto, categoría ni tags temáticos:
+    # el texto se edita en el paso siguiente; categoría y tags, en ESPERANDO_METADATOS.
+    opcion_plantilla = opcion or req.tipo_plantilla or req.mensaje or ""
     plantilla = extraer_tipo_plantilla(req.tags or [], opcion_plantilla)
     if not plantilla and b and b.tipo_plantilla and opcion in ("continuar", "continuar_revision"):
         plantilla = b.tipo_plantilla
@@ -1585,6 +1563,7 @@ async def gestionar_cambio_plantilla_pendiente(
         OPCIONES_EDICION_FINAL,
         msg_confirmar_cambio_plantilla,
         msg_plantilla_obligatoria,
+        msg_plantilla_sin_cambio,
     )
 
     b = sesion.borrador
@@ -1656,6 +1635,14 @@ async def gestionar_cambio_plantilla_pendiente(
             return resp, req
         if len(plantillas_en_tags) == 1:
             tipo_req = next(iter(plantillas_en_tags))
+    if tipo_req is None and req.tags is None and opcion in ("instructivo", "soluciones"):
+        # Tipo escrito en el chat: mismo camino que desde el panel (queda pendiente de confirmar).
+        tipo_req = opcion
+        if not plantilla_difiere(tipo_req, plantilla_act):
+            sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+            return construir_respuesta(
+                sesion, msg_plantilla_sin_cambio(tipo_req), OPCIONES_EDICION_FINAL
+            ), req
     if tipo_req is None:
         return None, req
 

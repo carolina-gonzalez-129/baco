@@ -42,7 +42,7 @@ BACO.CAMPOS_ACTIVOS = {
   DECISION_TITULO:     { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
   ESPERANDO_TEXTO:     { titulo: false, texto: true,  tags: false, categoria: false, tipo_plantilla: false },
   DECISION_TEXTO:      { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
-  ESPERANDO_PLANTILLA: { titulo: true,  texto: true,  tags: false,  categoria: false,  tipo_plantilla: true },
+  ESPERANDO_PLANTILLA: { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: true },
   ESPERANDO_METADATOS: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
   REVISION_BORRADOR:   { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
   SUBSANANDO_BORRADOR: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
@@ -273,6 +273,7 @@ BACO.store = (function () {
       }
       estado.coincidencias = r.coincidencias || [];
       estado.borrador = r.borrador || null;
+      estado.plantilla_pendiente = r.plantilla_pendiente || null;
       estado.validacion = r.validacion || null;
       estado.aviso_metadatos_heredados = r.aviso_metadatos_heredados || null;
 

@@ -1527,3 +1527,13 @@ input,textarea,select{font-family:inherit}
   white-space: nowrap;
 }
 
+
+/* Selector de tipo de plantilla (Instructivo | Soluciones) */
+.tipo-plantilla-fila{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.tipo-plantilla-label{font-size:12px;font-weight:600;color:var(--ink-2)}
+.tipo-switch .ed-mode-btn{padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;color:var(--ink-2);background:transparent;border:0;cursor:pointer;transition:background .12s ease,color .12s ease,box-shadow .12s ease}
+.tipo-switch .ed-mode-btn:hover:not(:disabled){background:var(--surface);color:var(--ink)}
+.tipo-switch .ed-mode-btn.sel{background:var(--surface);color:var(--coral-700);box-shadow:var(--shadow-1)}
+.tipo-switch .ed-mode-btn:disabled{cursor:default}
+.tipo-switch .ed-mode-btn:disabled:not(.sel){opacity:.55}
+.tipo-switch .ed-mode-btn.pendiente{font-style:italic}

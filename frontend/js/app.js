@@ -1189,7 +1189,7 @@
     if (btn) {
       if (acc) {
         btn.hidden = false;
-        btn.disabled = s.enviando || !listoParaEnviar(s, acc.campo);
+        btn.disabled = s.enviando || !!s.plantilla_pendiente || !listoParaEnviar(s, acc.campo);
         btn.textContent = (acc.campo === 'todo' && !hayCambios(s))
           ? 'Sin cambios para guardar'
           : acc.label;
@@ -1197,7 +1197,9 @@
         const textoLargo = Array.from(s.form.texto || '').length > cfg.MAX_TEXTO_PERCENTIL_99;
         const tagsFaltan = (s.form.tags || []).length < cfg.MIN_TAGS;
         const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
-        btn.title = btn.disabled && acc.campo === 'todo'
+        btn.title = s.plantilla_pendiente
+          ? MSG_PLANTILLA_PENDIENTE
+          : btn.disabled && acc.campo === 'todo'
           ? 'Editá algún campo para habilitar el guardado'
           : (btn.disabled && acc.campo === 'texto'
               ? (textoCorto
@@ -1890,8 +1892,34 @@
            !mismosTags;
   }
 
+  /* ---------------- tipo de plantilla ---------------- */
+  // El tipo sigue viajando dentro de s.form.tags (el back lo detecta ahí); este control solo lo muestra y reemplaza.
+  const TIPOS_PLANTILLA = ['instructivo', 'soluciones'];
+  const esTipoPlantilla = (t) => TIPOS_PLANTILLA.indexOf(t) !== -1;
+
+  function pintarTipoPlantilla(s) {
+    const fila = $('#tipoPlantillaFila');
+    if (!fila) return;
+    fila.style.display = s.borrador ? '' : 'none';
+    const pendiente = s.plantilla_pendiente || null;
+    const enForm = (s.form.tags || []).find(esTipoPlantilla) || null;
+    const actual = pendiente || enForm || (s.borrador && s.borrador.tipo_plantilla) || null;
+    const act = BACO.camposActivos(s);
+    const editable = s.flujo === 'EDICION_FINAL' && Boolean(act.tipo_plantilla) && !s.enviando && !pendiente;
+    fila.querySelectorAll('[data-tipo]').forEach((b) => {
+      const t = b.getAttribute('data-tipo');
+      const sel = t === actual;
+      b.classList.toggle('sel', sel);
+      b.classList.toggle('pendiente', sel && Boolean(pendiente));
+      b.setAttribute('aria-pressed', sel ? 'true' : 'false');
+      b.disabled = !editable;
+      b.title = (sel && pendiente) ? 'Sin confirmar: confirmá o cancelá el cambio en el chat' : '';
+    });
+  }
+
   /* ---------------- etiquetas ---------------- */
   function pintarTags(s) {
+    pintarTipoPlantilla(s);
     const box = $('#tagBox'), input = $('#tagInput');
     if (!box || !input) return;
     box.querySelectorAll('.tag').forEach((n) => n.remove());
@@ -1908,10 +1936,11 @@
     });
 
     s.form.tags.forEach((t) => {
-      const esTipo = (t === plantilla || t === 'instructivo' || t === 'soluciones');
-      if (soloPlantilla && !esTipo) return;
-      const chip = el('span', 'tag' + (esTipo ? ' tipo' : ''), esc(t));
-      const puedeQuitar = !s.enviando && (esTipo ? Boolean(act.tipo_plantilla) : Boolean(act.tags));
+      // El tipo de plantilla se dibuja en su propio control (#tipoPlantillaFila), no como chip.
+      const esTipo = (t === plantilla || esTipoPlantilla(t));
+      if (esTipo || soloPlantilla) return;
+      const chip = el('span', 'tag', esc(t));
+      const puedeQuitar = !s.enviando && Boolean(act.tags);
       if (puedeQuitar) {
         const x = el('button', 'x', '<svg width="9" height="9" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>');
         x.onclick = () => { store.setForm({ tags: s.form.tags.filter((v) => v !== t) }); };
@@ -1929,13 +1958,13 @@
       const tagsOrdenados = [...new Set(tagsDisp)]
         .filter((t) => {
           if (!t || typeof t !== 'string' || !t.trim() || s.form.tags.indexOf(t) !== -1) return false;
-          const esEtiquetaPlantilla = (t === plantilla || t === 'instructivo' || t === 'soluciones');
-          if (!act.tipo_plantilla && esEtiquetaPlantilla) return false;
+          // Los tipos de plantilla nunca se ofrecen como etiqueta: se eligen en su control.
+          if (t === plantilla || esTipoPlantilla(t)) return false;
           return true;
         })
         .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
-      const hayTags = (s.form.tags || []).length > 0;
+      const hayTags = (s.form.tags || []).some((t) => t !== plantilla && !esTipoPlantilla(t));
       let selHtml = hayTags
         ? '<option value="" selected disabled style="display:none;"></option>'
         : '<option value="" selected disabled>selecciona al menos 2 etiquetas…</option>';
@@ -2078,6 +2107,18 @@
   }
 
   /* ---------------- opciones del backend ---------------- */
+  /* Paso pre-auditar (Auditar / Continuar): no se avanza con cambios sin guardar. */
+  const MSG_GUARDAR_ANTES = 'Guardá los cambios para continuar';
+  /* Con un cambio de plantilla sin confirmar, guardar otros campos lo descartaría en el back. */
+  const MSG_PLANTILLA_PENDIENTE = 'Confirmá o cancelá el cambio de plantilla para guardar';
+  function bloqueaPorCambiosSinGuardar(s, accion) {
+    if (accion !== 'auditar' && accion !== 'continuar') return false;
+    if (s.flujo !== 'REVISION_BORRADOR' || !s.borrador || s.borrador.revision_intermedia) return false;
+    const ops = (s.opciones || []).map((o) => (o && typeof o === 'object') ? o.accion : o);
+    if (!ops.includes('auditar')) return false;
+    return hayCambios(s);
+  }
+
   function pintarOpciones(s) {
     const barra = $('#opcionesBarra');
     if (!barra) return;
@@ -2109,7 +2150,9 @@
         ? btnDef.estilo
         : ((BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost');
       const b = el('button', 'btn btn-sm ' + estilo, esc(label));
-      b.disabled = s.enviando;
+      const bloqueadoPorCambios = bloqueaPorCambiosSinGuardar(s, accion);
+      b.disabled = s.enviando || bloqueadoPorCambios;
+      if (bloqueadoPorCambios) b.title = MSG_GUARDAR_ANTES;
       b.onclick = () => accionar(accion, label);
       barra.appendChild(b);
     });
@@ -2120,6 +2163,8 @@
      ========================================================= */
   async function accionar(op, label) {
     const s = store.get();
+
+    if (bloqueaPorCambiosSinGuardar(s, op)) { toast(MSG_GUARDAR_ANTES); return; }
 
     if (op === 'ver_articulo_final') {
       const sid = s.session_id || (api.sesionActual ? api.sesionActual() : '');
@@ -2325,12 +2370,18 @@
     const s = store.get();
     const acc = BACO.ACCION_PRINCIPAL[s.flujo];
     if (!acc) return;
+    if (s.plantilla_pendiente) { toast(MSG_PLANTILLA_PENDIENTE); return; }
 
     if (acc.campo === 'titulo') return enviarTurno({ titulo: s.form.titulo }, s.form.titulo);
     if (acc.campo === 'texto')  return confirmarTexto();
     if (acc.campo === 'tags') {
+      // Título y texto también son editables en este paso: se envían para no perder lo tipeado.
       return enviarTurno(
-        { tags: s.form.tags, categoria_id: s.form.categoria_id },
+        {
+          titulo: s.form.titulo, texto: s.form.texto,
+          texto_editor: separaPaneles(s.borrador) ? s.form.texto_editor : undefined,
+          tags: s.form.tags, categoria_id: s.form.categoria_id
+        },
         s.form.tags.join(', ') + ' · ' + nombreCategoria(s, s.form.categoria_id)
       );
     }
@@ -3245,7 +3296,14 @@
         const val = e.target.value;
         if (!val) return;
         const s = store.get();
-        if (s.form.tags.indexOf(val) === -1) {
+        const plantillaAct = s.borrador && s.borrador.tipo_plantilla;
+        const esTipo = (t) => (t === plantillaAct || t === 'instructivo' || t === 'soluciones');
+        if (esTipo(val)) {
+          // Elegir el otro tipo reemplaza al actual (nunca quedan dos tipos ni ninguno).
+          if (s.form.tags.indexOf(val) === -1) {
+            store.setForm({ tags: s.form.tags.filter((t) => !esTipo(t)).concat([val]) });
+          }
+        } else if (s.form.tags.indexOf(val) === -1) {
           if (s.form.tags.length >= cfg.MAX_TAGS) {
             toast('Máximo ' + cfg.MAX_TAGS + ' etiquetas');
           } else {
@@ -3253,6 +3311,21 @@
           }
         }
         e.target.value = '';
+      });
+    }
+
+    const filaTipo = $('#tipoPlantillaFila');
+    if (filaTipo) {
+      filaTipo.querySelectorAll('[data-tipo]').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.disabled) return;
+          const val = b.getAttribute('data-tipo');
+          const s = store.get();
+          if (s.form.tags.indexOf(val) !== -1) return;
+          const plantillaAct = s.borrador && s.borrador.tipo_plantilla;
+          // Reemplaza el tipo actual (nunca quedan dos ni ninguno); el resto de las etiquetas se conserva.
+          store.setForm({ tags: s.form.tags.filter((t) => t !== plantillaAct && !esTipoPlantilla(t)).concat([val]) });
+        });
       });
     }
 
@@ -3298,18 +3371,21 @@
         if (e.key === 'Enter' || e.key === ',') {
           e.preventDefault();
           const v = e.target.value.trim().toLowerCase().replace(/\s+/g, '-');
-          if (v && s.form.tags.indexOf(v) === -1) {
+          if (esTipoPlantilla(v)) {
+            toast('El tipo de plantilla se elige con el selector Instructivo | Soluciones');
+          } else if (v && s.form.tags.indexOf(v) === -1) {
             if (s.form.tags.length >= cfg.MAX_TAGS) toast('Máximo ' + cfg.MAX_TAGS + ' etiquetas');
             else store.setForm({ tags: s.form.tags.concat([v]) });
           }
           e.target.value = '';
         } else if (e.key === 'Backspace' && !e.target.value && s.form.tags.length) {
-          const ult = s.form.tags[s.form.tags.length - 1];
-          const act = BACO.camposActivos(s);
+          // Saltea el chip del tipo de plantilla: borra la última etiqueta temática.
           const plantilla = s.borrador && s.borrador.tipo_plantilla;
-          const esEtiquetaPlantilla = (ult === plantilla || ult === 'instructivo' || ult === 'soluciones');
-          if (act.tipo_plantilla || !esEtiquetaPlantilla) {
-            store.setForm({ tags: s.form.tags.slice(0, -1) });
+          const esTipo = (t) => (t === plantilla || t === 'instructivo' || t === 'soluciones');
+          let idx = s.form.tags.length - 1;
+          while (idx >= 0 && esTipo(s.form.tags[idx])) idx--;
+          if (idx >= 0 && BACO.camposActivos(s).tags) {
+            store.setForm({ tags: s.form.tags.filter((_, i) => i !== idx) });
           }
         }
       });

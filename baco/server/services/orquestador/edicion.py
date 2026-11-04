@@ -63,6 +63,9 @@ class ResultadoEdicion:
     categoria_nombre_nuevo: Optional[str] = None
     tags_nuevos: Optional[List[str]] = None
     tipo_plantilla_nueva: Optional[str] = None
+    # Resumen para el mensaje de guardado: (campo, detalle) aplicados y descartados con motivo.
+    cambios: Optional[List[Tuple[str, str]]] = None
+    descartes: Optional[List[Tuple[str, str]]] = None
 
 
 MSG_SKILL_DESACTUALIZADA = (
@@ -458,6 +461,17 @@ def aplicar_edicion_campos(
 
     plantilla_efectiva = tipo_plantilla_nueva or plantilla_guardada
 
+    descartes: List[Tuple[str, str]] = []
+
+    # En ESPERANDO_PLANTILLA no se editan título ni texto (no hay botón para guardarlos):
+    # se editan en el paso siguiente.
+    if sesion.estado == EstadoFlujo.ESPERANDO_PLANTILLA and (edita_titulo or edita_texto or edita_editor):
+        if edita_titulo:
+            descartes.append(("Título", "no se edita en este paso; vas a poder cambiarlo en el siguiente"))
+        if edita_texto or edita_editor:
+            descartes.append(("Texto", "no se edita en este paso; vas a poder cambiarlo en el siguiente"))
+        edita_titulo = edita_texto = edita_editor = False
+
     edita_categoria = False
     categoria_id_nueva = None
     categoria_nombre_nuevo = None
@@ -478,6 +492,8 @@ def aplicar_edicion_campos(
             edita_categoria = True
             categoria_id_nueva = cat_id_val
             categoria_nombre_nuevo = cat_nom_val
+        else:
+            descartes.append(("Categoría", err_cat or "no es válida; se mantuvo la anterior"))
 
     edita_tags = False
     tags_nuevos = None
@@ -509,6 +525,8 @@ def aplicar_edicion_campos(
             edita_tags = True
             tags_nuevos = tags_val
             aviso_priv_tags = aviso_priv_tags_rev
+        else:
+            descartes.append(("Etiquetas", err_tags or "no son válidas; se mantuvieron las anteriores"))
 
     if (
         not edita_titulo
@@ -522,6 +540,8 @@ def aplicar_edicion_campos(
             ok=True,
             aviso_privacidad=det_req,
             opciones_sugeridas=(["finalizar"] if es_edicion_final else None),
+            cambios=[],
+            descartes=descartes,
         )
 
     titulo_nuevo = None
@@ -599,6 +619,23 @@ def aplicar_edicion_campos(
         partes_aviso_priv.append(det_req)
     aviso_priv_total = "\n".join(partes_aviso_priv) if partes_aviso_priv else None
 
+    cambios: List[Tuple[str, str]] = []
+    if edita_titulo:
+        cambios.append(("Título", f"«{titulo_nuevo}»"))
+    if edita_texto:
+        n = len(txt_nuevo_limpio or "")
+        donde = "Texto de la Vista previa" if tiene_skill_vis else "Texto"
+        cambios.append((donde, f"actualizado ({n} caracteres)"))
+    if edita_editor:
+        cambios.append(("Texto original del Editor", "actualizado"))
+    if edita_categoria and categoria_id_nueva is not None:
+        cambios.append(("Categoría", categoria_nombre_nuevo or str(categoria_id_nueva)))
+    if edita_plantilla and tipo_plantilla_nueva:
+        cambios.append(("Tipo de plantilla", tipo_plantilla_nueva))
+    if edita_tags and tags_nuevos is not None:
+        tematicos = [t for t in tags_nuevos if t and extraer_tipo_plantilla([t]) is None]
+        cambios.append(("Etiquetas", ", ".join(tematicos) or "sin etiquetas temáticas"))
+
     return ResultadoEdicion(
         ok=True,
         opciones_sugeridas=(["finalizar"] if es_edicion_final else None),
@@ -614,6 +651,8 @@ def aplicar_edicion_campos(
         categoria_nombre_nuevo=categoria_nombre_nuevo,
         tags_nuevos=tags_nuevos,
         tipo_plantilla_nueva=tipo_plantilla_nueva,
+        cambios=cambios,
+        descartes=descartes,
     )
 
 
@@ -881,7 +920,7 @@ async def ejecutar_skill(
         opciones = list(OPCIONES_EDICION_FINAL)
     else:
         opciones = (
-        ["continuar_revision", "volver"]
+        ["continuar_revision"]
         if getattr(b, "revision_intermedia", False)
         else ["continuar", "volver"]
     )

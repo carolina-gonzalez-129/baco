@@ -612,7 +612,7 @@ async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_s
     sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # Enviar tipo_plantilla inválido, categoria_id inexistente y tags vacíos fuera de su paso natural:
@@ -635,7 +635,7 @@ async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_s
 @pytest.mark.anyio
 async def test_punto_3_anonimizacion_pii_y_validacion_solo_campo_modificado():
     sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-pii-edicion")
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # Editar título con PII (email) -> se anonimiza y se valida longitud, sin tocar el texto
@@ -736,7 +736,7 @@ async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez
     sesion.borrador.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     req = ChatOrquestadorRequest(
@@ -770,7 +770,7 @@ async def test_continuar_persiste_tags_editados_antes_de_avanzar():
     sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
 
     req = ChatOrquestadorRequest(
         session_id=sesion.session_id,
@@ -856,7 +856,7 @@ async def test_continuar_valida_tags_solo_si_cambiaron():
     sesion_invalido.categoria_nombre = "Ventas"
     sesion_invalido.borrador.tags = ["instructivo", "ventas"]
     sesion_invalido.tags = ["instructivo", "ventas"]
-    sesion_invalido.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion_invalido.ultimas_opciones = ["auditar", "continuar"]
 
     req_invalido = ChatOrquestadorRequest(
         session_id=sesion_invalido.session_id,
@@ -950,7 +950,7 @@ async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_
     sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
 
     # 1. Solo cambia categoria_id a un valor inválido; título, texto, tags y plantilla no cambiaron
     req_cat_inv = ChatOrquestadorRequest(
@@ -1116,7 +1116,7 @@ async def test_anonimizacion_pii_se_mantiene_siempre_en_titulo_texto_y_tags_post
     sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
 
     req = ChatOrquestadorRequest(
         session_id=sesion.session_id,

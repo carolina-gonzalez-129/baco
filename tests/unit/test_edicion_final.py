@@ -394,3 +394,58 @@ def test_limpiar_estructura_no_toca_texto_sin_plantilla():
     texto = "## Pasos\n1. Abrir el módulo [opcional] y guardar."
     assert texto_tiene_estructura_plantilla(texto, "instructivo") is False
     assert limpiar_estructura_plantilla(texto, "instructivo") == texto
+
+
+async def _mensaje(sesion, buscador, agente, texto):
+    req = ChatOrquestadorRequest(session_id=sesion.session_id, mensaje=texto)
+    req._baco_agent = agente
+    return await manejar_turno(req, buscador)
+
+
+@pytest.mark.anyio
+async def test_chat_tipo_plantilla_queda_pendiente_y_confirmar_aplica():
+    sesion = _crear_sesion_edicion_final("test-chat-plantilla-confirmar")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## Consulta\nResultado soluciones")
+
+    resp = await _mensaje(sesion, buscador, mock_agente, "soluciones")
+    assert resp.opciones == OPCIONES_CONFIRMAR_PLANTILLA
+    assert "CUIDADO" in resp.mensaje
+    assert resp.plantilla_pendiente == "soluciones"
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    mock_agente.assert_not_called()
+
+    resp = await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
+    assert resp.borrador.tipo_plantilla == "soluciones"
+    assert resp.plantilla_pendiente is None
+    mock_agente.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_chat_tipo_plantilla_cancelar_deja_todo_igual():
+    sesion = _crear_sesion_edicion_final("test-chat-plantilla-cancelar")
+    bloques_previos = list(sesion.borrador.bloques_texto)
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    await _mensaje(sesion, buscador, mock_agente, "soluciones")
+    resp = await _accion(sesion, buscador, mock_agente, "cancelar_plantilla")
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    assert resp.borrador.bloques_texto == bloques_previos
+    assert resp.plantilla_pendiente is None
+    assert resp.opciones == OPCIONES_EDICION_FINAL
+    mock_agente.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_chat_mismo_tipo_plantilla_no_cambia_nada():
+    sesion = _crear_sesion_edicion_final("test-chat-plantilla-igual")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    resp = await _mensaje(sesion, buscador, mock_agente, "instructivo")
+    assert resp.opciones == OPCIONES_EDICION_FINAL
+    assert "ya es" in resp.mensaje
+    assert resp.plantilla_pendiente is None
+    assert sesion.plantilla_pendiente is None
+    mock_agente.assert_not_called()

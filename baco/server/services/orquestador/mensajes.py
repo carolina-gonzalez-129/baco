@@ -10,14 +10,28 @@ MENSAJE_BIENVENIDA = (
 )
 
 MSG_CAMBIOS_GUARDADOS = "Guardé los cambios del artículo. Cuando esté todo listo, tocá **Finalizar**."
-OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar", "volver"]
-OPCIONES_SERIE_DECISION = ["actualizar", "descartar", "volver"]
-OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar", "volver"]
-OPCIONES_PLANTILLAS = ["instructivo", "soluciones", "volver"]
-OPCIONES_REVISION_VALIDO = ["auditar", "continuar", "volver"]
+
+
+def msg_cambios_guardados(cambios, descartes) -> str:
+    """Detalla qué se guardó y qué no (con motivo) al guardar desde el panel."""
+    cambios = list(cambios or [])
+    descartes = list(descartes or [])
+    partes = []
+    if cambios:
+        partes.append("Guardé tus cambios:\n" + "\n".join(f"- **{c}**: {d}" for c, d in cambios))
+    if descartes:
+        partes.append("No apliqué:\n" + "\n".join(f"- **{c}**: {d}" for c, d in descartes))
+    if not partes:
+        return "No había cambios para guardar."
+    return "\n\n".join(partes)
+OPCIONES_ENRIQUECER_DESCARTAR = ["enriquecer", "descartar"]
+OPCIONES_SERIE_DECISION = ["actualizar", "descartar"]
+OPCIONES_ENRIQUECER_CONTINUAR = ["enriquecer", "continuar"]
+OPCIONES_PLANTILLAS = ["instructivo", "soluciones"]
+OPCIONES_REVISION_VALIDO = ["auditar", "continuar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 
-OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision", "volver"]
+OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["ver_articulo_final"]
 OPCIONES_EDICION_FINAL = ["finalizar"]
@@ -106,7 +120,7 @@ MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
 MSG_ELEGIR_PLANTILLA = (
     "📋 Elegí el formato para tu artículo:\n\n"
     "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta.\n\n"
-    "Si querés corregir o editar tu texto, tocá **Volver**."
+    "Vas a poder editar el título y el texto en el paso siguiente."
 )
 MSG_PEDIR_EDICION = "Hacé los cambios que necesites en el Editor."
 MSG_RECHAZADO = (
@@ -128,14 +142,14 @@ MSG_CATEGORIA_TAGS_COMPLETOS = (
     "¡Listo! Antes de seguir, ¿querés que revise tu artículo según las pautas editoriales? "
     "Tocá **Auditar**.\n"
     "Si preferís avanzar así, tocá **Continuar**.\n\n"
-    "¿Querés cambiar la categoría o los tags? Tocá **Volver**."
+    "Si querés hacer cambios antes, editá lo que necesites en el panel y tocá **Guardar cambios**."
 )
 
 MSG_PLANTILLA_VALIDADA = (
     "¡Perfecto! ¿Querés que le dé a tu artículo el formato estándar de su tipo? "
     "Tocá **Aplicar Plantilla**.\n"
     "Si ya tiene ese formato, tocá **Continuar**.\n\n"
-    "¿Querés cambiar el tipo de plantilla? Tocá **Volver**."
+    "El tipo de plantilla vas a poder cambiarlo en la edición final."
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
@@ -150,7 +164,8 @@ MSG_BORRADOR_FINALIZADO = (
 
 MSG_EDICION_FINAL = (
     "¡Último paso! Revisá tu artículo: podés editar el título, el texto, la categoría, el tipo de plantilla y los tags tematicos.\n\n"
-    "Cuando esté todo bien, tocá **Finalizar** para enviarlo a revisión."
+    "Cuando esté todo bien, tocá **Finalizar**: registramos el borrador y ya no vas a poder editarlo; "
+    "después lo revisa y publica un moderador."
 )
 
 
@@ -327,14 +342,14 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             msg = (
                 "📚 Encontré una serie periódica con este título.\n\n"
                 "Podés **Actualizar el existente** para sumar una nueva entrega, "
-                "elegir **Es un tema distinto** o **Volver**."
+                "o elegir **Es un tema distinto**."
             )
             return msg, list(OPCIONES_SERIE_DECISION)
         else:
             msg = (
                 "📄 Encontré un artículo similar sobre este tema.\n\n"
                 "Podés **Actualizar el existente** para sumar tu aporte, "
-                "elegir **Es un tema distinto** o **Volver**."
+                "o elegir **Es un tema distinto**."
             )
             return msg, list(OPCIONES_ENRIQUECER_DESCARTAR)
 
@@ -343,7 +358,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             return (
                 "📄 Tenés cargado el artículo base en el editor.\n\n"
                 "Hacé los cambios necesarios y tocá **Confirmar texto**, o elegí **Es un tema distinto** para empezar de cero.",
-                ["confirmar_texto", "descartar", "volver"],
+                ["confirmar_texto", "descartar"],
             )
         return (
             "✍️ Escribí o pegá el contenido de tu artículo acá abajo y tocá **Confirmar texto** cuando esté listo.",
@@ -434,8 +449,16 @@ MSG_ELEGIR_UNA_PLANTILLA = (
 
 def msg_plantilla_obligatoria(actual: str) -> str:
     return (
-        "El **tipo de plantilla** es obligatorio, asique no lo quite"
+        "El **tipo de plantilla** es obligatorio, así que no lo quité"
         + (f": sigue siendo **{actual}**" if actual else "")
-        + ". El resto de tus cambios fueron guardados.\n\n"
-        "Si queres modificar el tipo, elegí **instructivo** o **soluciones** desde el menú."
+        + ". El resto de los cambios quedó guardado.\n\n"
+        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel o escribiéndolo acá.\n\n"
+        "Al tocar **Finalizar** registramos el borrador y ya no vas a poder editarlo; después lo revisa y publica un moderador."
+    )
+
+
+def msg_plantilla_sin_cambio(actual: str) -> str:
+    return (
+        f"El tipo de plantilla ya es **{actual}**, no hay nada que cambiar.\n\n"
+        "Al tocar **Finalizar** registramos el borrador y ya no vas a poder editarlo; después lo revisa y publica un moderador."
     )

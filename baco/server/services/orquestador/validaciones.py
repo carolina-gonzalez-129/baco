@@ -980,6 +980,7 @@ def construir_respuesta(
         validacion=sesion.validacion,
         aviso_privacidad=aviso_privacidad,
         aviso_metadatos_heredados=meta_aviso_final,
+        plantilla_pendiente=getattr(sesion, "plantilla_pendiente", None),
     )
 
 
