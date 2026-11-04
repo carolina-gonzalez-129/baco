@@ -1261,19 +1261,36 @@
     const railAviso = $('#avisoSkillsRail');
     const bannerSkills = $('#bannerSkills');
 
-    const deshabilitadas = Boolean(b && b.skills_habilitadas === false);
-    const motivo = (b && b.skills_motivo) ||
-      'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+    const estadoOk = s.flujo === 'REVISION_BORRADOR' || s.flujo === 'EDICION_FINAL';
+    let motivoBase = null;
+    if (!b) motivoBase = 'Todavía no hay un borrador armado.';
+    else if (!estadoOk) motivoBase = 'Las skills se habilitan en la revisión del borrador.';
+    else if (b.skills_habilitadas === false) {
+      motivoBase = b.skills_motivo ||
+        'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+    }
+
+    let motivoPl = motivoBase;
+    if (!motivoPl && !b.tipo_plantilla) motivoPl = 'Primero elegí un tipo de plantilla.';
+
+    let motivoAud = motivoBase;
+    if (!motivoAud && b.revision_intermedia) {
+      motivoAud = 'El validador se habilita después de definir categoría y etiquetas.';
+    } else if (!motivoAud && (b.categoria_id == null || !Array.isArray(b.tags) || b.tags.length < 2)) {
+      motivoAud = 'Requiere categoría y al menos 2 etiquetas.';
+    }
 
     if (btnPl) {
-      btnPl.disabled = deshabilitadas;
-      btnPl.classList.toggle('disabled', deshabilitadas);
-      btnPl.title = deshabilitadas ? motivo : 'Aplica la plantilla seleccionada al borrador';
+      const off = Boolean(motivoPl);
+      btnPl.disabled = off;
+      btnPl.classList.toggle('disabled', off);
+      btnPl.title = off ? motivoPl : 'Aplica la plantilla seleccionada al borrador';
     }
     if (btnAud) {
-      btnAud.disabled = deshabilitadas;
-      btnAud.classList.toggle('disabled', deshabilitadas);
-      btnAud.title = deshabilitadas ? motivo : 'Audita coherencia semántica y estilo con el validador';
+      const off = Boolean(motivoAud);
+      btnAud.disabled = off;
+      btnAud.classList.toggle('disabled', off);
+      btnAud.title = off ? motivoAud : 'Audita coherencia semántica y estilo con el validador';
     }
 
     if (railAviso) {
