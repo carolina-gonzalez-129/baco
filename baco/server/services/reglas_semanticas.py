@@ -55,11 +55,16 @@ def normalizar_con_postgres(cur, texto: str) -> str:
     return (row[0] if isinstance(row, (tuple, list)) else row.get("normalizar_texto", "")) or ""
 
 
+def _tokenizar(texto: str) -> Set[str]:
+    """Tokeniza ignorando puntuación (ej. "afip?" -> "afip")."""
+    return set(re.findall(r"\w+", texto.lower())) if texto else set()
+
+
 def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]]) -> Optional[str]:
     if isinstance(tokens_o_texto, set):
         tokens = {t.lower() for t in tokens_o_texto}
     else:
-        tokens = set(tokens_o_texto.lower().split()) if tokens_o_texto else set()
+        tokens = _tokenizar(tokens_o_texto)
 
     for pais, keywords in JURISDICCIONES.items():
         if tokens & keywords:
@@ -79,15 +84,15 @@ def son_semanticas_divergentes(
     if not cand_normalizado or not cons_normalizada:
         return False
 
-    tokens_cand = set(cand_normalizado.lower().split())
-    tokens_cons = set(cons_normalizada.lower().split())
+    tokens_cand = _tokenizar(cand_normalizado)
+    tokens_cons = _tokenizar(cons_normalizada)
 
     pais_cand = detectar_jurisdiccion(tokens_cand)
     pais_cons = detectar_jurisdiccion(tokens_cons)
     if not pais_cand and cand_texto:
-        pais_cand = detectar_jurisdiccion(set(cand_texto[:1000].lower().split()))
+        pais_cand = detectar_jurisdiccion(_tokenizar(cand_texto[:1000]))
     if not pais_cons and cons_texto:
-        pais_cons = detectar_jurisdiccion(set(cons_texto[:1000].lower().split()))
+        pais_cons = detectar_jurisdiccion(_tokenizar(cons_texto[:1000]))
 
     if pais_cand and pais_cons and pais_cand != pais_cons:
         return True

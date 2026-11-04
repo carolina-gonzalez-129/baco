@@ -179,7 +179,8 @@ async def test_4_cambio_plantilla_pide_confirmacion_y_al_confirmar_reaplica_desd
     assert resp.estado == EstadoFlujo.EDICION_FINAL
     assert resp.borrador.tipo_plantilla == "soluciones"
     assert "Nueva plantilla aplicada desde texto_original" in resp.borrador.bloques_texto[0]
-    assert "Texto original base para skill" in mock_agente.call_args[0][0]
+    # Opción A: lo editado (texto vigente) pasa a ser el nuevo original.
+    assert "Formato anterior de plantilla instructivo" in mock_agente.call_args[0][0]
     assert resp.opciones == OPCIONES_EDICION_FINAL
     assert sesion.plantilla_pendiente is None
 
@@ -274,3 +275,122 @@ async def test_5_editar_titulo_no_dispara_busqueda_duplicados():
     buscador.evaluar_titulo.assert_not_called()
     buscador.evaluar_texto.assert_not_called()
     assert resp.opciones == OPCIONES_EDICION_FINAL
+
+
+# --- Bug: quitar/cambiar el tipo de plantilla desde las etiquetas (el front no envía tipo_plantilla) ---
+
+async def _guardar_tags(sesion, buscador, agente, tags, **campos):
+    req = ChatOrquestadorRequest(session_id=sesion.session_id, tags=tags, **campos)
+    req._baco_agent = agente
+    return await manejar_turno(req, buscador)
+
+
+@pytest.mark.anyio
+async def test_bug_quitar_plantilla_de_tags_avisa_obligatoria_y_guarda_lo_demas():
+    sesion = _crear_sesion_edicion_final("test-bug-quitar-plantilla")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    resp = await _guardar_tags(
+        sesion, buscador, mock_agente, ["ventas", "facturacion"],
+        titulo="Configurar Punto de Venta en Facturación",
+    )
+
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert "obligatorio" in resp.mensaje
+    assert resp.frenar_finalizar is True
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    assert "instructivo" in resp.borrador.tags
+    assert "facturacion" in [t.lower() for t in resp.borrador.tags]
+    assert resp.borrador.titulo == "Configurar Punto de Venta en Facturación"
+    assert sesion.plantilla_pendiente is None
+    mock_agente.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_bug_dos_plantillas_en_tags_pide_elegir_una_sola():
+    sesion = _crear_sesion_edicion_final("test-bug-dos-plantillas")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    resp = await _guardar_tags(sesion, buscador, mock_agente, ["instructivo", "soluciones", "ventas"])
+
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert "uno solo" in resp.mensaje
+    assert resp.frenar_finalizar is True
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    assert "soluciones" not in resp.borrador.tags
+    assert sesion.plantilla_pendiente is None
+    mock_agente.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_bug_cambiar_plantilla_en_tags_pide_confirmacion():
+    sesion = _crear_sesion_edicion_final("test-bug-cambio-tags")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## Consulta\nResultado soluciones")
+
+    resp = await _guardar_tags(sesion, buscador, mock_agente, ["soluciones", "ventas"])
+    assert resp.opciones == OPCIONES_CONFIRMAR_PLANTILLA
+    assert "CUIDADO" in resp.mensaje
+    assert resp.borrador.tipo_plantilla == "instructivo"
+    assert sesion.plantilla_pendiente == "soluciones"
+    mock_agente.assert_not_called()
+
+    resp = await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
+    assert resp.borrador.tipo_plantilla == "soluciones"
+    assert "soluciones" in resp.borrador.tags and "instructivo" not in resp.borrador.tags
+    assert "ventas" in resp.borrador.tags
+    mock_agente.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_bug_tags_con_misma_plantilla_no_pide_confirmacion():
+    sesion = _crear_sesion_edicion_final("test-bug-misma-plantilla")
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## No debería usarse")
+
+    resp = await _guardar_tags(sesion, buscador, mock_agente, ["instructivo", "ventas", "caja"])
+    assert resp.opciones == OPCIONES_EDICION_FINAL
+    assert resp.frenar_finalizar is False
+    assert "caja" in [t.lower() for t in resp.borrador.tags]
+    assert sesion.plantilla_pendiente is None
+    mock_agente.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_bug_confirmar_limpia_estructura_de_plantilla_anterior():
+    sesion = _crear_sesion_edicion_final("test-bug-limpieza")
+    texto_con_plantilla = (
+        "# ¿Para qué sirve?\n\n> Permite configurar el punto de venta para emitir comprobantes.\n\n"
+        "## Antes de empezar\n\n### Configuraciones iniciales en el sistema\n\n"
+        "- **[Nombre del maestro o componente]:** [Indicar la configuración requerida].\n\n"
+        "## Modo de uso\n\n**Ruta:** Menú → Ventas → Puntos de venta\n\n"
+        "1. Completar el número de punto de venta y guardar."
+    )
+    sesion.borrador.bloques_texto = [texto_con_plantilla]
+    sesion.borrador.skill_aplicada = "plantilla"
+    sesion.skill_aplicada = "plantilla"
+    buscador = MagicMock(spec=BuscadorDuplicados)
+    mock_agente = MagicMock(return_value="## Consulta\nResultado soluciones")
+
+    await _guardar_tags(sesion, buscador, mock_agente, ["soluciones", "ventas"])
+    await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
+
+    entrada = mock_agente.call_args[0][0]
+    for estructura in ("¿Para qué sirve?", "Antes de empezar", "Modo de uso", "**Ruta:**",
+                       "[Nombre del maestro o componente]", "Configuraciones iniciales"):
+        assert estructura not in entrada
+    assert "Permite configurar el punto de venta para emitir comprobantes." in entrada
+    assert "Menú → Ventas → Puntos de venta" in entrada
+    assert "Completar el número de punto de venta y guardar." in entrada
+
+
+def test_limpiar_estructura_no_toca_texto_sin_plantilla():
+    from baco.server.services.orquestador.edicion import (
+        limpiar_estructura_plantilla,
+        texto_tiene_estructura_plantilla,
+    )
+    texto = "## Pasos\n1. Abrir el módulo [opcional] y guardar."
+    assert texto_tiene_estructura_plantilla(texto, "instructivo") is False
+    assert limpiar_estructura_plantilla(texto, "instructivo") == texto

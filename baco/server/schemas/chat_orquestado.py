@@ -817,6 +817,10 @@ class ChatOrquestadorResponse(BaseModel):
         default=None,
         description="Texto actual destinado al Editor, separado del resultado en Vista previa.",
     )
+    frenar_finalizar: bool = Field(
+        default=False,
+        description="True si el guardado previo a Finalizar dejó un aviso que la persona debe leer (p. ej. plantilla obligatoria): el front no encadena Finalizar.",
+    )
     multimedia_habilitada: bool = Field(
         default=False,
         description="True una vez superada buscar_duplicados (en cualquier rama): el mini panel multimedia está operativo.",

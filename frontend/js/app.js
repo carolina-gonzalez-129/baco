@@ -2188,7 +2188,8 @@
         // En 'finalizar' los obligatorios los valida el backend al finalizar (parte 3):
         // solo se frena si el guardado no ofrece Finalizar (p. ej. confirmación de plantilla).
         const tieneBloqueantes = accionFinal === 'finalizar'
-          ? (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal))
+          ? (resGuardar.frenar_finalizar === true ||
+            (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)))
           : Boolean(
           (resGuardar.validacion && resGuardar.validacion.valido === false) ||
           (resGuardar.validacion && Array.isArray(resGuardar.validacion.findings) && resGuardar.validacion.findings.some((f) => f.severity === 'Bloqueante')) ||

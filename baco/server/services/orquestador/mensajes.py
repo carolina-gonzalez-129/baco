@@ -234,13 +234,12 @@ def msg_opcion_invalida(intento: int = 0) -> str:
 
 
 VARIANTES_TAGS_FALTANTES = [
-    "¡Ya casi lo tenemos listo! Para que el artículo quede bien clasificado y cualquiera lo encuentre al toque en la plataforma, sumale al menos una etiqueta temática (por ejemplo: ventas, facturacion o stock).",
+    "¡Ya casi lo tenemos listo! Sumale al menos una etiqueta temática",
 ]
 
 
 VARIANTES_CATEGORIA_FALTANTE = [
-    "¡Etiquetas listas! Ahora indicame la **categoría** por acá o seleccionala en el menú de  **panel izquierdo** y tocá **Enviar datos**.",
-    "Sólo falta la **categoría**: escribila por acá (ej: Ventas) o elegila en el **panel izquierdo** y tocá **Enviar datos**.",
+    "Sólo falta la **categoría**: elegila en el menu y tocá **Enviar datos**.",
 ]
 
 
@@ -304,7 +303,6 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
         f"{prefijo}🏷️ Tipo de plantilla **{plantilla.capitalize()}**.\n\n"
         "Para seguir, sumá al menos una etiqueta más y elegí la categoría. "
-        "Podés escribirlas acá o seleccionarlas directamente desde el menú."
     )
 
 
@@ -419,8 +417,25 @@ MSG_CAMBIO_PLANTILLA_CANCELADO = (
 
 def msg_confirmar_cambio_plantilla(actual: str, nueva: str) -> str:
     return (
-        f"⚠️ **CUIDADO:** estás por modificar el tipo de plantilla de **{actual or 'sin plantilla'}** "
-        f"a **{nueva}**. Vamos a necesitar **reaplicar la skill** de plantillas sobre tu texto del **Editor**.\n\n"
-        "Se van a perder las ediciones que hiciste en la **Vista previa** y el resultado del **auditor** "
-        "(no se vuelve a correr).\n\n¿Estás seguro?"
+        f"⚠️ **CUIDADO:** estas por modificar el tipo de plantilla de **{actual or 'sin plantilla'}** "
+        f"a **{nueva}**. El **texto se va a actualizar** según la nueva plantilla "
+        "(se reaplica la skill de plantillas).\n\n"
+        "Partimos de tu texto actual, con tus ediciones "
+        "El resultado del **auditor** no se vuelve a correr. Mantenemos tus cambios en todo lo demas\n\n"
+        "¿Estás seguro? Si rechazás, el artículo se queda con el tipo que tiene."
+    )
+
+
+MSG_ELEGIR_UNA_PLANTILLA = (
+    "Elegí **uno solo** tipo de plantilla: **instructivo** o **soluciones**. "
+    "No cambié el tipo de plantilla; el resto de los cambios quedó guardado."
+)
+
+
+def msg_plantilla_obligatoria(actual: str) -> str:
+    return (
+        "El **tipo de plantilla** es obligatorio, asique no lo quite"
+        + (f": sigue siendo **{actual}**" if actual else "")
+        + ". El resto de tus cambios fueron guardados.\n\n"
+        "Si queres modificar el tipo, elegí **instructivo** o **soluciones** desde el menú."
     )

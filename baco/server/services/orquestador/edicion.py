@@ -1,4 +1,7 @@
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from starlette.concurrency import run_in_threadpool
 import asyncio
@@ -648,6 +651,88 @@ def adoptar_resultado_skill_pendiente(sesion: SesionChat) -> None:
         b.skill_pendiente = None
 
 
+_DIR_REFERENCIAS_PLANTILLAS = Path(__file__).resolve().parents[3] / "skills" / "plantillas" / "references"
+# Solo para extraer piezas literales del archivo de plantilla (no se aplican como regex sobre el texto).
+_RE_PLACEHOLDER_TPL = re.compile(r"\[[^\]\n]+\]")
+_RE_ETIQUETA_BRACKET_TPL = re.compile(r"\*\*\[[^\]\n]+\][^*\n]*\*\*")
+_RE_ETIQUETA_TPL = re.compile(r"\*\*([^*\[\n]+?:)\*\*")
+_RE_LINEA_VACIA_ESTRUCTURA = re.compile(r"^[\s\-*>#\d.:()]*$")
+
+
+def _norm_encabezado(linea: str) -> str:
+    return linea.strip().lstrip("#").strip().strip("*").strip().rstrip(":").strip().lower()
+
+
+@lru_cache(maxsize=None)
+def _estructura_plantilla(plantilla: str) -> Tuple[frozenset, Tuple[str, ...], Tuple[str, ...], frozenset]:
+    """Lee references/plantilla-<tipo>.md y devuelve, literal: (encabezados, etiquetas en negrita,
+    placeholders, líneas de la plantilla). Se omite la cabecera interna (título y aclaración de metadatos)."""
+    ruta = _DIR_REFERENCIAS_PLANTILLAS / f"plantilla-{(plantilla or '').strip().lower()}.md"
+    try:
+        crudo = ruta.read_text(encoding="utf-8")
+    except OSError:
+        return frozenset(), (), (), frozenset()
+    lineas = [l for l in crudo.splitlines() if l.strip()]
+    lineas = [
+        l for l in lineas
+        if not l.strip().lower().startswith("# plantilla de salida")
+        and not l.strip().startswith("La salida debe contener")
+    ]
+    cuerpo = "\n".join(lineas)
+    encabezados = frozenset(_norm_encabezado(l) for l in lineas if l.lstrip().startswith("#"))
+    etiquetas_bracket = tuple(dict.fromkeys(_RE_ETIQUETA_BRACKET_TPL.findall(cuerpo)))
+    etiquetas = tuple(dict.fromkeys(f"**{e}**" for e in _RE_ETIQUETA_TPL.findall(cuerpo)))
+    placeholders = tuple(dict.fromkeys(_RE_PLACEHOLDER_TPL.findall(cuerpo)))
+    return (
+        encabezados,
+        etiquetas_bracket + etiquetas,
+        placeholders,
+        frozenset(l.strip() for l in lineas),
+    )
+
+
+def texto_tiene_estructura_plantilla(texto: str, plantilla: Optional[str]) -> bool:
+    """True si el texto trae encabezados o etiquetas literales de la plantilla indicada."""
+    if not texto or not plantilla:
+        return False
+    encabezados, etiquetas, _, _ = _estructura_plantilla(plantilla)
+    for linea in texto.splitlines():
+        if linea.lstrip().startswith("#") and _norm_encabezado(linea) in encabezados:
+            return True
+    return any(e in texto for e in etiquetas)
+
+
+def limpiar_estructura_plantilla(texto: str, plantilla: Optional[str]) -> str:
+    """Quita de forma determinista la estructura de la plantilla anterior (encabezados, etiquetas en
+    negrita y placeholders sin completar, tomados literalmente de references/plantilla-*.md),
+    conservando todo lo que la persona escribió."""
+    if not texto or not plantilla:
+        return texto or ""
+    encabezados, etiquetas, placeholders, lineas_tpl = _estructura_plantilla(plantilla)
+    if not encabezados and not etiquetas:
+        return texto
+    salida: List[str] = []
+    for linea in texto.splitlines():
+        crudo = linea.strip()
+        if crudo in lineas_tpl and crudo:
+            continue
+        if crudo and _norm_encabezado(crudo) in encabezados and (
+            crudo.startswith("#") or crudo.startswith("**") or crudo == _norm_encabezado(crudo)
+        ):
+            continue
+        nueva = linea
+        for e in etiquetas:
+            nueva = nueva.replace(e, "")
+        for ph in placeholders:
+            nueva = nueva.replace(ph, "")
+        if nueva != linea and _RE_LINEA_VACIA_ESTRUCTURA.match(nueva):
+            continue
+        salida.append(nueva.rstrip() if nueva != linea else nueva)
+    limpio = "\n".join(salida)
+    limpio = re.sub(r"\n{3,}", "\n\n", limpio).strip()
+    return limpio or texto
+
+
 async def ejecutar_skill(
     sesion: SesionChat,
     req: ChatOrquestadorRequest,
@@ -802,9 +887,9 @@ async def ejecutar_skill(
     )
     if es_reaplicacion:
         msg = (
-            "Reaplicamos la plantilla sobre el texto actual del Editor."
+            "Reaplicamos la **plantilla** sobre el texto actual."
             if not es_auditor
-            else "Reauditamos el artículo con el texto actual del Editor."
+            else "Reauditamos el artículo con el texto actual."
         )
     else:
         msg = (

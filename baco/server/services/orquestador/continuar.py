@@ -106,26 +106,36 @@ def _cargar_metadatos_heredados(sesion: SesionChat) -> None:
 
 
 def _resp_metadatos_heredados(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+        sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
 ) -> ChatOrquestadorResponse:
-    """Paso 3 en enriquecer/actualizar: la categoría y las etiquetas del artículo original
-    se cargan en el panel, editables. Se confirma con Enviar datos, igual que la carga manual
-    (sin banner ni botones Mantener / Elegir otros).
-    """
+   
     _cargar_metadatos_heredados(sesion)
     b = sesion.borrador
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
     tematicos = [t for t in b.tags if extraer_tipo_plantilla([t]) is None]
-    mensaje = (
-        f"{prefijo}Cargué en el panel la categoría **{b.categoria_nombre or 'sin categoría'}** "
-        f"y las etiquetas **{', '.join(tematicos) or 'ninguna'}** del artículo original. "
-        "Podés modificarlas y, cuando estés conforme, tocá **Enviar datos**."
-    ).strip()
-    return construir_respuesta(
-        sesion, mensaje, OPCIONES_CONFIRMAR_METADATOS, aviso_privacidad=aviso_privacidad
-    )
+    categoria = f"la categoría **{b.categoria_nombre or 'sin categoría'}**"
 
+    if tematicos:
+        if len(tematicos) == 1:
+            etiquetas = f"la etiqueta **{tematicos[0]}**"
+        else:
+            etiquetas = f"las etiquetas **{', '.join(tematicos)}**"
+        mensaje = (
+            f"{prefijo}Cargué en el panel {categoria} y {etiquetas} del artículo original. "
+            "Podés modificarlas y, cuando estés conforme, tocá **Enviar datos**."
+        )
+    else:
+        mensaje = (
+            f"{prefijo}Cargué en el panel {categoria} del artículo original, "
+            "que no tiene etiquetas temáticas. Podés modificar la categoría y agregá "
+            "al menos una etiqueta temática (por ejemplo, **aciba**). "
+            "Cuando estés conforme, tocá **Enviar datos**."
+        )
+
+    return construir_respuesta(
+        sesion, mensaje.strip(), OPCIONES_CONFIRMAR_METADATOS, aviso_privacidad=aviso_privacidad
+    )
 
 # --- Paso 2: Ofrecer la skill de plantillas (opcional) ---
 

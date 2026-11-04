@@ -1570,16 +1570,21 @@ async def gestionar_cambio_plantilla_pendiente(
     Devuelve (respuesta, req). Si respuesta no es None, el turno termina ahí.
     """
     from baco.server.services.orquestador.edicion import (
+        adoptar_resultado_skill_pendiente,
         aplicar_edicion_campos,
         ejecutar_skill,
+        limpiar_estructura_plantilla,
         plantilla_difiere,
+        texto_tiene_estructura_plantilla,
     )
     from baco.server.services.orquestador.mensajes import (
         MSG_CAMBIO_PLANTILLA_CANCELADO,
         MSG_EDICION_FINAL,
+        MSG_ELEGIR_UNA_PLANTILLA,
         OPCIONES_CONFIRMAR_PLANTILLA,
         OPCIONES_EDICION_FINAL,
         msg_confirmar_cambio_plantilla,
+        msg_plantilla_obligatoria,
     )
 
     b = sesion.borrador
@@ -1597,6 +1602,21 @@ async def gestionar_cambio_plantilla_pendiente(
         if not pendiente:
             sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
             return construir_respuesta(sesion, MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL), req
+        plantilla_anterior = (
+            b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags or [])
+        )
+        # Lo editado (Vista previa con retoques, o Editor) pasa a ser el nuevo original,
+        # sin la estructura de la plantilla anterior.
+        adoptar_resultado_skill_pendiente(sesion)
+        texto_base = (b.texto_limpio or b.texto_editor or sesion.texto_editor or "").strip()
+        if texto_base and (
+            b.skill_aplicada or sesion.skill_aplicada
+            or texto_tiene_estructura_plantilla(texto_base, plantilla_anterior)
+        ):
+            texto_base = limpiar_estructura_plantilla(texto_base, plantilla_anterior)
+        if texto_base:
+            b.texto_original = sesion.texto_original = texto_base
+            b.texto_editor = sesion.texto_editor = texto_base
         req_tipo = req.model_copy(update={
             "tipo_plantilla": pendiente, "titulo": None, "texto": None, "texto_editor": None,
             "categoria_id": None, "tags": None,
@@ -1610,21 +1630,47 @@ async def gestionar_cambio_plantilla_pendiente(
 
     # Cualquier otra interacción descarta un pendiente previo (cancelación implícita).
     sesion.plantilla_pendiente = None
-    if req.tipo_plantilla is None or opcion == "volver":
+    if opcion == "volver":
         return None, req
 
     plantilla_act = (
         b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags or [])
     )
+    tipo_req = req.tipo_plantilla
+    tags_tematicos_req = None
+    if tipo_req is None and req.tags is not None:
+        # El front no envía tipo_plantilla (api-http.js lo borra): el cambio o quite llega en req.tags.
+        plantillas_en_tags = {extraer_tipo_plantilla([t]) for t in req.tags} - {None}
+        tags_tematicos_req = [t for t in req.tags if extraer_tipo_plantilla([t]) is None]
+        if len(plantillas_en_tags) != 1 and plantilla_act:
+            # Dos plantillas a la vez, o ninguna: se guardan los demás campos y se mantiene la plantilla.
+            res = aplicar_edicion_campos(sesion, req.model_copy(update={"tags": tags_tematicos_req}))
+            sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
+            if not res.ok:
+                return construir_respuesta(sesion, res.error or "", OPCIONES_EDICION_FINAL), req
+            msg = MSG_ELEGIR_UNA_PLANTILLA if plantillas_en_tags else msg_plantilla_obligatoria(plantilla_act)
+            resp = construir_respuesta(
+                sesion, msg, OPCIONES_EDICION_FINAL, aviso_privacidad=res.aviso_privacidad
+            )
+            resp.frenar_finalizar = True  # el front no encadena Finalizar: la persona lee el aviso
+            return resp, req
+        if len(plantillas_en_tags) == 1:
+            tipo_req = next(iter(plantillas_en_tags))
+    if tipo_req is None:
+        return None, req
+
     try:
-        difiere = plantilla_difiere(req.tipo_plantilla, plantilla_act)
+        difiere = plantilla_difiere(tipo_req, plantilla_act)
     except ValueError:
         return None, req  # el flujo normal informa el error de validación
     if not difiere:
         return None, req
 
-    nueva = req.tipo_plantilla.strip().lower()
-    req_sin_plantilla = req.model_copy(update={"tipo_plantilla": None})
+    nueva = tipo_req.strip().lower()
+    upd = {"tipo_plantilla": None}
+    if tags_tematicos_req is not None:
+        upd["tags"] = tags_tematicos_req
+    req_sin_plantilla = req.model_copy(update=upd)
     # Los demás campos editados en el mismo turno se aplican igual.
     res = aplicar_edicion_campos(sesion, req_sin_plantilla)
     if not res.ok:
