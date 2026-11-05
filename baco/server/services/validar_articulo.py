@@ -334,31 +334,6 @@ def _sanitizar_cvv(contenido: str) -> tuple[str, int]:
     return RE_CVV.sub(_sub, contenido), reemplazos
 
 
-def _sanitizar_credenciales(contenido: str) -> tuple[str, int]:
-    reemplazos = 0
-
-    # AWS
-    def _sub_aws(m):
-        nonlocal reemplazos
-        reemplazos += 1
-        return "[TOKEN_OCULTO]"
-    contenido = RE_AWS_KEY.sub(_sub_aws, contenido)
-
-    # GitHub
-    def _sub_gh(m):
-        nonlocal reemplazos
-        reemplazos += 1
-        return "[TOKEN_OCULTO]"
-    contenido = RE_GITHUB_TOKEN.sub(_sub_gh, contenido)
-
-    # Bearer
-    def _sub_bearer(m):
-        nonlocal reemplazos
-        clave = m.group("clave")
-        reemplazos += 1
-        return f"{clave}[TOKEN_OCULTO]"
-    contenido = RE_BEARER.sub(_sub_bearer, contenido)
-
 def _es_email_personal_o_nominal(local: str, domain: str) -> bool:
     """Evalúa si un correo debe ser reemplazado.
     

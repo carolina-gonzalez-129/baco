@@ -101,7 +101,8 @@ BACO.apiHttp = (function () {
        payload: { mensaje, accion, titulo, texto, texto_editor,
                   categoria_id, tags, tipo_plantilla }
        Devuelve: { session_id, estado, etapa, mensaje, opciones,
-                   botones, navegacion, editables, coincidencias,
+                   botones, navegacion, editables, accion_panel, skills,
+                   coincidencias,
                    borrador, validacion, aviso_privacidad }
        -------------------------------------------------------- */
     async turno(payload) {

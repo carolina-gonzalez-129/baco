@@ -461,12 +461,6 @@ def continuar(
         if comp is not None:
             return comp
     elif sesion.estado == EstadoFlujo.REVISION_METADATOS:
-        if _heredados_pendientes(sesion):
-            sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-            return _resp_metadatos_heredados(
-                sesion,
-                prefijo="Antes de seguir, decidí si mantenés los metadatos heredados. ",
-            )
         comp = verificar_compuerta_avance(sesion)
         if comp is not None:
             return comp

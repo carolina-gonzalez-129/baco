@@ -24,7 +24,6 @@ from baco.server.services.orquestador.mensajes import (
     MSG_RECHAZADO,
     MSG_SIN_COINCIDENCIAS_TITULO,
     MSG_TEXTO_EN_EDICION,
-    MSG_USAR_CONTINUAR,
     OPCIONES_ENRIQUECER_CONTINUAR,
     OPCIONES_ENRIQUECER_DESCARTAR,
     OPCIONES_SERIE_DECISION,
@@ -38,7 +37,6 @@ from baco.server.services.orquestador.mensajes import (
     MSG_CONFIRMAR_RECHAZO,
     PREFIJO_BORRADOR_ACTUALIZADO,
     PREFIJO_CONTINUAR_PROPIO,
-    PREFIJO_DATOS_SANITIZADOS,
     PREFIJO_ERROR_CONFORMIDAD,
     PREFIJO_METADATOS_REGISTRADOS,
     OPCIONES_CONFIRMAR_METADATOS,
@@ -404,7 +402,7 @@ async def handle_decision_titulo(
             aviso_privacidad=aviso_priv,
         )
 
-    if opcion in ("descartar", "continuar"):
+    if opcion == "descartar":
         sesion.limpiar_fallos("DECISION_TITULO")
         if sesion.titulo:
             sesion.busquedas_descartadas.add(clave_busqueda("titulo", sesion.titulo))
@@ -840,7 +838,7 @@ async def handle_decision_texto(
 ) -> ChatOrquestadorResponse:
     actualizar_metadatos_sesion(sesion, req)
 
-    if opcion in ("enriquecer", "actualizar"):
+    if opcion == "enriquecer":
         sesion.limpiar_fallos("DECISION_TEXTO")
         if not sesion.coincidencias:
             return construir_respuesta(
@@ -972,7 +970,7 @@ async def handle_decision_texto(
             aviso_privacidad=aviso_priv,
         )
 
-    if opcion in ("continuar", "descartar"):
+    if opcion == "continuar":
         sesion.limpiar_fallos("DECISION_TEXTO")
         texto_buscado = texto_efectivo_sin_marcadores(sesion.texto_limpio or sesion.texto or "")
         if texto_buscado:
@@ -1018,8 +1016,6 @@ async def handle_esperando_plantilla(
     # el texto se edita en el paso siguiente; categoría y tags, en ESPERANDO_METADATOS.
     opcion_plantilla = opcion or req.tipo_plantilla or req.mensaje or ""
     plantilla = extraer_tipo_plantilla(req.tags or [], opcion_plantilla)
-    if not plantilla and b and b.tipo_plantilla and opcion == "continuar":
-        plantilla = b.tipo_plantilla
     if not plantilla:
         return construir_respuesta(sesion, MSG_ELEGIR_PLANTILLA, OPCIONES_PLANTILLAS)
 
@@ -1263,7 +1259,7 @@ def _resolver_flujo_rechazo(
             ops,
         )
 
-    if opcion in ("editar", "sanitizar") or hubo_cambios:
+    if opcion == "editar" or hubo_cambios:
         sesion.confirmando_rechazo = False
         return None
 
@@ -1272,50 +1268,6 @@ def _resolver_flujo_rechazo(
         "Por favor confirmá si querés descartar el artículo tocando **Sí, descartar** o **No, conservarlo** para seguir trabajando en él.",
         list(OPCIONES_CONFIRMAR_RECHAZO),
     )
-
-
-def _ejecutar_sanitizacion_borrador(
-    sesion: SesionChat, req: ChatOrquestadorRequest
-) -> ChatOrquestadorResponse:
-    """Ejecuta la sanitización sobre el borrador actual (explícita o silenciosa)."""
-    b = sesion.borrador
-    if b is None:
-        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
-
-    txt_a_sanit = req.texto or b.texto_limpio or b.texto_alineado_discourse
-    ultimo_id_sanit = max(sesion.ultimo_id_recurso, b.ultimo_id_recurso, _max_num_recurso(b.recursos))
-    bloques_sanit_in, recs_sanit_comb, _ = procesar_recursos_y_bloques(
-        txt_a_sanit,
-        recursos_previos=b.recursos,
-        ultimo_id=ultimo_id_sanit,
-        validar_marcadores_existentes=False,
-    )
-    tl_sanit_in = "\n\n".join(bloques_sanit_in).strip()
-
-    limpio = sanitizar_borrador(texto=tl_sanit_in, titulo=req.titulo or b.titulo)
-    titulo_sanitizado = limpio["titulo_sanitizado"]
-    txt_sanitizado = limpio["texto_sanitizado"]
-    aviso_sanit = limpio.get("aviso_privacidad")
-    bloques_sanitizados = [
-        sanitizar_borrador(texto=bl)["texto_sanitizado"].strip()
-        for bl in bloques_sanit_in
-        if bl.strip()
-    ]
-    bloques_sanitizados = [bl for bl in bloques_sanitizados if bl]
-
-    max_id = max(ultimo_id_sanit, _max_num_recurso(recs_sanit_comb))
-    sesion.actualizar_contenido_borrador(
-        titulo=titulo_sanitizado,
-        bloques_texto=bloques_sanitizados,
-        texto_base_limpio=txt_sanitizado if b.modo == "enriquecimiento" else None,
-        recursos=recs_sanit_comb,
-        ultimo_id_recurso=max_id,
-    )
-
-    prefijo = PREFIJO_DATOS_SANITIZADOS
-
-    msg, ops = validar_borrador(sesion, prefijo)
-    return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_sanit)
 
 
 def _aplicar_mutaciones_borrador(
@@ -1445,10 +1397,6 @@ async def _handle_revision_comun(
     resp_rechazo = _resolver_flujo_rechazo(sesion, opcion, hubo_cambios)
     if resp_rechazo is not None:
         return resp_rechazo
-
-    # 2. Acción explícita de sanitización
-    if opcion == "sanitizar":
-        return _ejecutar_sanitizacion_borrador(sesion, req)
 
     if opcion == "volver":
         return retroceder(sesion)

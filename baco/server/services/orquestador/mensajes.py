@@ -9,9 +9,6 @@ MENSAJE_BIENVENIDA = (
     "Una buena fórmula es incluir la acción y el módulo (por ejemplo: *Configurar punto de venta en Ventas*).\n\n"
 )
 
-MSG_CAMBIOS_GUARDADOS = "Guardé los cambios del artículo. Cuando esté todo listo, tocá **Finalizar**."
-
-
 def msg_cambios_guardados(cambios, descartes) -> str:
     """Detalla qué se guardó y qué no (con motivo) al guardar desde el panel."""
     cambios = list(cambios or [])
@@ -51,8 +48,6 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "auditar": {"accion": "auditar", "label": "Auditar", "estilo": "btn-dark"},
     "editar": {"accion": "editar", "label": "Seguir editando", "estilo": "btn-ghost"},
     "seguir_editando": {"accion": "seguir_editando", "label": "Seguir editando", "estilo": "btn-ghost"},
-    "copiar_borrador": {"accion": "copiar_borrador", "label": "Copiar borrador", "estilo": "btn-primary"},
-    "sanitizar": {"accion": "sanitizar", "label": "Quitar datos sensibles", "estilo": "btn-ghost"},
     "rechazar": {"accion": "rechazar", "label": "Descartar borrador", "estilo": "btn-ghost"},
     "confirmar_rechazo": {"accion": "confirmar_rechazo", "label": "Sí, descartar", "estilo": "btn-peligro"},
     "cancelar_rechazo": {"accion": "cancelar_rechazo", "label": "No, conservarlo", "estilo": "btn-ghost"},
@@ -97,26 +92,9 @@ MSG_DESCARTAR_COINCIDENCIA_TITULO = (
     "✨ Seguimos con tu propuesta de artículo.\n\n"
     "Escribí o pegá el contenido acá abajo y tocá **Confirmar texto** cuando esté listo."
 )
-MSG_ELEGIR_ENRIQUECER_O_DESCARTAR = (
-    "📄 Ya existe un artículo que habla sobre este tema.\n\n"
-    "¿Querés enriquecer el existente o es un tema distinto?"
-)
-MSG_ELEGIR_SERIE_O_DESCARTAR = (
-    "📚 Encontré una serie periódica sobre este tema.\n\n"
-    "¿Querés actualizar la última entrega o es un tema distinto?"
-)
-MSG_TEXTO_VACIO = (
-    "Por favor, necesito que me pases el texto o los pasos del artículo "
-    "para que podamos armarlo juntos. Pegalo o redactalo acá abajo cuando gustes."
-)
 MSG_TEXTO_EN_EDICION = (
     "📝 Guardé tu texto en el editor.\n\n"
     "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá **Confirmar texto**."
-)
-MSG_ELEGIR_ENRIQUECER_O_CONTINUAR = (
-    "🔍 Encontré un artículo con contenido muy similar.\n\n"
-    "Podés **Enriquecer el existente** para sumar tu aporte, "
-    "o elegir **Continuar con mi texto** si tu caso es diferente."
 )
 MSG_ELEGIR_PLANTILLA = (
     "📋 Elegí el formato para tu artículo:\n\n"
@@ -135,7 +113,6 @@ MSG_SESION_EXPIRADA = (
 PREFIJO_SIN_DUPLICADOS = ""
 PREFIJO_CONTINUAR_PROPIO = ""
 PREFIJO_METADATOS_REGISTRADOS = ""
-PREFIJO_DATOS_SANITIZADOS = ". "
 PREFIJO_BORRADOR_ACTUALIZADO = " "
 PREFIJO_ERROR_CONFORMIDAD = "Tuvimos problemas al registrar tu conformidad"
 
@@ -166,9 +143,6 @@ def msg_plantilla_a_aplicar(tipo_plantilla) -> str:
     if not tipo:
         return ""
     return f"Se va a aplicar la plantilla **{tipo}**. Si no es el tipo correcto, cambialo en el panel antes de aplicarla."
-MSG_USAR_CONTINUAR = (
-    "Todavía faltan la categoría y las etiquetas: tocá **Continuar** para completarlas."
-)
 MSG_BORRADOR_FINALIZADO = (
     "✅ Registramos tu borrador.\n\n"
     "Todavía no está publicado: la aprobación y publicación final las hace un moderador."
@@ -183,10 +157,6 @@ MSG_EDICION_FINAL = (
 
 
 def prefijo_borrador_creado(articulo_id: int) -> str:
-    return ""
-
-
-def prefijo_borrador_enriquecido(articulo_id: int) -> str:
     return ""
 
 
@@ -316,7 +286,7 @@ def msg_categoria_ambigua(termino: str, candidatos: List[str]) -> str:
 
 def msg_pedir_tags_y_categoria(plantilla: str = "", intento: int = 0) -> str:
     art = f"el {plantilla}" if plantilla else "el artículo"
-    return f"Para clasificar {art}, elegí una categoría y sumá al menos dos etiquetas."
+    return f"Para clasificar {art}, elegí una categoría y sumá al menos una etiqueta además del tipo de plantilla."
 
 
 def msg_pedir_tag_adicional(plantilla: str = "", intento: int = 0) -> str:

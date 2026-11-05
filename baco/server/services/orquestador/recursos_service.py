@@ -905,31 +905,6 @@ def crear_recurso_desde_url(
     )
 
 
-def fusionar_recursos(
-    existentes: Optional[Dict[str, Recurso]], nuevos: Optional[Dict[str, Recurso]]
-) -> Dict[str, Recurso]:
-    """Suma `nuevos` al final de `existentes` sin pisar IDs.
-
-    - Si un recurso nuevo apunta a la misma referencia que uno existente, se conserva el existente.
-    - Los nuevos reciben un ID libre (rec_N) y un orden correlativo a continuación.
-    """
-    base = _recursos_ordenados(existentes)
-    resultado: Dict[str, Recurso] = {}
-    for i, r in enumerate(base):
-        r.orden = i
-        resultado[r.id] = r
-
-    referencias = {r.referencia for r in base if r.referencia}
-    for r in _recursos_ordenados(nuevos):
-        if r.referencia and r.referencia in referencias:
-            continue
-        nuevo = r.model_copy(update={"id": generar_id_recurso_libre(resultado), "orden": len(resultado)})
-        resultado[nuevo.id] = nuevo
-        if nuevo.referencia:
-            referencias.add(nuevo.referencia)
-    return resultado
-
-
 def obtener_ruta_fisica_recurso(
     recurso: Recurso, session_id: Optional[str] = None
 ) -> Optional[Path]:
@@ -1200,24 +1175,6 @@ def fusionar_bloques_y_recursos_sin_colision(
     return list(bloques_texto), _normalizar_invariantes_recursos(recs_resultado, len(bloques_texto))
 
 
-def fusionar_texto_y_recursos_sin_colision(
-    texto: str,
-    recursos_base: Optional[Dict[str, Recurso]],
-    recursos_nuevos: Optional[Dict[str, Recurso]],
-    ultimo_id: int = 0,
-) -> Tuple[str, Dict[str, Recurso]]:
-    """Fusiona recursos_nuevos dentro de recursos_base evitando colisiones de ID
-    y reusando recursos si la URL/referencia ya existe.
-    """
-    bloques = [b.strip() for b in re.split(r"\n\s*\n", texto or "") if b.strip()] if (texto or "").strip() else []
-    _, recs_resultado = fusionar_bloques_y_recursos_sin_colision(
-        bloques, recursos_base, recursos_nuevos, ultimo_id=ultimo_id
-    )
-    texto_sin_marcadores = RE_MARCADORES_CANONICOS.sub("", texto or "").strip()
-    bloques_limpios = [b.strip() for b in re.split(r"\n\s*\n", texto_sin_marcadores) if b.strip()]
-    return "\n\n".join(bloques_limpios).strip(), recs_resultado
-
-
 def procesar_recursos_y_bloques(
     texto: str,
     recursos_previos: Optional[Dict[str, Recurso]] = None,
@@ -1258,77 +1215,3 @@ def procesar_recursos_y_bloques(
         bloques_nuevos, recs_prev, recs_nuevos, ultimo_id=ultimo_id
     )
     return bloques_fused, recs_fused, None
-
-
-def procesar_recursos_y_marcadores(
-    texto: str,
-    recursos_previos: Optional[Dict[str, Recurso]] = None,
-    ultimo_id: int = 0,
-    validar_marcadores_existentes: bool = True,
-    mensaje_error_custom: Optional[str] = None,
-) -> Tuple[str, Dict[str, Recurso], Optional[str]]:
-    """Procesa el texto de entrada y retorna (texto_limpio_sin_marcadores, recursos, error)."""
-    bloques, recs, err = procesar_recursos_y_bloques(
-        texto,
-        recursos_previos=recursos_previos,
-        ultimo_id=ultimo_id,
-        validar_marcadores_existentes=validar_marcadores_existentes,
-        mensaje_error_custom=mensaje_error_custom,
-    )
-    if err:
-        return texto, recs, err
-    return "\n\n".join(bloques).strip(), recs, None
-
-
-def sincronizar_recursos_con_marcadores(
-    texto: str, recursos: Optional[Dict[str, Recurso]]
-) -> Dict[str, Recurso]:
-    """Filtra y ordena los recursos presentes en el texto según la posición de sus marcadores.
-    Si el usuario eliminó un marcador del texto, el recurso se elimina de la colección.
-    """
-    if not recursos:
-        return {}
-    marcadores = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", texto or "")
-    resultado: Dict[str, Recurso] = {}
-    vistos = set()
-    orden_idx = 0
-    for rid in marcadores:
-        if rid in recursos and rid not in vistos:
-            rec = recursos[rid].model_copy(update={"orden": orden_idx})
-            resultado[rid] = rec
-            vistos.add(rid)
-            orden_idx += 1
-    return resultado
-
-
-def eliminar_marcador_recurso_de_texto(texto: str, recurso_id: str) -> str:
-    """Elimina el marcador [[recurso:<id>]] del texto limpio y normaliza espacios y párrafos."""
-    if not texto or not recurso_id:
-        return texto or ""
-    patron = rf"\[\[recurso:{re.escape(str(recurso_id))}\]\]"
-    resultado = re.sub(patron, "", texto)
-    lineas = [re.sub(r"[ \t]+", " ", l).strip() for l in resultado.splitlines()]
-    bloques = [b for b in "\n".join(lineas).split("\n\n") if b.strip()]
-    return "\n\n".join(bloques).strip()
-
-
-def permutar_marcadores_en_texto(
-    texto: str, ids_antes: List[str], ids_despues: List[str]
-) -> str:
-    """Permuta la posición de los marcadores [[recurso:<id>]] en el texto siguiendo
-    la reordenación de ids_antes a ids_despues.
-    """
-    if not texto or not ids_antes or not ids_despues or ids_antes == ids_despues:
-        return texto or ""
-    temp_map = {}
-    for i, rid in enumerate(ids_antes):
-        temp_map[f"[[recurso:{rid}]]"] = f"\x00REC_PERM_{i}\x00"
-
-    res = texto
-    for orig, temp in temp_map.items():
-        res = res.replace(orig, temp)
-
-    for i, rid in enumerate(ids_despues):
-        res = res.replace(f"\x00REC_PERM_{i}\x00", f"[[recurso:{rid}]]")
-
-    return res

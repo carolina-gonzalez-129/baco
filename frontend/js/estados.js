@@ -221,13 +221,8 @@ BACO.store = (function () {
         estado.botones = [];
       }
       estado.opciones = rawOpciones.map(normalizarBoton);
-      /* Navegación (volver, ver_articulo_final): nunca viene en opciones/botones.
-         Provisorio: se muestra al final de los botones del chat hasta definir su diseño en el panel. */
+      /* Navegación (volver, ver_articulo_final): va en el panel, no en los botones del chat. */
       estado.navegacion = Array.isArray(r.navegacion) ? r.navegacion.slice() : [];
-      const accionesChat = estado.botones.map((b) => b.accion);
-      estado.navegacion.forEach((n) => {
-        if (!accionesChat.includes(n)) estado.botones.push(normalizarBoton(n));
-      });
       estado.editables = Array.isArray(r.editables) ? r.editables.slice() : [];
       estado.accion_panel = r.accion_panel || null;
       estado.skills = r.skills || null;

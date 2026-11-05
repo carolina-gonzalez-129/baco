@@ -177,13 +177,6 @@ def _restaurar_skill_pendiente(sesion: SesionChat) -> None:
         b.skill_pendiente = None
 
 
-def _restaurar_revision_borrador(sesion: SesionChat) -> None:
-    sesion.limpiar_fallos()
-    _restaurar_skill_pendiente(sesion)
-    sesion.metadatos_heredados_revisados = False
-    if sesion.borrador is not None:
-        sesion.borrador.metadatos_heredados_revisados = False
-
 
 def _restaurar_revision_tipo(sesion: SesionChat) -> None:
     sesion.limpiar_fallos()
@@ -273,9 +266,6 @@ def _resp_revision_tipo(sesion: SesionChat) -> ChatOrquestadorResponse:
 def _resp_revision_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
     return construir_respuesta(sesion, MSG_VOLVER_METADATOS, ["volver"])
 
-
-def _resp_revision_borrador_enriquecimiento(sesion: SesionChat) -> ChatOrquestadorResponse:
-    return _resp_esperando_texto_enriquecimiento(sesion)
 
 
 # ==============================================================================

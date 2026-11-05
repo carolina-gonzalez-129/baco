@@ -69,39 +69,6 @@ class ChatRequest(BaseModel):
             )
         return self
 
-    def construir_prompt_sanitizado(self) -> str:
-        from baco.server.services.validar_articulo import sanitizar_borrador
-
-        prompt_limpio = sanitizar_borrador(texto=self.prompt)["texto_sanitizado"]
-
-        if not any([self.skill, self.tipo_plantilla, self.borrador, self.titulo, self.categoria, self.tags]):
-            return prompt_limpio
-
-        datos_borrador = sanitizar_borrador(
-            texto=self.borrador or "",
-            titulo=self.titulo or ""
-        )
-        titulo_limpio = datos_borrador["titulo_sanitizado"] if self.titulo else None
-        borrador_limpio = datos_borrador["texto_sanitizado"] if self.borrador else None
-
-        partes = []
-        if self.skill:
-            partes.append(f"Skill solicitada: {self.skill}")
-        if self.tipo_plantilla:
-            partes.append(f"Plantilla a aplicar: {self.tipo_plantilla}")
-        if self.skill != "plantillas":
-            if self.categoria:
-                partes.append(f"Categoría / Módulo ERP: {self.categoria}")
-            if self.tags:
-                partes.append(f"Tags: {', '.join(self.tags)}")
-        if titulo_limpio:
-            partes.append(f"Título del borrador: {titulo_limpio}")
-        if borrador_limpio:
-            partes.append(f"Borrador actual del artículo:\n\"\"\"\n{borrador_limpio}\n\"\"\"")
-        partes.append(f"Instrucción: {prompt_limpio}")
-        return "\n\n".join(partes)
-
-
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [

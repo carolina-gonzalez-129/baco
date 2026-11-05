@@ -23,7 +23,7 @@ app.mount("/", mcp_http_app)
 
 #  uvicorn baco.server.app.main:app --host 0.0.0.0 --port 8080
 #para probarlo con el front
-# cd C:\Users\ahreq\IdeaProjects\GeminiAgente\frontend
+# cd frontend
 # python -m http.server 5173
 #
 #

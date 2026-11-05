@@ -1052,10 +1052,10 @@
         const bubbleEl = msgNodoUsuario.querySelector('.bubble');
         if (bubbleEl) {
           const titSanit = (r.borrador && r.borrador.titulo) || r.titulo;
-          const txtSanit = (r.borrador && r.borrador.texto_limpio) || r.texto_limpio;
+          // El texto del artículo no se vuelca en el chat: la burbuja conserva su etiqueta.
+          // Solo se reemplaza por el título sanitizado cuando el turno envió el título.
           let textoOficial = null;
-          if (cuerpo.texto && txtSanit) textoOficial = txtSanit;
-          else if (cuerpo.titulo && titSanit) textoOficial = titSanit;
+          if (cuerpo.titulo && titSanit && !cuerpo.texto) textoOficial = titSanit;
           if (textoOficial) {
             bubbleEl.innerHTML = esc(textoOficial) + '<div class="stamp">' + hora() + '</div>';
           }
@@ -1209,8 +1209,16 @@
               : (btn.disabled && acc.campo === 'tags'
                   ? ((tagsFaltan ? 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas. ' : '') + (catFalta ? 'Debe seleccionarse una categoría del desplegable.' : ''))
                   : ''));
+        delete btn.dataset.accion;
+      } else if ((s.navegacion || []).includes('ver_articulo_final')) {
+        btn.hidden = false;
+        btn.disabled = false;
+        btn.textContent = 'Ver artículo final';
+        btn.title = '';
+        btn.dataset.accion = 'ver_articulo_final';
       } else {
         btn.hidden = true;
+        delete btn.dataset.accion;
       }
     }
 
@@ -1422,6 +1430,7 @@
 
   /* Renderiza la vista previa interactiva/editable preservando formato y multimedia */
   function renderVistaPreviaEditable(s) {
+    const textoEditablePreview = Boolean(BACO.camposActivos(s).texto) && !s.enviando;
     let pr = $('#preview');
     if (!pr && $('#campoTexto')) {
       pr = el('div', 'preview');
@@ -1500,7 +1509,7 @@
     for (let i = 0; i < bloquesTxt.length; i++) {
       const bDiv = document.createElement('div');
       bDiv.className = 'preview-bloque-editable';
-      bDiv.setAttribute('contenteditable', 'true');
+      bDiv.setAttribute('contenteditable', textoEditablePreview ? 'true' : 'false');
       bDiv.setAttribute('data-bloque-idx', String(i));
       bDiv.setAttribute('spellcheck', 'true');
       bDiv.setAttribute('data-placeholder', i === 0 ? 'Escribí el texto acá en formato Markdown...' : 'Continuá escribiendo...');
@@ -1913,7 +1922,6 @@
   function pintarTipoPlantilla(s) {
     const fila = $('#tipoPlantillaFila');
     if (!fila) return;
-    fila.style.display = s.borrador ? '' : 'none';
     const pendiente = s.plantilla_pendiente || null;
     const enForm = (s.form.tags || []).find(esTipoPlantilla) || null;
     const actual = pendiente || enForm || (s.borrador && s.borrador.tipo_plantilla) || null;
@@ -1939,20 +1947,12 @@
     box.querySelectorAll('.tag').forEach((n) => n.remove());
     const plantilla = s.borrador && s.borrador.tipo_plantilla;
     const act = BACO.camposActivos(s);
-    // Sin etiquetas editables ni cargadas (paso de plantilla, revisión del tipo) solo se ve el tipo de plantilla.
-    const hayTagsTematicos = (s.form.tags || []).some((t) => !(t === plantilla || esTipoPlantilla(t)));
-    const soloPlantilla = (s.etapa && s.etapa.actual) <= 4 && !act.tags && !hayTagsTematicos;
-    const flechaCat = $('#btnFlechaCat');
-    if (flechaCat) flechaCat.style.display = soloPlantilla ? 'none' : '';
-    ['#fTagsSelect', '#btnFlechaTags', '#tagInput'].forEach((sel) => {
-      const n = $(sel);
-      if (n) n.style.display = soloPlantilla ? 'none' : '';
-    });
+    // Contrato: lo no editable se muestra en solo lectura (deshabilitado), nunca oculto.
 
     s.form.tags.forEach((t) => {
       // El tipo de plantilla se dibuja en su propio control (#tipoPlantillaFila), no como chip.
       const esTipo = (t === plantilla || esTipoPlantilla(t));
-      if (esTipo || soloPlantilla) return;
+      if (esTipo) return;
       const chip = el('span', 'tag', esc(t));
       const puedeQuitar = !s.enviando && Boolean(act.tags);
       if (puedeQuitar) {
@@ -1981,7 +1981,7 @@
       const hayTags = (s.form.tags || []).some((t) => t !== plantilla && !esTipoPlantilla(t));
       let selHtml = hayTags
         ? '<option value="" selected disabled style="display:none;"></option>'
-        : '<option value="" selected disabled>selecciona al menos 2 etiquetas…</option>';
+        : '<option value="" selected disabled>seleccioná al menos 1 etiqueta…</option>';
       tagsOrdenados.forEach((t) => {
         selHtml += '<option value="' + esc(t) + '">' + esc(t) + '</option>';
       });
@@ -2119,56 +2119,30 @@
     });
   }
 
-  /* ---------------- opciones del backend ---------------- */
-  /* Paso pre-auditar (Auditar / Continuar): no se avanza con cambios sin guardar. */
-  const MSG_GUARDAR_ANTES = 'Guardá los cambios para continuar';
+  /* ---------------- navegación del panel ---------------- */
   /* Con un cambio de plantilla sin confirmar, guardar otros campos lo descartaría en el back. */
   const MSG_PLANTILLA_PENDIENTE = 'Confirmá o cancelá el cambio de plantilla para guardar';
-  function bloqueaPorCambiosSinGuardar(s, accion) {
-    if (accion !== 'auditar' && accion !== 'continuar') return false;
-    if (s.flujo !== 'REVISION_METADATOS' || !s.borrador) return false;
-    const ops = (s.opciones || []).map((o) => (o && typeof o === 'object') ? o.accion : o);
-    if (!ops.includes('auditar')) return false;
-    return hayCambios(s);
-  }
+  /* Acciones del chat que, con cambios sin guardar, piden confirmar y viajan con los campos. */
+  const ACCIONES_CON_GUARDADO = ['continuar', 'auditar', 'aplicar_plantilla', 'finalizar'];
+  /* Botón de skill del chat -> nombre en s.skills (lo declara el back). */
+  const SKILL_POR_ACCION = { aplicar_plantilla: 'plantilla', auditar: 'auditor' };
+  const IDS_NAVEGACION = ['volver', 'ver_articulo_final'];
 
   function pintarOpciones(s) {
+    /* Las opciones del back van solo en el chat; el panel muestra Guardar (principal) y Volver. */
     const barra = $('#opcionesBarra');
-    if (!barra) return;
-    barra.innerHTML = '';
-    const botones = (Array.isArray(s.botones) && s.botones.length)
-      ? s.botones
-      : (s.opciones || []).map((op) => {
-          if (typeof op === 'object' && op !== null) {
-            return {
-              accion: op.accion,
-              label: op.label || (BACO.OPCIONES[op.accion] || {}).label || op.accion,
-              estilo: op.estilo || (BACO.OPCIONES[op.accion] || {}).estilo || 'btn-ghost'
-            };
-          }
-          const def = BACO.OPCIONES[op] || {};
-          return { accion: op, label: def.label || op, estilo: def.estilo || 'btn-ghost' };
-        });
-    if (!botones.length) return;
-
-    botones.forEach((btnDef) => {
-      const accion = typeof btnDef === 'object' && btnDef !== null ? btnDef.accion : btnDef;
-      if (accion === 'confirmar_texto' && esAccionPanel(s, 'confirmar_texto')) {
-        return;
-      }
-      const label = (typeof btnDef === 'object' && btnDef !== null && btnDef.label)
-        ? btnDef.label
-        : ((BACO.OPCIONES[accion] || {}).label || accion);
-      const estilo = (typeof btnDef === 'object' && btnDef !== null && btnDef.estilo)
-        ? btnDef.estilo
-        : ((BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost');
-      const b = el('button', 'btn btn-sm ' + estilo, esc(label));
-      const bloqueadoPorCambios = bloqueaPorCambiosSinGuardar(s, accion);
-      b.disabled = s.enviando || bloqueadoPorCambios;
-      if (bloqueadoPorCambios) b.title = MSG_GUARDAR_ANTES;
-      b.onclick = () => accionar(accion, label);
-      barra.appendChild(b);
-    });
+    if (barra) barra.innerHTML = '';
+    const nav = $('#navPanel');
+    if (!nav) return;
+    nav.innerHTML = '';
+    const hayVolver = (s.navegacion || []).includes('volver');
+    nav.hidden = !hayVolver;
+    if (!hayVolver) return;
+    const b = el('button', 'btn-volver', '← Volver');
+    b.type = 'button';
+    b.disabled = Boolean(s.enviando);
+    b.onclick = () => accionar('volver', 'Volver');
+    nav.appendChild(b);
   }
 
   /* =========================================================
@@ -2176,8 +2150,6 @@
      ========================================================= */
   async function accionar(op, label) {
     const s = store.get();
-
-    if (bloqueaPorCambiosSinGuardar(s, op)) { toast(MSG_GUARDAR_ANTES); return; }
 
     if (op === 'ver_articulo_final') {
       const sid = s.session_id || (api.sesionActual ? api.sesionActual() : '');
@@ -2220,63 +2192,55 @@
       }
       return enviarTurno(payload, label);
     }
-    if ((op === 'continuar' && s.flujo === 'REVISION_TIPO') || op === 'finalizar') {
-      // 'continuar' en REVISION_TIPO y 'finalizar' (edición final) guardan antes
-      // los cambios pendientes de la Vista previa.
-      const accionFinal = op;
+    if (ACCIONES_CON_GUARDADO.includes(op) && esAccionPanel(s, 'guardar') && s.borrador) {
       sincronizarTextoDesdePreview();
+      sincronizarTextoConStore();
       const sAct = store.get();
-      const textoVistaPrevia = (sAct.form && typeof sAct.form.texto === 'string') ? sAct.form.texto : '';
-      const textoServidor = (sAct.borrador && typeof sAct.borrador.texto_limpio === 'string') ? sAct.borrador.texto_limpio : '';
-      const catForm = sAct.form && sAct.form.categoria_id;
-      const catBorrador = sAct.borrador && sAct.borrador.categoria_id;
-      const cambioCategoria = Boolean(
-        sAct.borrador && String(catForm ?? '') !== String(catBorrador ?? '')
-      );
-
-      // En edición final también cuentan título y etiquetas editados sin "Guardar cambios".
-      const cambioTituloOTags = op === 'finalizar' && Boolean(sAct.borrador) && (
-        (typeof sAct.form.titulo === 'string' && sAct.form.titulo !== (sAct.borrador.titulo || '')) ||
-        JSON.stringify(sAct.form.tags || []) !== JSON.stringify(sAct.borrador.tags || [])
-      );
-
-      const separado = separaPaneles(sAct.borrador);
-      const cambioEditor = separado && (sAct.form.texto_editor || '') !== (sAct.borrador.texto_editor || '');
-      if (textoVistaPrevia !== textoServidor || cambioCategoria || cambioTituloOTags || cambioEditor) {
-        const payloadGuardar = {
-          titulo: sAct.form.titulo,
-          texto: sAct.form.texto,
-          texto_editor: separado ? sAct.form.texto_editor : undefined,
-          tags: sAct.form.tags,
-          categoria_id: sAct.form.categoria_id
-        };
-        const resGuardar = await enviarTurno(payloadGuardar, 'Guardar cambios');
-        if (!resGuardar) {
-          return;
-        }
-        const sPost = store.get();
-        // En 'finalizar' los obligatorios los valida el backend al finalizar (parte 3):
-        // solo se frena si el guardado no ofrece Finalizar (p. ej. confirmación de plantilla).
-        const tieneBloqueantes = accionFinal === 'finalizar'
-          ? (resGuardar.frenar_finalizar === true ||
-            (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)))
-          : Boolean(
-          (resGuardar.validacion && resGuardar.validacion.valido === false) ||
-          (resGuardar.validacion && Array.isArray(resGuardar.validacion.findings) && resGuardar.validacion.findings.some((f) => f.severity === 'Bloqueante')) ||
-          (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)) ||
-          (sPost.validacion && sPost.validacion.valido === false)
-        );
-        // tieneBloqueantes ya frena si la acción no sigue en resGuardar.opciones.
-        if (tieneBloqueantes) {
-          return;
-        }
+      if (hayCambios(sAct)) {
+        if (sAct.plantilla_pendiente) { toast(MSG_PLANTILLA_PENDIENTE); return; }
+        return pedirConfirmacionGuardado(op, label);
       }
-      return enviarTurno({ accion: accionFinal }, label);
+      return enviarTurno({ accion: op }, label);
     }
     enviarTurno({ accion: op }, label);
   }
 
   BACO.accionar = accionar;
+
+  /* Campos del formulario que viajan junto con la acción (el back los guarda antes de ejecutarla). */
+  function camposFormulario(s) {
+    return {
+      titulo: s.form.titulo,
+      texto: s.form.texto,
+      texto_editor: separaPaneles(s.borrador) ? s.form.texto_editor : undefined,
+      tags: s.form.tags,
+      categoria_id: s.form.categoria_id
+    };
+  }
+
+  /* Aviso en el chat: [Guardar y continuar] envía campos + acción en un solo turno; [Cancelar] no hace nada. */
+  function pedirConfirmacionGuardado(op, label) {
+    const m = burbuja('bot', 'Tenés cambios sin guardar.');
+    const bubble = m.querySelector('.bubble');
+    const cont = el('div', 'acciones');
+    const bOk = el('button', 'btn btn-sm btn-dark', 'Guardar y continuar');
+    const bNo = el('button', 'btn btn-sm btn-ghost', 'Cancelar');
+    const cerrar = () => { bOk.disabled = true; bNo.disabled = true; };
+    bOk.onclick = () => {
+      cerrar();
+      const sAct = store.get();
+      if (sAct.enviando) return;
+      sincronizarTextoDesdePreview();
+      sincronizarTextoConStore();
+      const payload = Object.assign(camposFormulario(store.get()), { accion: op });
+      return enviarTurno(payload, 'Guardar cambios y ' + String(label || op).toLowerCase());
+    };
+    bNo.onclick = cerrar;
+    cont.appendChild(bOk);
+    cont.appendChild(bNo);
+    bubble.insertBefore(cont, bubble.querySelector('.stamp'));
+    return m;
+  }
 
   async function confirmarTexto() {
     const s = store.get();
@@ -2344,6 +2308,7 @@
         if (resB && typeof resB.texto_limpio === 'string') {
           store.setForm({ texto: resB.texto_limpio });
         }
+        if (resB && (resB.aviso || resB.aviso_privacidad)) mostrarAviso(resB.aviso || resB.aviso_privacidad);
       } catch (_) {}
     }
 
@@ -2370,6 +2335,12 @@
       return enviarTurno({ accion: 'confirmar_texto', texto: pendiente }, 'Confirmar texto (' + lenPend + ' caracteres)');
     }
     return enviarTurno({ accion: 'confirmar_texto' }, 'Confirmar texto');
+  }
+
+  function clickPrincipal() {
+    const btn = $('#btnPrincipal');
+    if (btn && btn.dataset.accion === 'ver_articulo_final') return accionar('ver_articulo_final');
+    return enviarPrincipal();
   }
 
   function enviarPrincipal() {
@@ -2494,6 +2465,7 @@
       ultimoFallo = null;
 
       const textoRespuesta = (r && (r.texto_resultante || r.response)) || '';
+      if (r && r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
 
       if (textoRespuesta && metodo === 'aplicarPlantilla') {
         mostrarResultadoSkillEnVistaPrevia(textoRespuesta);
@@ -2601,7 +2573,7 @@
 
     const botonesCompanion = listaBotones.filter((btnDef) => {
       const accion = (typeof btnDef === 'object' && btnDef !== null) ? btnDef.accion : btnDef;
-      return accion !== 'confirmar_texto';
+      return accion !== 'confirmar_texto' && !IDS_NAVEGACION.includes(accion);
     });
 
     if (botonesCompanion.length) {
@@ -2615,9 +2587,14 @@
           ? btnDef.estilo
           : ((BACO.OPCIONES[accion] || {}).estilo || 'btn-ghost');
         const btn = el('button', 'btn btn-sm ' + estilo, esc(label));
-        if (accion === 'ver_articulo_final') btn.id = 'btnVerArticuloFinal';
         btn.onclick = () => accionar(accion, label);
         cont.appendChild(btn);
+        const skill = SKILL_POR_ACCION[accion];
+        const d = skill && store.get().skills && store.get().skills[skill];
+        if (d && d.habilitada === false) {
+          btn.disabled = true;
+          cont.appendChild(el('span', 'motivo-skill', esc(d.motivo || 'No disponible en este paso.')));
+        }
       });
       b.querySelector('.bubble').insertBefore(cont, b.querySelector('.stamp'));
     }
@@ -2705,33 +2682,10 @@
   }
 
   async function sincronizarConformidadContenidoAdicional(b) {
-    // FINALIZADO es terminal (contrato §1.5): no se reabre el borrador. Borrado pendiente (deuda técnica).
+    // FINALIZADO es terminal (contrato §1.5): no se reabre el borrador ni se sincroniza turno.
     if (!b || b.finalizado === true) return;
-    const s = store.get();
-    const teniaFinalizado = Boolean(b.finalizado);
-    if (teniaFinalizado) {
-      b.finalizado = false;
-    }
     store.set({ borrador: b });
     renderVistaPreviaEditable();
-
-    const debeSincronizarTurno = teniaFinalizado && s && s.flujo === 'FINALIZADO';
-    if (debeSincronizarTurno) {
-      try {
-        const res = await api.turno({});
-        if (res) {
-          store.aplicarTurno(res);
-          renderVistaPreviaEditable();
-          if (res.mensaje) {
-            const opcionesTurno = Array.isArray(res.opciones) ? res.opciones.slice() : [];
-            const botonesTurno = (store.get().botones || []).slice();
-            decir(nl2br(res.mensaje), opcionesTurno, false, botonesTurno);
-          }
-        }
-      } catch (err) {
-        mostrarError(err);
-      }
-    }
   }
 
   function pintarRecursosDetectados(s) {
@@ -3391,7 +3345,7 @@
     const tagBx = $('#tagBox');
     if (tagBx) tagBx.addEventListener('click', (e) => { if (e.target === e.currentTarget && tagIn && !tagIn.disabled) tagIn.focus(); });
 
-    if ($('#btnPrincipal')) $('#btnPrincipal').onclick = enviarPrincipal;
+    if ($('#btnPrincipal')) $('#btnPrincipal').onclick = clickPrincipal;
 
     /* Barra de herramientas estilo Discourse: botones Markdown, Emoji, Imagen y navegación por teclado */
     const toolbar = $('#editorToolbar');
@@ -3757,7 +3711,8 @@
 
   function cargarEjemplo() {
     const s = store.get();
-    if (s.flujo === 'ESPERANDO_TITULO') {
+    const ed = s.editables || [];
+    if (ed.includes('titulo') && !ed.includes('texto')) {
       const t = BACO.datos.ejemplo.titulo;
       if ($('#fTitulo')) $('#fTitulo').value = t;
       store.setForm({ titulo: t });
