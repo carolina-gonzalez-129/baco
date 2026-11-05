@@ -160,8 +160,8 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 | Estado | `accion` | `label` | Qué envía el front |
 | :--- | :--- | :--- | :--- |
 | `ESPERANDO_TEXTO` | `confirmar_texto` | Confirmar texto | `accion: "confirmar_texto"` + `texto` |
-| `ESPERANDO_METADATOS` | `enviar_datos` | Enviar datos | los `campos` (categoría, etiquetas y contenido) |
-| `REVISION_TIPO`, `REVISION_METADATOS`, `EDICION_FINAL` | `guardar` | Guardar cambios | solo los `campos`; `guardar` **no** viaja como `accion` |
+| `ESPERANDO_METADATOS` | `enviar_datos` | Enviar datos | `accion: "enviar_datos"` + los `campos` (categoría, etiquetas y contenido) |
+| `REVISION_TIPO`, `REVISION_METADATOS`, `EDICION_FINAL` | `guardar` | Guardar cambios | solo los `campos`; `guardar` **no** viaja como `accion`. Sin `accion`, el back guarda sin avanzar y descarta los campos no editables. Si `tags` no es editable, el tipo viaja en `tipo_plantilla` |
 | resto | `null` | — | — (en `ESPERANDO_TITULO` Enter en el título envía `{titulo}`) |
 
 `campos` = `editables` del estado.
@@ -188,7 +188,7 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | `DECISION_TITULO` | serie: `actualizar, descartar` · estándar: `enriquecer, descartar` | `volver` | `texto` | — |
 | `ESPERANDO_TEXTO` | nuevo: `confirmar_texto` · enriquecimiento: `confirmar_texto, descartar` · error de longitud/marcadores: `[]` | `volver` | `texto` | — |
 | `DECISION_TEXTO` | `enriquecer, continuar` | `volver` | `texto` | — |
-| `ESPERANDO_PLANTILLA` | `instructivo, soluciones` | `volver` | `tipo_plantilla` | — |
+| `ESPERANDO_PLANTILLA` | `instructivo, soluciones` | `volver` | `[]` (el tipo se elige solo por chat) | — |
 | `ESPERANDO_METADATOS` | carga por panel: `[]` · confirmar lo cargado por chat: `enviar_datos` · categoría ambigua: nombres de categorías candidatas (dinámicos) | `volver` | `C`, `categoria_id`, `tags` | — |
 | `REVISION_TIPO` | válido sin skill: `aplicar_plantilla, continuar` · plantilla aplicada: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | sin skill: `volver` · con skill o confirmando rechazo: `[]` | sin skill: `C`, `tipo_plantilla` · con skill: `C` | `plantilla` (no con bloqueantes) |
 | `REVISION_METADATOS` | válido sin skill: `auditar, continuar` · auditado: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | sin skill: `volver` · con skill o confirmando rechazo: `[]` | sin skill: `C`, `categoria_id`, `tags` · con skill: `C` | `auditor` (no con bloqueantes) |
@@ -197,7 +197,7 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | `RECHAZADO` | `reiniciar` | `[]` | `[]` | — |
 
 **Notas**
-- Los enriquecidos saltean a `REVISION_METADATOS` (decisión vigente).
+- Los enriquecidos pasan por `ESPERANDO_PLANTILLA` y `REVISION_TIPO` como cualquier borrador. Al salir de `REVISION_TIPO` con `continuar`, si el borrador ya tiene categoría y al menos 2 etiquetas (y no hay metadatos heredados pendientes de confirmar), se saltea `ESPERANDO_METADATOS` y se pasa directo a `REVISION_METADATOS`, donde categoría y etiquetas siguen editables hasta auditar.
 - En `ESPERANDO_METADATOS` las opciones de categoría no son ids fijos: el front envía el nombre tal cual lo recibió.
 - `ver_articulo_final` reemite el mensaje de artículo finalizado; no muta nada.
 - Al pasar a `RECHAZADO` el servidor destruye la cookie de sesión.
@@ -221,10 +221,10 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | `POST /chat/aplicar-plantilla` | `REVISION_TIPO`, `EDICION_FINAL` | Fuera de estado → rechazo. `FINALIZADO` → 409. |
 | `POST /chat/auditar-semantica` | `REVISION_METADATOS`, `EDICION_FINAL` | Además: `categoria_id` cargada y ≥ 2 tags. `FINALIZADO` → 409. |
 | `POST /chat/revalidar-post-skill` | `REVISION_TIPO`, `REVISION_METADATOS`, `EDICION_FINAL`, `FINALIZADO` | Solo revalida, no muta contenido. |
-| `POST /chat/bloques` | no terminales | `FINALIZADO` → 409. |
+| `POST /chat/bloques` | no terminales | `FINALIZADO` o `RECHAZADO` → 409. |
 | `GET /chat/borrador` | `FINALIZADO` | Exige `borrador.finalizado == true`. |
 
-`RECHAZADO` no necesita 409 propio: la sesión deja de existir (cookie destruida).
+`RECHAZADO` destruye la cookie, pero la sesión sigue en memoria hasta el TTL: un cliente que reenvíe el `session_id` recibe 409 en `POST /chat/bloques`, recursos y contenido adicional.
 
 ---
 
@@ -331,7 +331,7 @@ Endpoints para gestionar ítems de contenido adicional independientes del cuerpo
 - `PUT /chat/contenido-adicional/{item_id}` o `PATCH` → Body: `{ "contenido": "...", "tipo": "texto" }`
 
 **Restricciones de `POST /chat/contenido-adicional`:**
-- `409 Conflict` si la sesión está en `FINALIZADO`.
+- `409 Conflict` si la sesión está en `FINALIZADO` o `RECHAZADO`.
 - `400 Bad Request` si no hay borrador.
 - `403 Forbidden` si el borrador no está en modo `enriquecimiento` o `actualizar` y no tiene artículo base (`articulo_original_id` es `null`), es decir, en modo `nuevo`.
 

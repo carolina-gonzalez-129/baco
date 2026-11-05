@@ -1057,6 +1057,13 @@ async def handle_esperando_metadatos(
     if opcion == "volver":
         return retroceder(sesion)
 
+    # Panel: "Enviar datos" viaja con los campos. La acción ya pasó la regla única; se quita
+    # para que no se tome como texto y los campos se procesan como cualquier carga del panel
+    # (el cierre de abajo decide si avanza o pide lo que falta).
+    if opcion == "enviar_datos" and (req.tags is not None or req.categoria_id is not None):
+        req = req.model_copy(update={"accion": None})
+        opcion = ""
+
     # Carga por chat: llega texto (mensaje o acción) sin tags. El panel envía tags
     # o solo la categoría elegida en el menú.
     es_carga_chat = req.tags is None and bool(

@@ -3,10 +3,9 @@
 
 La salida debe contener únicamente el cuerpo publicable del artículo. Título, categoría, tipo de plantilla y descripción ya fueron verificados como metadatos internos; no repetirlos ni convertirlos en un encabezado.
 
-Esta aplicación tiene como objetivo [incluir breve descripción de la funcionalidad o procedimiento a ver en este documento].  
-5 min [Calcular tiempo estimado de lectura]
+Esta aplicación tiene como objetivo [incluir breve descripción de la funcionalidad o procedimiento a ver en este documento].
 
-# ¿Para qué sirve?
+## ¿Para qué sirve?
 
 > [Explicar para qué sirve la funcionalidad o el procedimiento y el paso a paso que se va a desarrollar].
 
@@ -26,7 +25,11 @@ Esta aplicación tiene como objetivo [incluir breve descripción de la funcional
     - **[Campo obligatorio] (*):** [Descripción del dato a ingresar].
     - **[Campo opcional]:** [Detallar solo si el contenido no es deducible].
 
-   > *Los campos marcados con un asterisco (*) son de carácter obligatorio.*
+   Nota aclaratoria: Los campos marcados con un asterisco (*) son de carácter obligatorio.
 
 2. [Describir la siguiente acción del procedimiento con verbos en infinitivo].
 3. [Describir la acción de confirmación o guardado final].
+
+## Qué hace y qué no hace
+
+[Incluir esta sección solo si el texto original menciona los límites de la funcionalidad; si no, omitirla].

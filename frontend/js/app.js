@@ -1926,8 +1926,8 @@
     const enForm = (s.form.tags || []).find(esTipoPlantilla) || null;
     const actual = pendiente || enForm || (s.borrador && s.borrador.tipo_plantilla) || null;
     const act = BACO.camposActivos(s);
-    // El tipo viaja dentro de tags: el selector solo se habilita si el back acepta ambos (hoy, EDICION_FINAL).
-    const editable = Boolean(act.tipo_plantilla) && Boolean(act.tags) && !s.enviando && !pendiente;
+    // Si tags no es editable (REVISION_TIPO), el tipo viaja como tipo_plantilla (ver enviarPrincipal).
+    const editable = Boolean(act.tipo_plantilla) && !s.enviando && !pendiente;
     fila.querySelectorAll('[data-tipo]').forEach((b) => {
       const t = b.getAttribute('data-tipo');
       const sel = t === actual;
@@ -2354,6 +2354,7 @@
       // Título y texto también son editables en este paso: se envían para no perder lo tipeado.
       return enviarTurno(
         {
+          accion: 'enviar_datos',
           titulo: s.form.titulo, texto: s.form.texto,
           texto_editor: separaPaneles(s.borrador) ? s.form.texto_editor : undefined,
           tags: s.form.tags, categoria_id: s.form.categoria_id
@@ -2361,10 +2362,15 @@
         s.form.tags.join(', ') + ' · ' + nombreCategoria(s, s.form.categoria_id)
       );
     }
+    // Guardar no viaja como accion. Si tags no es editable (REVISION_TIPO) el tipo se manda aparte.
+    const act = BACO.camposActivos(s);
     return enviarTurno({
       titulo: s.form.titulo, texto: s.form.texto,
       texto_editor: separaPaneles(s.borrador) ? s.form.texto_editor : undefined,
-      tags: s.form.tags, categoria_id: s.form.categoria_id
+      tags: act.tags ? s.form.tags : undefined,
+      tipo_plantilla: (!act.tags && act.tipo_plantilla)
+        ? ((s.form.tags || []).find(esTipoPlantilla) || undefined) : undefined,
+      categoria_id: s.form.categoria_id
     }, 'Guardar cambios');
   }
 

@@ -31,13 +31,15 @@ Usar esta skill para procesar, limpiar y reestructurar semánticamente textos en
 
 Usar cuando el contenido describe un procedimiento paso a paso o una funcionalidad regular del sistema. Estructura detallada en [references/plantilla-instructivo.md](references/plantilla-instructivo.md).
 
-Secciones, con estos encabezados:
+Secciones, en este orden (el servidor envía la estructura completa en `<plantilla_referencia>`; si llega, respetarla literalmente):
 
-- `## Objetivo`: sintetizar en uno o dos párrafos qué permite realizar la funcionalidad.
-- `## Qué hace y qué no hace`: contrastar los límites confirmados del módulo, solo si la fuente los menciona.
-- `## Requisitos previos`: configuraciones, permisos o datos maestros necesarios.
-- `## Procedimiento paso a paso`: secuencia cronológica numerada, con verbos en infinitivo.
-- `## Resultado esperado`: comprobante, asiento o estado final que produce el procedimiento.
+- Párrafo inicial sin encabezado: `Esta aplicación tiene como objetivo…` con una descripción breve.
+- `## ¿Para qué sirve?`: explicación como cita (`> ...`).
+- `## Antes de empezar`: `### Configuraciones iniciales en el sistema` y las configuraciones previas en los maestros y componentes, con verbos en infinitivo.
+- `## Modo de uso`: línea `**Ruta:** Menú → Gestión Empresarial → …` y pasos numerados en infinitivo. Detallar campos solo si no son deducibles (`**Campo (*):** descripción`) y agregar la nota aclaratoria de campos obligatorios si se usan asteriscos.
+- `## Qué hace y qué no hace`: opcional, al final, solo si la fuente menciona los límites.
+
+No incluir tiempo de lectura.
 
 ### 2. Plantilla `soluciones`
 

@@ -126,12 +126,18 @@ def resolver_sesion_activa(
     return sid, sesion
 
 
+_MSG_ESTADO_TERMINAL = {
+    EstadoFlujo.FINALIZADO: "El artículo ya está finalizado: no se puede modificar.",
+    EstadoFlujo.RECHAZADO: "El borrador fue rechazado: no se puede modificar.",
+}
+
+
 def _rechazar_si_finalizado(sesion: Optional[SesionChat]) -> None:
-    """FINALIZADO es terminal: no se aceptan mutaciones del borrador por REST."""
-    if sesion is not None and sesion.estado == EstadoFlujo.FINALIZADO:
+    """FINALIZADO y RECHAZADO son terminales: no se aceptan mutaciones del borrador por REST."""
+    if sesion is not None and sesion.estado in _MSG_ESTADO_TERMINAL:
         raise HTTPException(
             status_code=409,
-            detail="El artículo ya está finalizado: no se puede modificar.",
+            detail=_MSG_ESTADO_TERMINAL[sesion.estado],
         )
 
 
@@ -369,6 +375,7 @@ def confirmar_bloques(
             status_code=404,
             detail=f"No existe la sesión '{sid}' o la sesión expiró.",
         )
+    _rechazar_si_finalizado(sesion)
 
     recursos_previos = sesion.borrador.recursos if sesion.borrador else sesion.recursos
     ultimo_id_prev = max(

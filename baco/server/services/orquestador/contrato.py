@@ -108,7 +108,8 @@ def campos_editables(sesion) -> List[str]:
     if e == EstadoFlujo.ESPERANDO_TEXTO:
         return ["texto"]
     if e == EstadoFlujo.ESPERANDO_PLANTILLA:
-        return ["tipo_plantilla"]
+        # El tipo se elige solo con las opciones del chat (instructivo/soluciones): avanzan.
+        return []
     if e == EstadoFlujo.ESPERANDO_METADATOS:
         return CAMPOS_CONTENIDO + ["categoria_id", "tags"]
     if e == EstadoFlujo.REVISION_TIPO:

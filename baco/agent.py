@@ -57,7 +57,7 @@ BACO cuenta exclusivamente con dos skills:
   - Regla fundamental: BACO NO infiere la plantilla a partir del contexto; solo sabe estructurar y aplicar la plantilla solicitada ("instructivo" o "soluciones").
   - Reglas clave:
     1. Verbos de procedimientos en infinitivo (ej. "Ingresar a...", "Seleccionar...").
-    2. Respetar estrictamente la anatomía de la plantilla requerida (para Soluciones: Consulta, Respuesta, Pasos a seguir; para Instructivo: Objetivo, Alcance, Requisitos previos, Procedimiento paso a paso, Resultado esperado).
+    2. Respetar estrictamente la anatomía de la plantilla requerida. Para Soluciones: Consulta, Respuesta, Pasos a seguir. Para Instructivo: seguir exactamente la estructura que llega en <plantilla_referencia> (párrafo inicial "Esta aplicación tiene como objetivo…", ## ¿Para qué sirve?, ## Antes de empezar, ## Modo de uso); no incluir tiempo de lectura.
     3. Devolver exclusivamente el cuerpo Markdown final listo para publicar, sin introducciones ni despedidas conversacionales.
 
 • SKILL: "validador"
