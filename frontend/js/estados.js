@@ -5,8 +5,9 @@
    (baco/server/schemas/chat_orquestado.py).
 
    EL BACKEND MANDA. El panel no calcula estados: refleja el
-   `estado`, `etapa`, `tags_acumulados`, `categorias_disponibles`
-   y `opciones` que devuelve cada turno.
+   `estado`, `etapa`, `tags_acumulados`, `categorias_disponibles`,
+   `opciones`, `navegacion` y `editables` que devuelve cada turno
+   (frontend/CONTRATO-API.md, sección contrato de estados).
    ============================================================= */
 window.BACO = window.BACO || {};
 
@@ -23,10 +24,10 @@ BACO.ESTADOS = {
                         ayuda: 'Elegí qué plantilla aplicar: instructivo o soluciones.' },
   ESPERANDO_METADATOS:{ etiqueta: 'Faltan etiquetas',    tono: 'proceso', paso: 3,
                         ayuda: 'Agregá al menos un tag temático además del tipo de plantilla y elegí la categoría.' },
-  REVISION_BORRADOR:  { etiqueta: 'En revisión',         tono: 'info',    paso: 4,
-                        ayuda: 'El borrador está validado. Podés editarlo, sanitizarlo, confirmar tu conformidad o rechazarlo.' },
-  APROBADO:           { etiqueta: 'Continuar',            tono: 'ok',      paso: 5,
-                        ayuda: 'El artículo quedó con tu conformidad registrada y sanitizado.' },
+  REVISION_TIPO:      { etiqueta: 'Revisión de plantilla', tono: 'info',  paso: 4,
+                        ayuda: 'Podés aplicar la plantilla al borrador o continuar sin aplicarla.' },
+  REVISION_METADATOS: { etiqueta: 'Revisión de metadatos', tono: 'info',  paso: 4,
+                        ayuda: 'Podés auditar el borrador con el validador o continuar sin auditar.' },
   EDICION_FINAL:      { etiqueta: 'Edición final',        tono: 'info',    paso: 5,
                         ayuda: 'Revisá y editá los datos finales. Cuando esté listo, tocá Finalizar.' },
   FINALIZADO:         { etiqueta: 'Finalizado',           tono: 'ok',      paso: 5,
@@ -35,34 +36,25 @@ BACO.ESTADOS = {
                         ayuda: 'El borrador fue rechazado. Reiniciá para empezar otra carga.' }
 };
 
-BACO.CAMPOS_ACTIVOS = {
-  ESPERANDO_TITULO:    { titulo: true,  texto: false, tags: false, categoria: false, tipo_plantilla: false },
-  DECISION_TITULO:     { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
-  ESPERANDO_TEXTO:     { titulo: false, texto: true,  tags: false, categoria: false, tipo_plantilla: false },
-  DECISION_TEXTO:      { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
-  ESPERANDO_PLANTILLA: { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: true },
-  ESPERANDO_METADATOS: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
-  REVISION_BORRADOR:   { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
-  EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: true },
-  FINALIZADO:          { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
-  RECHAZADO:           { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false }
-};
-
-/* Campos activos efectivos: en revisión intermedia (paso 2) categoría, etiquetas y
-   plantilla no se editan; se definen en el paso de metadatos. */
+/* Campos activos: salen exclusivamente de `editables` del último turno del back.
+   Misma forma de retorno que antes para no tocar a los que la consumen. */
 BACO.camposActivos = function (s) {
-  const base = (s && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
-  if (s && s.flujo === 'REVISION_BORRADOR' && s.borrador && s.borrador.revision_intermedia) {
-    return Object.assign({}, base, { tags: false, categoria: false, tipo_plantilla: false });
-  }
-  return base;
+  const ed = (s && Array.isArray(s.editables)) ? s.editables : [];
+  return {
+    titulo: ed.includes('titulo'),
+    texto: ed.includes('texto') || ed.includes('texto_editor'),
+    tags: ed.includes('tags'),
+    categoria: ed.includes('categoria_id'),
+    tipo_plantilla: ed.includes('tipo_plantilla')
+  };
 };
 
 /* Etiqueta y payload del botón principal, según el estado */
 BACO.ACCION_PRINCIPAL = {
   ESPERANDO_TEXTO:     { label: 'Confirmar texto',    campo: 'texto'  },
   ESPERANDO_METADATOS: { label: 'Enviar datos',       campo: 'tags'   },
-  REVISION_BORRADOR:   { label: 'Guardar cambios',    campo: 'todo'   },
+  REVISION_TIPO:       { label: 'Guardar cambios',    campo: 'todo'   },
+  REVISION_METADATOS:  { label: 'Guardar cambios',    campo: 'todo'   },
   EDICION_FINAL:       { label: 'Guardar cambios',    campo: 'todo'   }
 };
 
@@ -79,13 +71,10 @@ BACO.OPCIONES = {
   finalizar:         { label: 'Finalizar',               estilo: 'btn-primary' },
   confirmar_plantilla: { label: 'Sí, cambiar plantilla', estilo: 'btn-peligro' },
   cancelar_plantilla:  { label: 'Cancelar',              estilo: 'btn-ghost' },
-  aceptar:           { label: 'Aceptar',                 estilo: 'btn-primary' },
   aceptar_metadatos: { label: 'Aceptar metadatos heredados', estilo: 'btn-primary' },
   rechazar_metadatos:{ label: 'Rechazar metadatos heredados', estilo: 'btn-secondary' },
   ver_articulo_final: { label: 'Ver artículo', estilo: 'btn-primary' },
   confirmar_texto:   { label: 'Confirmar texto',         estilo: 'btn-primary' },
-  quitar_recursos:   { label: 'Quitar recursos (usar skills)',    estilo: 'btn-dark' },
-  seguir_con_recursos: { label: 'Seguir con recursos (sin skills)', estilo: 'btn-ghost' },
   enriquecer:        { label: 'Enriquecer el existente', estilo: 'btn-dark' },
   actualizar:        { label: 'Actualizar el existente', estilo: 'btn-dark' },
   descartar:         { label: 'Es un tema distinto',     estilo: 'btn-ghost' },
@@ -94,15 +83,10 @@ BACO.OPCIONES = {
   soluciones:        { label: 'Soluciones',              estilo: 'btn-dark' },
   aplicar_plantilla: { label: 'Aplicar plantilla',       estilo: 'btn-dark' },
   auditar:           { label: 'Auditar',                 estilo: 'btn-dark' },
-  conforme:          { label: 'Continuar',          estilo: 'btn-primary' },
-  continuar_revision: { label: 'Continuar',               estilo: 'btn-primary' },
-  aprobar:           { label: 'Continuar',          estilo: 'btn-primary' },
   editar:            { label: 'Seguir editando',         estilo: 'btn-ghost' },
-  seguir_editando:   { label: 'Seguir editando',         estilo: 'btn-ghost' },
-  copiar_borrador:   { label: 'Copiar borrador',         estilo: 'btn-primary' },
-  sanitizar:         { label: 'Sanitizar',               estilo: 'btn-ghost' },
   rechazar:          { label: 'Descartar borrador',      estilo: 'btn-ghost' },
   confirmar_rechazo: { label: 'Sí, descartar',           estilo: 'btn-peligro' },
+  cancelar_rechazo:  { label: 'Cancelar',                estilo: 'btn-ghost' },
   volver:            { label: 'Volver',                  estilo: 'btn-ghost' },
   ayuda:             { label: '¿Qué hago acá?',          estilo: 'btn-ghost' },
   reiniciar:         { label: 'Empezar de nuevo',        estilo: 'btn-ghost' }
@@ -128,6 +112,8 @@ BACO.store = (function () {
     },
     opciones: [],
     botones: [],
+    navegacion: [],
+    editables: ['titulo'],
     tags_acumulados: [],
     categorias_disponibles: [],
     tags_disponibles: [],
@@ -171,7 +157,7 @@ BACO.store = (function () {
         const pr = document.getElementById('preview');
         const btnPr = document.getElementById('btnPreview');
         const previewActiva = Boolean((pr && !pr.hidden) || (btnPr && btnPr.classList.contains('sel')));
-        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_BORRADOR', 'CONFORMIDAD_USUARIO', 'EDICION_FINAL', 'FINALIZADO'];
+        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_TIPO', 'REVISION_METADATOS', 'EDICION_FINAL', 'FINALIZADO'];
 
         let deshab;
         if (esEnriq && previewActiva) {
@@ -210,11 +196,6 @@ BACO.store = (function () {
 
     /* Aplica la respuesta de un turno del backend */
     aplicarTurno(r) {
-      if (r && r.estado === 'FINALIZADO') {
-        const noEsVolver = (item) => (typeof item === 'object' && item !== null ? item.accion : item) !== 'volver';
-        if (Array.isArray(r.opciones)) r.opciones = r.opciones.filter(noEsVolver);
-        if (Array.isArray(r.botones)) r.botones = r.botones.filter(noEsVolver);
-      }
       estado.session_id = r.session_id;
       estado.flujo = r.estado;
       if (r.etapa) {
@@ -226,18 +207,8 @@ BACO.store = (function () {
             ? r.etapa.etapas.slice()
             : ETAPAS_DEFAULT.slice()
         };
-      } else {
-        let pasoFallback = (BACO.ESTADOS[r.estado] || {}).paso || 1;
-        if (r.borrador && r.borrador.metadatos_anteriores && !r.borrador.metadatos_heredados_revisados && pasoFallback > 3) {
-          pasoFallback = 3;
-        }
-        estado.etapa = {
-          actual: pasoFallback,
-          total: 5,
-          nombre: ETAPAS_DEFAULT[pasoFallback - 1] || '',
-          etapas: ETAPAS_DEFAULT.slice()
-        };
       }
+      /* Sin `etapa` en la respuesta se conserva la anterior: el back la envía siempre. */
       const normalizarBoton = (b) => {
         if (typeof b === 'object' && b !== null) {
           return {
@@ -258,6 +229,14 @@ BACO.store = (function () {
         estado.botones = [];
       }
       estado.opciones = rawOpciones.map(normalizarBoton);
+      /* Navegación (volver, ver_articulo_final): nunca viene en opciones/botones.
+         Provisorio: se muestra al final de los botones del chat hasta definir su diseño en el panel. */
+      estado.navegacion = Array.isArray(r.navegacion) ? r.navegacion.slice() : [];
+      const accionesChat = estado.botones.map((b) => b.accion);
+      estado.navegacion.forEach((n) => {
+        if (!accionesChat.includes(n)) estado.botones.push(normalizarBoton(n));
+      });
+      estado.editables = Array.isArray(r.editables) ? r.editables.slice() : [];
       estado.tags_acumulados = Array.isArray(r.tags_acumulados)
         ? r.tags_acumulados.slice()
         : ((r.borrador && r.borrador.tags) ? r.borrador.tags.slice() : []);
@@ -356,9 +335,6 @@ BACO.store = (function () {
         if (res.estado) {
           estado.flujo = res.estado;
         }
-        if (res.borrador && typeof res.borrador.conforme === 'boolean') {
-          estado.borrador.conforme = res.borrador.conforme;
-        }
         if (typeof res.multimedia_habilitada === 'boolean') {
           actualizarDisponibilidadRecursos(res);
         }
@@ -387,6 +363,7 @@ BACO.store = (function () {
         etapas: ETAPAS_DEFAULT.slice()
       };
       estado.opciones = []; estado.botones = []; estado.tags_acumulados = [];
+      estado.navegacion = []; estado.editables = ['titulo'];
       estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;
       actualizarDisponibilidadRecursos({ multimedia_habilitada: false });

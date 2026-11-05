@@ -98,17 +98,15 @@ BACO.apiHttp = (function () {
 
     /* --------------------------------------------------------
        Un turno del orquestador.
-       payload: { mensaje, accion, titulo, texto, categoria_id, tags }
-       Devuelve: { session_id, estado, mensaje, opciones,
-                   coincidencias, borrador, validacion,
-                   aviso_privacidad }
+       payload: { mensaje, accion, titulo, texto, texto_editor,
+                  categoria_id, tags, tipo_plantilla }
+       Devuelve: { session_id, estado, etapa, mensaje, opciones,
+                   botones, navegacion, editables, coincidencias,
+                   borrador, validacion, aviso_privacidad }
        -------------------------------------------------------- */
     async turno(payload) {
       const cuerpo = Object.assign({}, payload || {});
       delete cuerpo.session_id;            // deprecado, el backend lo ignora
-      delete cuerpo.prompt;                // esquema viejo no admitido
-      delete cuerpo.skill;
-      delete cuerpo.tipo_plantilla;
       delete cuerpo.borrador;
       const r = await pedir('POST', '/chat', cuerpo);
       /* Al rechazar, el backend borra la cookie: se descarta la sesión */
@@ -116,12 +114,9 @@ BACO.apiHttp = (function () {
       return r;
     },
 
-    /* Borrador en conformidad y sanitizado de la sesión activa */
+    /* Borrador finalizado de la sesión activa (solo en FINALIZADO; si no, 409) */
     borradorConforme() {
       return pedir('GET', '/chat/borrador');
-    },
-    borradorAprobado() {
-      return this.borradorConforme();
     },
 
     /* Skill 'plantillas': reestructura el borrador en su formato oficial.

@@ -28,23 +28,23 @@ API_KEY: '...',            // el API_KEY_SERVIDOR de su .env
 
 ## El flujo
 
-El backend conduce. Cada turno devuelve un `estado` y una lista de `opciones`, y el panel se acomoda: habilita los campos que corresponden y muestra los botones disponibles.
+El backend conduce. Cada turno devuelve un `estado`, las `opciones` (botones del chat), la `navegacion` (p. ej. *volver*) y los `editables` (campos del panel), y el panel se acomoda: habilita los campos de `editables` y muestra los botones disponibles.
 
 ```
 ESPERANDO_TITULO → DECISION_TITULO → ESPERANDO_TEXTO → DECISION_TEXTO
-       → ESPERANDO_PLANTILLA → ESPERANDO_METADATOS → REVISION_BORRADOR
-       → CONFORMIDAD_USUARIO / RECHAZADO
+       → ESPERANDO_PLANTILLA → REVISION_TIPO → ESPERANDO_METADATOS
+       → REVISION_METADATOS → EDICION_FINAL → FINALIZADO / RECHAZADO
 ```
 
-Desde la versión del 22/10 **se puede volver atrás en cada paso**: el backend ofrece la opción *volver* y el panel la muestra como botón. Ya no es un camino de una sola dirección.
+Desde la versión del 22/10 **se puede volver atrás en cada paso**: el backend la declara en `navegacion` (no en `opciones`) y, por ahora, el panel la muestra como botón del chat. Ya no es un camino de una sola dirección.
 
 | Paso | Qué pide | Mínimo que exige el backend |
 |---|---|---|
 | 1 | Título | 15 a 255 caracteres |
 | 2 | Contenido | 20 a 16777 caracteres (skills disponibles hasta 6687) |
 | 3 | Plantilla (`instructivo` o `soluciones`) y etiquetas | 2 a 5 etiquetas |
-| 4 | Revisión: editar, sanitizar, confirmar conformidad o rechazar | sin hallazgos bloqueantes |
-| 5 | Conformidad | — |
+| 4 | Revisión: aplicar plantilla (`REVISION_TIPO`), auditar (`REVISION_METADATOS`) y edición final | sin hallazgos bloqueantes |
+| 5 | Finalizado | — |
 
 En los pasos que esperan un dato, **el chat también sirve para contestar**: lo que escribas ahí alimenta el flujo. En los demás, es una consulta libre al agente.
 
@@ -88,12 +88,12 @@ La regla que hace barata la integración: **la UI no conoce `fetch` ni URLs**. L
 
 ## Diferencias con el contrato que habíamos escrito
 
-El backend quedó bastante distinto de lo que habíamos propuesto en `CONTRATO-API.md`. **Ganó el de Caro**, que es el que existe. Lo que cambió:
+El backend quedó bastante distinto de lo que habíamos propuesto originalmente. **Ganó el de Caro**, que es el que existe; hoy `CONTRATO-API.md` documenta ese contrato vigente del back. Lo que cambió respecto de la propuesta original:
 
 | Habíamos propuesto | Lo que hay |
 |---|---|
 | CRUD de entradas con varios endpoints | Un solo `POST /chat` que hace avanzar una máquina de estados |
 | El panel manejaba el estado | El backend manda; el panel refleja |
 | Análisis asincrónico con polling | Validación sincrónica en cada turno |
-| Endpoint de publicación | No existe todavía: el flujo termina en `CONFORMIDAD_USUARIO` |
+| Endpoint de publicación | No existe todavía: el flujo termina en `FINALIZADO` |
 | Catálogos de categorías y etiquetas | No hay; la categoría es un ID numérico |

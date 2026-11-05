@@ -353,7 +353,7 @@
     } else if (res.status === 409) {
       borrador = obtenerBorradorSesionExistente();
       if (!borrador) {
-        let detalle = 'El borrador todavía no cuenta con conformidad registrada.';
+        let detalle = 'El borrador todavía no fue finalizado.';
         try {
           const errJson = await res.json();
           if (errJson && errJson.detail) detalle = errJson.detail;

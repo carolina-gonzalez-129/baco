@@ -533,7 +533,7 @@
     if (b.cargando || deshabilitado) btnX.disabled = true;
     // Ocultar la × si el texto no es editable en el estado actual o si se está enviando
     const sActual = store.get();
-    const actRec = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[sActual.flujo]) || {};
+    const actRec = BACO.camposActivos(sActual);
     if (!actRec.texto || sActual.enviando) btnX.hidden = true;
     item.appendChild(btnX);
 
@@ -621,7 +621,7 @@
     if (!cont) return;
 
     const s = store.get();
-    const act = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[s.flujo]) || {};
+    const act = BACO.camposActivos(s);
     const deshabilitado = !act.texto || s.enviando || estadoEditor.enviando;
 
     const wrapper = $('#editorBloquesWrapper');
@@ -1066,7 +1066,8 @@
       if (r.aviso_privacidad) mostrarAviso(r.aviso_privacidad);
 
       const opcionesTurno = Array.isArray(r.opciones) ? r.opciones.slice() : [];
-      const botonesTurno = Array.isArray(r.botones) ? r.botones.slice() : [];
+      // Botones del store: opciones del turno + navegación (aplicarTurno ya los armó).
+      const botonesTurno = (store.get().botones || []).slice();
       decir(nl2br(r.mensaje), opcionesTurno, false, botonesTurno);
 
       return r;
@@ -1263,7 +1264,7 @@
     const railAviso = $('#avisoSkillsRail');
     const bannerSkills = $('#bannerSkills');
 
-    const estadoOk = s.flujo === 'REVISION_BORRADOR' || s.flujo === 'EDICION_FINAL';
+    const estadoOk = ['REVISION_TIPO', 'REVISION_METADATOS', 'EDICION_FINAL'].includes(s.flujo);
     let motivoBase = null;
     if (!b) motivoBase = 'Todavía no hay un borrador armado.';
     else if (!estadoOk) motivoBase = 'Las skills se habilitan en la revisión del borrador.';
@@ -1273,10 +1274,11 @@
     }
 
     let motivoPl = motivoBase;
+    if (!motivoPl && s.flujo === 'REVISION_METADATOS') motivoPl = 'La plantilla se aplica en su paso o en la edición final.';
     if (!motivoPl && !b.tipo_plantilla) motivoPl = 'Primero elegí un tipo de plantilla.';
 
     let motivoAud = motivoBase;
-    if (!motivoAud && b.revision_intermedia) {
+    if (!motivoAud && s.flujo === 'REVISION_TIPO') {
       motivoAud = 'El validador se habilita después de definir categoría y etiquetas.';
     } else if (!motivoAud && (b.categoria_id == null || !Array.isArray(b.tags) || b.tags.length < 2)) {
       motivoAud = 'Requiere categoría y al menos 2 etiquetas.';
@@ -1486,7 +1488,7 @@
       btnQuitar.title = 'Eliminar recurso';
       btnQuitar.textContent = '×';
       // Mostrar la × solo si el texto es editable en el estado actual y no se está enviando
-      const actPrev = (BACO.CAMPOS_ACTIVOS && BACO.CAMPOS_ACTIVOS[st.flujo]) || {};
+      const actPrev = BACO.camposActivos(st);
       if (actPrev.texto && !st.enviando) mediaEl.appendChild(btnQuitar);
 
       const contentEl = document.createElement('div');
@@ -1801,7 +1803,7 @@
   function pintarResumenFinal(s) {
     const slot = $('#slotResumenFinal');
     if (!slot) return;
-    if ((s.flujo !== 'CONFORMIDAD_USUARIO' && s.flujo !== 'APROBADO') || !s.borrador) {
+    if (s.flujo !== 'FINALIZADO' || !s.borrador) {
       slot.innerHTML = '';
       return;
     }
@@ -1905,7 +1907,8 @@
     const enForm = (s.form.tags || []).find(esTipoPlantilla) || null;
     const actual = pendiente || enForm || (s.borrador && s.borrador.tipo_plantilla) || null;
     const act = BACO.camposActivos(s);
-    const editable = s.flujo === 'EDICION_FINAL' && Boolean(act.tipo_plantilla) && !s.enviando && !pendiente;
+    // El tipo viaja dentro de tags: el selector solo se habilita si el back acepta ambos (hoy, EDICION_FINAL).
+    const editable = Boolean(act.tipo_plantilla) && Boolean(act.tags) && !s.enviando && !pendiente;
     fila.querySelectorAll('[data-tipo]').forEach((b) => {
       const t = b.getAttribute('data-tipo');
       const sel = t === actual;
@@ -1927,7 +1930,7 @@
     const act = BACO.camposActivos(s);
     // En el turno de plantilla y en la revisión intermedia solo se ve el chip del tipo de plantilla.
     const soloPlantilla = s.flujo === 'ESPERANDO_PLANTILLA' ||
-      (s.flujo === 'REVISION_BORRADOR' && Boolean(s.borrador && s.borrador.revision_intermedia));
+      s.flujo === 'REVISION_TIPO';
     const flechaCat = $('#btnFlechaCat');
     if (flechaCat) flechaCat.style.display = soloPlantilla ? 'none' : '';
     ['#fTagsSelect', '#btnFlechaTags', '#tagInput'].forEach((sel) => {
@@ -2037,7 +2040,7 @@
   function pintarValidacion(s) {
     const slot = $('#slotValidacion');
     if (!slot) return;
-    const flujosConValidacion = ['REVISION_BORRADOR', 'CONFORMIDAD_USUARIO', 'APROBADO'];
+    const flujosConValidacion = ['REVISION_TIPO', 'REVISION_METADATOS'];
     if (!s || !flujosConValidacion.includes(s.flujo)) {
       slot.innerHTML = '';
       return;
@@ -2113,7 +2116,7 @@
   const MSG_PLANTILLA_PENDIENTE = 'Confirmá o cancelá el cambio de plantilla para guardar';
   function bloqueaPorCambiosSinGuardar(s, accion) {
     if (accion !== 'auditar' && accion !== 'continuar') return false;
-    if (s.flujo !== 'REVISION_BORRADOR' || !s.borrador || s.borrador.revision_intermedia) return false;
+    if (s.flujo !== 'REVISION_METADATOS' || !s.borrador) return false;
     const ops = (s.opciones || []).map((o) => (o && typeof o === 'object') ? o.accion : o);
     if (!ops.includes('auditar')) return false;
     return hayCambios(s);
@@ -2173,16 +2176,11 @@
       return;
     }
 
-    if (op === 'copiar_borrador') {
-      copiarBorrador();
-      return;
-    }
-
     if (op === 'confirmar_texto') {
       return confirmarTexto();
     }
 
-    if (op === 'editar' && s.flujo === 'REVISION_BORRADOR') {
+    if (op === 'editar' && (s.flujo === 'REVISION_TIPO' || s.flujo === 'REVISION_METADATOS')) {
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
       return enviarTurno({ accion: 'editar' }, label);
@@ -2212,10 +2210,10 @@
       }
       return enviarTurno(payload, label);
     }
-    if (op === 'conforme' || op === 'aprobar' || op === 'continuar_revision' || op === 'finalizar') {
-      // 'continuar_revision' (revisión intermedia), 'conforme' (revisión final) y 'finalizar'
-      // (edición final) guardan antes los cambios pendientes de la Vista previa.
-      const accionFinal = (op === 'continuar_revision' || op === 'finalizar') ? op : 'conforme';
+    if ((op === 'continuar' && s.flujo === 'REVISION_TIPO') || op === 'finalizar') {
+      // 'continuar' en REVISION_TIPO y 'finalizar' (edición final) guardan antes
+      // los cambios pendientes de la Vista previa.
+      const accionFinal = op;
       sincronizarTextoDesdePreview();
       const sAct = store.get();
       const textoVistaPrevia = (sAct.form && typeof sAct.form.texto === 'string') ? sAct.form.texto : '';
@@ -2259,7 +2257,7 @@
           (sPost.validacion && sPost.validacion.valido === false)
         );
         const estadoPost = resGuardar.estado || sPost.flujo;
-        const estadoNoRevision = estadoPost !== 'REVISION_BORRADOR' && estadoPost !== 'EDICION_FINAL';
+        const estadoNoRevision = !['REVISION_TIPO', 'REVISION_METADATOS', 'EDICION_FINAL'].includes(estadoPost);
 
         if (tieneBloqueantes || estadoNoRevision) {
           return;
@@ -2529,9 +2527,9 @@
     const s = store.get();
     try {
       let b = s.borrador;
-      if (s.flujo === 'CONFORMIDAD_USUARIO' || s.flujo === 'APROBADO') {
+      if (s.flujo === 'FINALIZADO') {
         try {
-          b = (api.borradorConforme ? await api.borradorConforme() : await api.borradorAprobado()) || b;
+          b = (await api.borradorConforme()) || b;
         } catch (_) {}
       }
       const titulo = (b && b.titulo) || s.form.titulo || '';
@@ -2703,21 +2701,14 @@
   async function sincronizarConformidadContenidoAdicional(b) {
     if (!b) return;
     const s = store.get();
-    const teniaConformidad = Boolean(b.conforme);
     const teniaFinalizado = Boolean(b.finalizado);
-    if (teniaConformidad) {
-      b.conforme = false;
-      b.conforme_en = null;
-      b.conformidad_invalidada = true;
-    }
     if (teniaFinalizado) {
       b.finalizado = false;
     }
     store.set({ borrador: b });
     renderVistaPreviaEditable();
 
-    const debeSincronizarTurno = (teniaConformidad && s && s.flujo === 'CONFORMIDAD_USUARIO') ||
-      (teniaFinalizado && s && s.flujo === 'FINALIZADO');
+    const debeSincronizarTurno = teniaFinalizado && s && s.flujo === 'FINALIZADO';
     if (debeSincronizarTurno) {
       try {
         const res = await api.turno({});
@@ -2726,7 +2717,7 @@
           renderVistaPreviaEditable();
           if (res.mensaje) {
             const opcionesTurno = Array.isArray(res.opciones) ? res.opciones.slice() : [];
-            const botonesTurno = Array.isArray(res.botones) ? res.botones.slice() : [];
+            const botonesTurno = (store.get().botones || []).slice();
             decir(nl2br(res.mensaje), opcionesTurno, false, botonesTurno);
           }
         }

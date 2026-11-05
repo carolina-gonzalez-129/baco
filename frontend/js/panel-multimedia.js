@@ -125,7 +125,7 @@ BACO.panelMultimedia = (function () {
 
     // Texto original de la API (si existe en las coincidencias o en el borrador inicial)
     const textoOriginalApi = ((s && s.coincidencias && s.coincidencias[0] && s.coincidencias[0].texto_original) ||
-      (s && s.borrador && s.borrador.texto_original_aprobado) || '').trim();
+      (s && s.borrador && s.borrador.texto_original) || '').trim();
 
     // El texto base limpio original sin markdown de imágenes ni adjuntos
     const textoOriginalLimpioApi = (s && s.borrador && typeof s.borrador.texto_base_limpio === 'string' && s.borrador.texto_base_limpio.trim())

@@ -112,7 +112,7 @@ Cada error trae un botón **Reintentar** que repite el pedido sin hacerte rehace
 
 ## Lo que todavía no existe del lado del backend
 
-- **No hay endpoint de publicación.** El flujo termina en `CONFORMIDAD_USUARIO`.
+- **No hay endpoint de publicación.** El flujo termina en `FINALIZADO`.
 - **No hay catálogo** de categorías ni etiquetas; la categoría es un ID numérico. Caro dejó anotado en su código que habría que agregar un desplegable con los nombres.
 - **Solo dos plantillas**: `instructivo` y `soluciones`.
 - **No procesa PDF ni Word.** El botón de subir lee `.txt` y `.md` en el navegador.
