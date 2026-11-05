@@ -75,9 +75,6 @@ class EstadoFlujo(str, Enum):
     ESPERANDO_PLANTILLA = "ESPERANDO_PLANTILLA"
     ESPERANDO_METADATOS = "ESPERANDO_METADATOS"
     REVISION_BORRADOR = "REVISION_BORRADOR"
-    # SUBSANANDO_BORRADOR se preserva por compatibilidad de esquema OpenAPI/Front,
-    # pero el flujo operativo gestiona la subsanación bloqueante dentro de REVISION_BORRADOR.
-    SUBSANANDO_BORRADOR = "SUBSANANDO_BORRADOR"
     EDICION_FINAL = "EDICION_FINAL"
     FINALIZADO = "FINALIZADO"
     RECHAZADO = "RECHAZADO"

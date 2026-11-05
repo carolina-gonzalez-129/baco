@@ -41,7 +41,6 @@ ESTADOS_EDICION_LIBRE = {
     EstadoFlujo.ESPERANDO_PLANTILLA,
     EstadoFlujo.ESPERANDO_METADATOS,
     EstadoFlujo.REVISION_BORRADOR,
-    EstadoFlujo.SUBSANANDO_BORRADOR,
 
 }
 
@@ -436,7 +435,7 @@ def aplicar_edicion_campos(
     opcion_actual = interpretar_opcion(req)
     es_continuar = opcion_actual in ("continuar", "continuar_revision", "finalizar", "editar")
     es_edicion_final = sesion.estado == EstadoFlujo.EDICION_FINAL
-    es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR, EstadoFlujo.EDICION_FINAL)
+    es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.EDICION_FINAL)
     if es_edicion_final:
         es_continuar = True
     # En ESPERANDO_PLANTILLA no se aceptan categoría ni tags temáticos (se cargan en ESPERANDO_METADATOS).

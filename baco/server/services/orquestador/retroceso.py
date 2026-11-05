@@ -180,7 +180,6 @@ def _restaurar_skill_pendiente(sesion: SesionChat) -> None:
 
 def _restaurar_revision_borrador(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("REVISION_BORRADOR")
-    sesion.limpiar_fallos("SUBSANANDO_BORRADOR")
     _restaurar_skill_pendiente(sesion)
     sesion.metadatos_heredados_revisados = False
     if sesion.borrador is not None:
@@ -189,7 +188,6 @@ def _restaurar_revision_borrador(sesion: SesionChat) -> None:
 
 def _restaurar_revision_borrador_nuevo(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("REVISION_BORRADOR")
-    sesion.limpiar_fallos("SUBSANANDO_BORRADOR")
     _restaurar_skill_pendiente(sesion)
     # Desde la revisión intermedia se vuelve a elegir plantilla reseteando tipo_plantilla.
     if sesion.borrador and sesion.borrador.revision_intermedia:
@@ -382,22 +380,6 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_revision_borrador_nuevo,
     ),
 
-    # SUBSANANDO_BORRADOR: idéntico a REVISION_BORRADOR
-    (EstadoFlujo.SUBSANANDO_BORRADOR, "nuevo"): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
-    ),
-    (EstadoFlujo.SUBSANANDO_BORRADOR, "enriquecimiento"): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
-    ),
-    (EstadoFlujo.SUBSANANDO_BORRADOR, "actualizar"): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
-    ),
     # EDICION_FINAL: vuelve a revisión final
     (EstadoFlujo.EDICION_FINAL, "nuevo"): ReglaRetroceso(
         estado_destino=EstadoFlujo.REVISION_BORRADOR,
@@ -420,11 +402,6 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_edicion_final,
     ),
 
-    (EstadoFlujo.SUBSANANDO_BORRADOR, None): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
-    ),
 }
 
 

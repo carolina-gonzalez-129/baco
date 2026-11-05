@@ -2037,7 +2037,7 @@
   function pintarValidacion(s) {
     const slot = $('#slotValidacion');
     if (!slot) return;
-    const flujosConValidacion = ['REVISION_BORRADOR', 'SUBSANANDO_BORRADOR', 'CONFORMIDAD_USUARIO', 'APROBADO'];
+    const flujosConValidacion = ['REVISION_BORRADOR', 'CONFORMIDAD_USUARIO', 'APROBADO'];
     if (!s || !flujosConValidacion.includes(s.flujo)) {
       slot.innerHTML = '';
       return;

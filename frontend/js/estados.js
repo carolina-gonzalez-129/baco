@@ -25,8 +25,6 @@ BACO.ESTADOS = {
                         ayuda: 'Agregá al menos un tag temático además del tipo de plantilla y elegí la categoría.' },
   REVISION_BORRADOR:  { etiqueta: 'En revisión',         tono: 'info',    paso: 4,
                         ayuda: 'El borrador está validado. Podés editarlo, sanitizarlo, confirmar tu conformidad o rechazarlo.' },
-  SUBSANANDO_BORRADOR:{ etiqueta: 'Corrigiendo',          tono: 'alerta',  paso: 4,
-                        ayuda: 'Hay observaciones bloqueantes. Corregilas en el panel y guardá los cambios.' },
   APROBADO:           { etiqueta: 'Continuar',            tono: 'ok',      paso: 5,
                         ayuda: 'El artículo quedó con tu conformidad registrada y sanitizado.' },
   EDICION_FINAL:      { etiqueta: 'Edición final',        tono: 'info',    paso: 5,
@@ -45,7 +43,6 @@ BACO.CAMPOS_ACTIVOS = {
   ESPERANDO_PLANTILLA: { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: true },
   ESPERANDO_METADATOS: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
   REVISION_BORRADOR:   { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
-  SUBSANANDO_BORRADOR: { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: false },
   EDICION_FINAL:       { titulo: true,  texto: true,  tags: true,  categoria: true,  tipo_plantilla: true },
   FINALIZADO:          { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false },
   RECHAZADO:           { titulo: false, texto: false, tags: false, categoria: false, tipo_plantilla: false }
@@ -66,7 +63,6 @@ BACO.ACCION_PRINCIPAL = {
   ESPERANDO_TEXTO:     { label: 'Confirmar texto',    campo: 'texto'  },
   ESPERANDO_METADATOS: { label: 'Enviar datos',       campo: 'tags'   },
   REVISION_BORRADOR:   { label: 'Guardar cambios',    campo: 'todo'   },
-  SUBSANANDO_BORRADOR: { label: 'Guardar cambios',    campo: 'todo'   },
   EDICION_FINAL:       { label: 'Guardar cambios',    campo: 'todo'   }
 };
 
@@ -175,7 +171,7 @@ BACO.store = (function () {
         const pr = document.getElementById('preview');
         const btnPr = document.getElementById('btnPreview');
         const previewActiva = Boolean((pr && !pr.hidden) || (btnPr && btnPr.classList.contains('sel')));
-        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_BORRADOR', 'SUBSANANDO_BORRADOR', 'CONFORMIDAD_USUARIO', 'EDICION_FINAL', 'FINALIZADO'];
+        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_BORRADOR', 'CONFORMIDAD_USUARIO', 'EDICION_FINAL', 'FINALIZADO'];
 
         let deshab;
         if (esEnriq && previewActiva) {

@@ -1728,6 +1728,5 @@ STATE_HANDLERS: Dict[EstadoFlujo, EstadoHandler] = {
     EstadoFlujo.ESPERANDO_PLANTILLA: handle_esperando_plantilla,
     EstadoFlujo.ESPERANDO_METADATOS: handle_esperando_metadatos,
     EstadoFlujo.REVISION_BORRADOR: handle_revision_borrador,
-    EstadoFlujo.SUBSANANDO_BORRADOR: handle_revision_borrador,
     EstadoFlujo.EDICION_FINAL: handle_edicion_final,
 }

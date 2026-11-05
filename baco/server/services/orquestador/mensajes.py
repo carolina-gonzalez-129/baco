@@ -385,7 +385,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             ["volver"],
         )
 
-    if est in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.SUBSANANDO_BORRADOR):
+    if est == EstadoFlujo.REVISION_BORRADOR:
         if getattr(sesion, "confirmando_rechazo", False):
             return (
                 "⚠️ ¿Seguro que querés descartar el borrador? Tocá **Sí, descartar** para cancelarlo definitivamente o **Volver** para conservarlo.",

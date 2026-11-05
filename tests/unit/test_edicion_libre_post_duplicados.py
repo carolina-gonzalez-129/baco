@@ -47,7 +47,6 @@ def test_estados_edicion_libre_constante():
         EstadoFlujo.ESPERANDO_PLANTILLA,
         EstadoFlujo.ESPERANDO_METADATOS,
         EstadoFlujo.REVISION_BORRADOR,
-        EstadoFlujo.SUBSANANDO_BORRADOR,
     }
 
 
@@ -287,25 +286,6 @@ async def test_etapas_duplicados_no_usan_edicion_libre():
     resp = await manejar_turno(req, buscador)
     buscador.evaluar_titulo.assert_called_once()
     assert resp.estado == EstadoFlujo.ESPERANDO_TEXTO
-
-
-@pytest.mark.anyio
-async def test_edicion_en_subsanando_borrador():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.SUBSANANDO_BORRADOR)
-    sesion.ultimas_opciones = ["editar", "rechazar"]
-    buscador = MagicMock(spec=BuscadorDuplicados)
-
-    nuevo_texto = "Texto subsanado directamente sin mensajes ruidosos en el chat."
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        texto=nuevo_texto,
-    )
-
-    resp = await manejar_turno(req, buscador)
-    assert resp.estado == EstadoFlujo.SUBSANANDO_BORRADOR
-    assert resp.opciones == ["editar", "rechazar"]
-    assert resp.mensaje == ""
-    assert resp.texto_limpio == nuevo_texto
 
 
 @pytest.mark.anyio

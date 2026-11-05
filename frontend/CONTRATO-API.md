@@ -78,7 +78,6 @@ La máquina de estados de BACO (`baco/server/schemas/chat_orquestado.py`) define
 | `ESPERANDO_PLANTILLA`| 3 (Plantilla y etiquetas) | Espera la selección de formato (`instructivo` o `soluciones`) |
 | `ESPERANDO_METADATOS` | 3 (Plantilla y etiquetas) | Espera la asignación de categoría y al menos 2 etiquetas |
 | `REVISION_BORRADOR` | 4 (Revisión) | Borrador con validación determinista. Permite revisión intermedia o final, auditar con skills o avanzar |
-| `SUBSANANDO_BORRADOR` | 4 (Revisión) | Subsanación de hallazgos bloqueantes (operado dentro de `REVISION_BORRADOR`) |
 | `EDICION_FINAL` | 4 (Revisión) | Último paso antes de registrar. Permite editar libremente campos y finalizar |
 | `FINALIZADO` | 5 (Conformidad) | Borrador registrado y sanitizado, listo para moderación. Estado terminal |
 | `RECHAZADO` | 5 (Conformidad) | Borrador descartado y sesión cerrada. Estado terminal |

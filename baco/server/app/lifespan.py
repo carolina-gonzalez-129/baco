@@ -12,6 +12,7 @@ def _get_mcp_http_app():
     return mcp_http_app
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import baco.server.db.config as cfg
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI):
         get_model_texto()
         embedding_titulo("Calentamiento inicial de grafos y kernels ONNX para titulo")
         embedding_texto("Instructivo de calentamiento de grafos ONNX para texto y calculo de embeddings")
+
         async with _get_mcp_http_app().lifespan(app):
             yield
     finally:
