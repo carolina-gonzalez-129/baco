@@ -105,6 +105,22 @@ class BotonOpcion(BaseModel):
     estilo: str = Field(default="btn-ghost", description="Clase CSS del botón")
 
 
+class AccionPanel(BaseModel):
+    accion: str = Field(..., description="Acción del botón principal del panel: 'confirmar_texto', 'enviar_datos' o 'guardar'. 'guardar' no viaja como `accion`: el front envía solo los `campos`.")
+    label: str = Field(..., description="Texto visible del botón principal del panel.")
+    campos: List[str] = Field(default_factory=list, description="Campos del panel que el botón envía (subconjunto de `editables`).")
+
+
+class SkillDisponibilidad(BaseModel):
+    habilitada: bool = Field(default=False, description="True si la skill se puede ejecutar en el estado actual.")
+    motivo: Optional[str] = Field(default=None, description="Motivo por el que está deshabilitada (None si está habilitada).")
+
+
+class SkillsEstado(BaseModel):
+    plantilla: SkillDisponibilidad = Field(default_factory=SkillDisponibilidad)
+    auditor: SkillDisponibilidad = Field(default_factory=SkillDisponibilidad)
+
+
 class CategoriaOpcion(BaseModel):
     id: int = Field(..., description="ID de la categoría en la tabla 'categorias'.")
     nombre: str = Field(..., description="Nombre de la categoría en la tabla 'categorias'.")
@@ -791,6 +807,14 @@ class ChatOrquestadorResponse(BaseModel):
     botones: List[BotonOpcion] = Field(
         default_factory=list,
         description="Botones inyectados dinámicamente por el servidor.",
+    )
+    accion_panel: Optional[AccionPanel] = Field(
+        default=None,
+        description="Botón principal del panel en el estado actual (None si el estado no tiene).",
+    )
+    skills: SkillsEstado = Field(
+        default_factory=SkillsEstado,
+        description="Disponibilidad de cada skill (plantilla, auditor) en el estado actual, según ESTADOS_SKILL.",
     )
     tags_acumulados: List[str] = Field(
         default_factory=list,

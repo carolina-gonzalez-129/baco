@@ -957,7 +957,12 @@ def construir_respuesta(
 
     # Las opciones de metadatos heredados las define solo continuar.py
     # (_resp_metadatos_heredados); acá no se pisan.
-    from baco.server.services.orquestador.contrato import campos_editables, separar_opciones
+    from baco.server.services.orquestador.contrato import (
+        accion_panel,
+        campos_editables,
+        estado_skills,
+        separar_opciones,
+    )
 
     opciones_finales, navegacion_final = separar_opciones(sesion, list(opciones))
 
@@ -972,6 +977,8 @@ def construir_respuesta(
         opciones=opciones_finales,
         editables=campos_editables(sesion),
         navegacion=navegacion_final,
+        accion_panel=accion_panel(sesion),
+        skills=estado_skills(sesion, skills_hab, skills_mot),
         tags_acumulados=obtener_tags_acumulados(sesion),
         categorias_disponibles=list(sesion.categorias_disponibles),
         tags_disponibles=list(sesion.tags_disponibles),
@@ -984,7 +991,7 @@ def construir_respuesta(
         multimedia_habilitada=multimedia_habilitada(sesion),
         skills_habilitadas=skills_hab,
         skills_motivo=skills_mot,
-        validacion=sesion.validacion,
+        validacion=sesion.validacion if sesion.estado in (EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS) else None,
         aviso_privacidad=aviso_privacidad,
         aviso_metadatos_heredados=meta_aviso_final,
         plantilla_pendiente=getattr(sesion, "plantilla_pendiente", None),

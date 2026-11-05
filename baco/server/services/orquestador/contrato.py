@@ -66,6 +66,22 @@ ESTADOS_SKILL = {
 }
 
 
+# Botón principal del panel por estado. "guardar" no viaja como accion: el front envía los campos.
+_ACCION_PANEL = {
+    EstadoFlujo.ESPERANDO_TEXTO: ("confirmar_texto", "Confirmar texto"),
+    EstadoFlujo.ESPERANDO_METADATOS: ("enviar_datos", "Enviar datos"),
+    EstadoFlujo.REVISION_TIPO: ("guardar", "Guardar cambios"),
+    EstadoFlujo.REVISION_METADATOS: ("guardar", "Guardar cambios"),
+    EstadoFlujo.EDICION_FINAL: ("guardar", "Guardar cambios"),
+}
+
+# Motivo cuando la skill no corre en el estado actual.
+_MOTIVO_FUERA_DE_ESTADO = {
+    ("plantilla", EstadoFlujo.REVISION_METADATOS): "La plantilla se aplica en su paso o en la edición final.",
+    ("auditor", EstadoFlujo.REVISION_TIPO): "El validador se habilita después de definir categoría y etiquetas.",
+}
+
+
 def skill_permitida(estado, skill: str) -> bool:
     return estado in ESTADOS_SKILL.get(skill, frozenset())
 
@@ -203,3 +219,41 @@ def filtrar_campos_no_editables(
             descartes.append((_ETIQUETAS_CAMPO[campo], _motivo_descarte(sesion, campo)))
         setattr(req, campo, None)
     return descartes
+
+
+def accion_panel(sesion) -> Optional[dict]:
+    par = _ACCION_PANEL.get(sesion.estado)
+    if par is None:
+        return None
+    accion, label = par
+    return {"accion": accion, "label": label, "campos": campos_editables(sesion)}
+
+
+def estado_skills(sesion, habilitadas: bool, motivo: Optional[str]) -> dict:
+    """Disponibilidad de cada skill. `habilitadas`/`motivo`: límite de largo del borrador."""
+    b = sesion.borrador
+    v = getattr(sesion, "validacion", None)
+    con_bloqueantes = (
+        sesion.estado in (EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS)
+        and v is not None and getattr(v, "status", None) == "Pendiente"
+    )
+    res = {}
+    for skill in ("plantilla", "auditor"):
+        if b is None:
+            m = "Todavía no hay un borrador armado."
+        elif not skill_permitida(sesion.estado, skill):
+            m = _MOTIVO_FUERA_DE_ESTADO.get(
+                (skill, sesion.estado), "Las skills se habilitan en la revisión del borrador."
+            )
+        elif con_bloqueantes:
+            m = "Primero resolvé los bloqueantes de la validación."
+        elif not habilitadas:
+            m = motivo or "Las skills de asistencia del agente están deshabilitadas para este borrador."
+        elif skill == "plantilla" and not b.tipo_plantilla:
+            m = "Primero elegí un tipo de plantilla."
+        elif skill == "auditor" and (b.categoria_id is None or len(b.tags or []) < 2):
+            m = "Requiere categoría y al menos 2 etiquetas."
+        else:
+            m = None
+        res[skill] = {"habilitada": m is None, "motivo": m}
+    return res

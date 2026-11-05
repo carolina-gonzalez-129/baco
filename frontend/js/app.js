@@ -1042,7 +1042,7 @@
           reconstruirBloques(bloquesAutorizados, recsAutorizados, b);
         }
         renderBloques();
-      } else if (r && !r.borrador && !r.texto_limpio && r.estado === 'ESPERANDO_TEXTO') {
+      } else if (r && !r.borrador && !r.texto_limpio && r.accion_panel && r.accion_panel.accion === 'confirmar_texto') {
         estadoEditor.modo = 'edicion';
         reconstruirBloques([''], [], null);
         renderBloques();
@@ -1184,8 +1184,8 @@
       chatIn.placeholder = 'Respondé acá o preguntale algo a BACO…';
     }
 
-    /* Botón principal */
-    const acc = BACO.ACCION_PRINCIPAL[s.flujo];
+    /* Botón principal: sale de accion_panel del back */
+    const acc = accionPanel(s);
     const btn = $('#btnPrincipal');
     if (btn) {
       if (acc) {
@@ -1264,25 +1264,19 @@
     const railAviso = $('#avisoSkillsRail');
     const bannerSkills = $('#bannerSkills');
 
-    const estadoOk = ['REVISION_TIPO', 'REVISION_METADATOS', 'EDICION_FINAL'].includes(s.flujo);
-    let motivoBase = null;
-    if (!b) motivoBase = 'Todavía no hay un borrador armado.';
-    else if (!estadoOk) motivoBase = 'Las skills se habilitan en la revisión del borrador.';
-    else if (b.skills_habilitadas === false) {
-      motivoBase = b.skills_motivo ||
-        'Las skills de asistencia del agente están deshabilitadas para este borrador.';
-    }
-
-    let motivoPl = motivoBase;
-    if (!motivoPl && s.flujo === 'REVISION_METADATOS') motivoPl = 'La plantilla se aplica en su paso o en la edición final.';
-    if (!motivoPl && !b.tipo_plantilla) motivoPl = 'Primero elegí un tipo de plantilla.';
-
-    let motivoAud = motivoBase;
-    if (!motivoAud && s.flujo === 'REVISION_TIPO') {
-      motivoAud = 'El validador se habilita después de definir categoría y etiquetas.';
-    } else if (!motivoAud && (b.categoria_id == null || !Array.isArray(b.tags) || b.tags.length < 2)) {
-      motivoAud = 'Requiere categoría y al menos 2 etiquetas.';
-    }
+    /* Disponibilidad por skill: la declara el back (skills). El largo del borrador puede
+       cambiar entre turnos (endpoints de recursos): si el borrador ya no admite skills, manda eso. */
+    const motivoSkill = (nombre) => {
+      const d = s.skills && s.skills[nombre];
+      if (!d) return 'Las skills se habilitan en la revisión del borrador.';
+      if (!d.habilitada) return d.motivo || 'No disponible en este paso.';
+      if (b && b.skills_habilitadas === false) {
+        return b.skills_motivo || 'Las skills de asistencia del agente están deshabilitadas para este borrador.';
+      }
+      return null;
+    };
+    const motivoPl = motivoSkill('plantilla');
+    const motivoAud = motivoSkill('auditor');
 
     if (btnPl) {
       const off = Boolean(motivoPl);
@@ -1803,7 +1797,7 @@
   function pintarResumenFinal(s) {
     const slot = $('#slotResumenFinal');
     if (!slot) return;
-    if (s.flujo !== 'FINALIZADO' || !s.borrador) {
+    if (!s.borrador || s.borrador.finalizado !== true) {
       slot.innerHTML = '';
       return;
     }
@@ -1869,6 +1863,23 @@
     }
   }
 
+  /* Botón principal del panel (accion_panel del back). `campo` agrupa las reglas de habilitación locales. */
+  const CAMPO_POR_ACCION_PANEL = { confirmar_texto: 'texto', enviar_datos: 'tags', guardar: 'todo' };
+  function accionPanel(s) {
+    const a = s && s.accion_panel;
+    if (!a || !a.accion) return null;
+    return {
+      accion: a.accion,
+      label: a.label || a.accion,
+      campos: Array.isArray(a.campos) ? a.campos : [],
+      campo: CAMPO_POR_ACCION_PANEL[a.accion] || 'todo'
+    };
+  }
+  function esAccionPanel(s, accion) {
+    const a = accionPanel(s);
+    return Boolean(a && a.accion === accion);
+  }
+
   function listoParaEnviar(s, campo) {
     const lenTitTrim = Array.from((s.form.titulo || '').trim()).length;
     const lenTxtTrim = Array.from((s.form.texto || '').trim()).length;
@@ -1928,9 +1939,9 @@
     box.querySelectorAll('.tag').forEach((n) => n.remove());
     const plantilla = s.borrador && s.borrador.tipo_plantilla;
     const act = BACO.camposActivos(s);
-    // En el turno de plantilla y en la revisión intermedia solo se ve el chip del tipo de plantilla.
-    const soloPlantilla = s.flujo === 'ESPERANDO_PLANTILLA' ||
-      s.flujo === 'REVISION_TIPO';
+    // Sin etiquetas editables ni cargadas (paso de plantilla, revisión del tipo) solo se ve el tipo de plantilla.
+    const hayTagsTematicos = (s.form.tags || []).some((t) => !(t === plantilla || esTipoPlantilla(t)));
+    const soloPlantilla = (s.etapa && s.etapa.actual) <= 4 && !act.tags && !hayTagsTematicos;
     const flechaCat = $('#btnFlechaCat');
     if (flechaCat) flechaCat.style.display = soloPlantilla ? 'none' : '';
     ['#fTagsSelect', '#btnFlechaTags', '#tagInput'].forEach((sel) => {
@@ -2040,8 +2051,7 @@
   function pintarValidacion(s) {
     const slot = $('#slotValidacion');
     if (!slot) return;
-    const flujosConValidacion = ['REVISION_TIPO', 'REVISION_METADATOS'];
-    if (!s || !flujosConValidacion.includes(s.flujo)) {
+    if (!s || !s.validacion) {
       slot.innerHTML = '';
       return;
     }
@@ -2143,7 +2153,7 @@
 
     botones.forEach((btnDef) => {
       const accion = typeof btnDef === 'object' && btnDef !== null ? btnDef.accion : btnDef;
-      if (accion === 'confirmar_texto' && BACO.ACCION_PRINCIPAL[s.flujo] && BACO.ACCION_PRINCIPAL[s.flujo].campo === 'texto') {
+      if (accion === 'confirmar_texto' && esAccionPanel(s, 'confirmar_texto')) {
         return;
       }
       const label = (typeof btnDef === 'object' && btnDef !== null && btnDef.label)
@@ -2180,7 +2190,7 @@
       return confirmarTexto();
     }
 
-    if (op === 'editar' && (s.flujo === 'REVISION_TIPO' || s.flujo === 'REVISION_METADATOS')) {
+    if (op === 'editar') {
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
       return enviarTurno({ accion: 'editar' }, label);
@@ -2256,10 +2266,8 @@
           (Array.isArray(resGuardar.opciones) && !resGuardar.opciones.some((op) => (typeof op === 'object' && op !== null ? op.accion : op) === accionFinal)) ||
           (sPost.validacion && sPost.validacion.valido === false)
         );
-        const estadoPost = resGuardar.estado || sPost.flujo;
-        const estadoNoRevision = !['REVISION_TIPO', 'REVISION_METADATOS', 'EDICION_FINAL'].includes(estadoPost);
-
-        if (tieneBloqueantes || estadoNoRevision) {
+        // tieneBloqueantes ya frena si la acción no sigue en resGuardar.opciones.
+        if (tieneBloqueantes) {
           return;
         }
       }
@@ -2366,13 +2374,12 @@
 
   function enviarPrincipal() {
     const s = store.get();
-    const acc = BACO.ACCION_PRINCIPAL[s.flujo];
+    const acc = accionPanel(s);
     if (!acc) return;
     if (s.plantilla_pendiente) { toast(MSG_PLANTILLA_PENDIENTE); return; }
 
-    if (acc.campo === 'titulo') return enviarTurno({ titulo: s.form.titulo }, s.form.titulo);
-    if (acc.campo === 'texto')  return confirmarTexto();
-    if (acc.campo === 'tags') {
+    if (acc.accion === 'confirmar_texto') return confirmarTexto();
+    if (acc.accion === 'enviar_datos') {
       // Título y texto también son editables en este paso: se envían para no perder lo tipeado.
       return enviarTurno(
         {
@@ -2527,7 +2534,7 @@
     const s = store.get();
     try {
       let b = s.borrador;
-      if (s.flujo === 'FINALIZADO') {
+      if (b && b.finalizado === true) {
         try {
           b = (await api.borradorConforme()) || b;
         } catch (_) {}
@@ -2623,8 +2630,7 @@
     $('#chatInput').value = ''; $('#chatInput').style.height = 'auto';
 
     const s = store.get();
-    if (s.flujo === 'ESPERANDO_TITULO')  return enviarTurno({ titulo: v }, v);
-    if (s.flujo === 'ESPERANDO_TEXTO') {
+    if (esAccionPanel(s, 'confirmar_texto')) {
       const cmd = v.toLowerCase();
       if (['volver', 'atras', 'atrás', 'regresar', 'reiniciar', 'ayuda', '?', 'descartar', 'continuar'].includes(cmd)) {
         return enviarTurno({ mensaje: v }, v);
@@ -2641,7 +2647,7 @@
       const acumulado = componerTextoDesdeBloques();
       return enviarTurno({ mensaje: v, texto: acumulado }, v);
     }
-    if (s.flujo === 'ESPERANDO_METADATOS') {
+    if (esAccionPanel(s, 'enviar_datos')) {
       return enviarTurno({ mensaje: v, categoria_id: s.form.categoria_id }, v);
     }
     return enviarTurno({ mensaje: v }, v);
@@ -2699,7 +2705,8 @@
   }
 
   async function sincronizarConformidadContenidoAdicional(b) {
-    if (!b) return;
+    // FINALIZADO es terminal (contrato §1.5): no se reabre el borrador. Borrado pendiente (deuda técnica).
+    if (!b || b.finalizado === true) return;
     const s = store.get();
     const teniaFinalizado = Boolean(b.finalizado);
     if (teniaFinalizado) {
@@ -3334,7 +3341,7 @@
         if (e.key === 'Enter') {
           e.preventDefault();
           const s = store.get();
-          if (s.flujo === 'ESPERANDO_TITULO') {
+          if (!accionPanel(s) && (s.editables || []).includes('titulo')) {
             const tit = s.form.titulo.trim();
             if (Array.from(tit).length >= cfg.MIN_TITULO && !s.enviando) {
               enviarTurno({ titulo: tit }, tit);
@@ -3741,7 +3748,7 @@
         e.target.style.height = 'auto';
         e.target.style.height = Math.min(110, e.target.scrollHeight) + 'px';
         const s = store.get();
-        if (s.flujo === 'ESPERANDO_TEXTO') {
+        if (esAccionPanel(s, 'confirmar_texto')) {
           contadorTexto($('#chatInputCont'), $('#chatInputAvisoMax'), Array.from(e.target.value || '').length, cfg.MIN_TEXTO, cfg.MAX_TEXTO_PERCENTIL_99);
         }
       });
@@ -3755,7 +3762,7 @@
       if ($('#fTitulo')) $('#fTitulo').value = t;
       store.setForm({ titulo: t });
       toast('Título de ejemplo cargado');
-    } else if (s.flujo === 'ESPERANDO_TEXTO') {
+    } else if (esAccionPanel(s, 'confirmar_texto')) {
       const c = BACO.datos.ejemplo.cuerpo;
       const fc = $('#fCuerpo');
       if (fc) fc.value = c;

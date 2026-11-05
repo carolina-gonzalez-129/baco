@@ -12,27 +12,27 @@
 window.BACO = window.BACO || {};
 
 BACO.ESTADOS = {
-  ESPERANDO_TITULO:   { etiqueta: 'Esperando título',    tono: 'proceso', paso: 1,
+  ESPERANDO_TITULO:   { etiqueta: 'Esperando título',    tono: 'proceso',
                         ayuda: 'Escribí el título del artículo (mínimo 15 caracteres) y enviálo. BACO busca duplicados antes de seguir.' },
-  DECISION_TITULO:    { etiqueta: 'Título duplicado',    tono: 'alerta',  paso: 1,
+  DECISION_TITULO:    { etiqueta: 'Título duplicado',    tono: 'alerta',
                         ayuda: 'Encontró un artículo con título parecido. Decidí si lo enriquecés o seguís con uno nuevo.' },
-  ESPERANDO_TEXTO:    { etiqueta: 'Esperando contenido', tono: 'proceso', paso: 2,
+  ESPERANDO_TEXTO:    { etiqueta: 'Esperando contenido', tono: 'proceso',
                         ayuda: 'Escribí o pegá el cuerpo del artículo de a poco (máximo 16777 caracteres, skills disponibles hasta 6687) y tocá "Confirmar texto" cuando esté listo.' },
-  DECISION_TEXTO:     { etiqueta: 'Contenido similar',   tono: 'alerta',  paso: 2,
+  DECISION_TEXTO:     { etiqueta: 'Contenido similar',   tono: 'alerta',
                         ayuda: 'El contenido se parece a uno existente. Elegí si lo enriquecés o continuás con el tuyo.' },
-  ESPERANDO_PLANTILLA:{ etiqueta: 'Elegir plantilla',    tono: 'proceso', paso: 3,
+  ESPERANDO_PLANTILLA:{ etiqueta: 'Elegir plantilla',    tono: 'proceso',
                         ayuda: 'Elegí qué plantilla aplicar: instructivo o soluciones.' },
-  ESPERANDO_METADATOS:{ etiqueta: 'Faltan etiquetas',    tono: 'proceso', paso: 3,
+  ESPERANDO_METADATOS:{ etiqueta: 'Faltan etiquetas',    tono: 'proceso',
                         ayuda: 'Agregá al menos un tag temático además del tipo de plantilla y elegí la categoría.' },
-  REVISION_TIPO:      { etiqueta: 'Revisión de plantilla', tono: 'info',  paso: 4,
+  REVISION_TIPO:      { etiqueta: 'Revisión de plantilla', tono: 'info',
                         ayuda: 'Podés aplicar la plantilla al borrador o continuar sin aplicarla.' },
-  REVISION_METADATOS: { etiqueta: 'Revisión de metadatos', tono: 'info',  paso: 4,
+  REVISION_METADATOS: { etiqueta: 'Revisión de metadatos', tono: 'info',
                         ayuda: 'Podés auditar el borrador con el validador o continuar sin auditar.' },
-  EDICION_FINAL:      { etiqueta: 'Edición final',        tono: 'info',    paso: 5,
+  EDICION_FINAL:      { etiqueta: 'Edición final',        tono: 'info',
                         ayuda: 'Revisá y editá los datos finales. Cuando esté listo, tocá Finalizar.' },
-  FINALIZADO:         { etiqueta: 'Finalizado',           tono: 'ok',      paso: 5,
+  FINALIZADO:         { etiqueta: 'Finalizado',           tono: 'ok',
                         ayuda: 'Borrador registrado. La publicación la hace un moderador.' },
-  RECHAZADO:          { etiqueta: 'Rechazado',           tono: 'alerta',  paso: 5,
+  RECHAZADO:          { etiqueta: 'Rechazado',           tono: 'alerta',
                         ayuda: 'El borrador fue rechazado. Reiniciá para empezar otra carga.' }
 };
 
@@ -47,15 +47,6 @@ BACO.camposActivos = function (s) {
     categoria: ed.includes('categoria_id'),
     tipo_plantilla: ed.includes('tipo_plantilla')
   };
-};
-
-/* Etiqueta y payload del botón principal, según el estado */
-BACO.ACCION_PRINCIPAL = {
-  ESPERANDO_TEXTO:     { label: 'Confirmar texto',    campo: 'texto'  },
-  ESPERANDO_METADATOS: { label: 'Enviar datos',       campo: 'tags'   },
-  REVISION_TIPO:       { label: 'Guardar cambios',    campo: 'todo'   },
-  REVISION_METADATOS:  { label: 'Guardar cambios',    campo: 'todo'   },
-  EDICION_FINAL:       { label: 'Guardar cambios',    campo: 'todo'   }
 };
 
 /* Cómo se muestra cada severidad que devuelve el validador */
@@ -114,6 +105,8 @@ BACO.store = (function () {
     botones: [],
     navegacion: [],
     editables: ['titulo'],
+    accion_panel: null,
+    skills: null,
     tags_acumulados: [],
     categorias_disponibles: [],
     tags_disponibles: [],
@@ -157,11 +150,10 @@ BACO.store = (function () {
         const pr = document.getElementById('preview');
         const btnPr = document.getElementById('btnPreview');
         const previewActiva = Boolean((pr && !pr.hidden) || (btnPr && btnPr.classList.contains('sel')));
-        const estadosPermitidos = ['ESPERANDO_TEXTO', 'ESPERANDO_PLANTILLA', 'ESPERANDO_METADATOS', 'REVISION_TIPO', 'REVISION_METADATOS', 'EDICION_FINAL', 'FINALIZADO'];
 
         let deshab;
         if (esEnriq && previewActiva) {
-          deshab = !estadosPermitidos.includes(estado.flujo) || Boolean(estado.enviando);
+          deshab = !habilitado || Boolean(estado.enviando);
           btnImg.title = !deshab ? 'Agregar imagen al borrador' : TOOLTIP_IMAGEN_DESHABILITADA;
         } else {
           deshab = !habilitado || Boolean(estado.enviando);
@@ -237,6 +229,8 @@ BACO.store = (function () {
         if (!accionesChat.includes(n)) estado.botones.push(normalizarBoton(n));
       });
       estado.editables = Array.isArray(r.editables) ? r.editables.slice() : [];
+      estado.accion_panel = r.accion_panel || null;
+      estado.skills = r.skills || null;
       estado.tags_acumulados = Array.isArray(r.tags_acumulados)
         ? r.tags_acumulados.slice()
         : ((r.borrador && r.borrador.tags) ? r.borrador.tags.slice() : []);
@@ -284,7 +278,7 @@ BACO.store = (function () {
         if (typeof r.texto_limpio === 'string' && r.texto_limpio) {
           estado.form.texto_editor = r.texto_limpio;
           estado.form.texto = r.texto_limpio;
-        } else if (!r.borrador && !r.texto_limpio && r.estado === 'ESPERANDO_TEXTO') {
+        } else if (!r.borrador && !r.texto_limpio && r.accion_panel && r.accion_panel.accion === 'confirmar_texto') {
           estado.form.texto_editor = '';
           estado.form.texto = '';
         }
@@ -364,6 +358,7 @@ BACO.store = (function () {
       };
       estado.opciones = []; estado.botones = []; estado.tags_acumulados = [];
       estado.navegacion = []; estado.editables = ['titulo'];
+      estado.accion_panel = null; estado.skills = null;
       estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;
       actualizarDisponibilidadRecursos({ multimedia_habilitada: false });

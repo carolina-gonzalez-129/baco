@@ -144,12 +144,37 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 | `editables` | `list[str]` | Campos del panel que el back acepta ahora. |
 | `frenar_finalizar` | `bool` | El guardado previo a Finalizar dejó un aviso: no encadenar `finalizar`. |
 | `multimedia_habilitada` | `bool` | Mini panel multimedia operativo (superado `buscar_duplicados`). |
-| `skills_habilitadas` / `skills_motivo` | `bool` / `str?` | Si las skills están disponibles y por qué no. |
+| `accion_panel` | `AccionPanel?` | Botón principal del panel: `{accion, label, campos}` o `null`. Ver 2.3. |
+| `skills` | `SkillsEstado` | `{plantilla: {habilitada, motivo}, auditor: {habilitada, motivo}}`. Ver 2.3. |
+| `skills_habilitadas` / `skills_motivo` | `bool` / `str?` | Solo el límite de largo del borrador (`TEXTO_MAX`). Para habilitar cada skill usar `skills`. |
 | `plantilla_pendiente` | `str?` | En `EDICION_FINAL`: tipo pedido que espera `confirmar_plantilla`/`cancelar_plantilla`. |
 
 **Datos del borrador:** `borrador`, `titulo`, `texto_limpio`, `texto_original` (Editor, previo a skill), `texto_editor`, `tags_acumulados`, `categorias_disponibles`, `tags_disponibles`, `coincidencias` (solo `DECISION_TITULO`/`DECISION_TEXTO`), `validacion`.
 
 **Avisos puntuales:** `aviso_privacidad` (flash del turno), `aviso_metadatos_heredados`.
+
+#### 2.3. `accion_panel` y `skills`
+
+**`accion_panel`** (`contrato.accion_panel`): el front pinta el botón principal desde acá, no desde `estado`.
+
+| Estado | `accion` | `label` | Qué envía el front |
+| :--- | :--- | :--- | :--- |
+| `ESPERANDO_TEXTO` | `confirmar_texto` | Confirmar texto | `accion: "confirmar_texto"` + `texto` |
+| `ESPERANDO_METADATOS` | `enviar_datos` | Enviar datos | los `campos` (categoría, etiquetas y contenido) |
+| `REVISION_TIPO`, `REVISION_METADATOS`, `EDICION_FINAL` | `guardar` | Guardar cambios | solo los `campos`; `guardar` **no** viaja como `accion` |
+| resto | `null` | — | — (en `ESPERANDO_TITULO` Enter en el título envía `{titulo}`) |
+
+`campos` = `editables` del estado.
+
+**`skills`** (`contrato.estado_skills`, a partir de `ESTADOS_SKILL`): por cada skill, `habilitada` y `motivo` (`null` si está habilitada). Orden de evaluación del motivo:
+
+1. Sin borrador → "Todavía no hay un borrador armado."
+2. Estado fuera de `ESTADOS_SKILL` (plantilla: `REVISION_TIPO`, `EDICION_FINAL`; auditor: `REVISION_METADATOS`, `EDICION_FINAL`).
+3. Bloqueantes de la validación en `REVISION_TIPO`/`REVISION_METADATOS`.
+4. Límite de largo (`skills_motivo`).
+5. Plantilla sin `tipo_plantilla`; auditor sin categoría o con menos de 2 etiquetas.
+
+El largo del borrador puede cambiar entre turnos por los endpoints de recursos: si `borrador.skills_habilitadas` pasa a `false`, el front lo prioriza sobre `skills`.
 
 ---
 
