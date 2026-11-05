@@ -1,7 +1,7 @@
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import  Optional, Tuple
 from fastapi import HTTPException
 
 from baco.server.config_limites import (

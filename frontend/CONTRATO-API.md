@@ -279,9 +279,10 @@ Recibe una secuencia de bloques ordenados de texto y recursos, deriva el texto l
       }
     ],
     "aviso": null,
-    "borrador": { ... }
+    "borrador": {}
   }
   ```
+  > `borrador` trae el `BorradorSesion` completo; acá se abrevia como `{}`.
 
 ### `GET /chat/recursos`
 Devuelve el estado consolidado de `bloques_texto` y `recursos` multimedia (`EstadoRecursosResponse`). Requiere haber superado la etapa de duplicados.

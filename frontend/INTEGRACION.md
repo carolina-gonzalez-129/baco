@@ -24,7 +24,7 @@ En `js/config.js`, tres líneas:
 ```js
 MODO: 'http',
 BASE_URL: 'http://127.0.0.1:8080',   // o la URL del túnel
-API_KEY: 'el-API_KEY_SERVIDOR',
+API_KEY: 'el-API_KEY_SERVIDOR'
 ```
 
 **El panel tiene que correr en el 5173** porque es uno de los orígenes que aceptás por CORS. Si preferís otro puerto, se agrega en tu `CORS_ORIGINS`.

@@ -29,15 +29,12 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_SERIE_DECISION,
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
-    OPCIONES_FINALIZADO,
-    MSG_BORRADOR_FINALIZADO,
     OPCIONES_REVISION_BLOQUEANTE,
     OPCIONES_REVISION_VALIDO,
     OPCIONES_CONFIRMAR_RECHAZO,
     MSG_CONFIRMAR_RECHAZO,
     PREFIJO_BORRADOR_ACTUALIZADO,
     PREFIJO_CONTINUAR_PROPIO,
-    PREFIJO_ERROR_CONFORMIDAD,
     PREFIJO_METADATOS_REGISTRADOS,
     OPCIONES_CONFIRMAR_METADATOS,
     msg_confirmar_metadatos,
@@ -50,7 +47,6 @@ from baco.server.services.orquestador.mensajes import (
     msg_error_longitud_minima,
     msg_opcion_invalida,
     msg_pedir_categoria,
-    msg_pedir_metadatos,
     msg_categoria_ambigua,
     msg_categoria_no_encontrada,
     msg_pedir_tag_adicional,
@@ -90,7 +86,6 @@ from baco.server.services.orquestador.validaciones import (
     validar_borrador,
     validar_longitud,
     validar_longitud_maxima,
-    verificar_compuerta_avance,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.edicion import (
