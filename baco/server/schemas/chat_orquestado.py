@@ -74,7 +74,8 @@ class EstadoFlujo(str, Enum):
     DECISION_TEXTO = "DECISION_TEXTO"
     ESPERANDO_PLANTILLA = "ESPERANDO_PLANTILLA"
     ESPERANDO_METADATOS = "ESPERANDO_METADATOS"
-    REVISION_BORRADOR = "REVISION_BORRADOR"
+    REVISION_TIPO = "REVISION_TIPO"
+    REVISION_METADATOS = "REVISION_METADATOS"
     EDICION_FINAL = "EDICION_FINAL"
     FINALIZADO = "FINALIZADO"
     RECHAZADO = "RECHAZADO"
@@ -99,7 +100,7 @@ class CoincidenciaArticulo(BaseModel):
 
 
 class BotonOpcion(BaseModel):
-    accion: str = Field(..., description="Identificador de la acción ('volver', 'confirmar_texto', etc.)")
+    accion: str = Field(..., description="Identificador de la opción del chat ('confirmar_texto', 'continuar', etc.). La navegación ('volver') no viaja acá.")
     label: str = Field(..., description="Texto visible del botón ('Volver', 'Confirmar texto', etc.)")
     estilo: str = Field(default="btn-ghost", description="Clase CSS del botón")
 
@@ -174,10 +175,6 @@ class BorradorSesion(BaseModel):
     metadatos_anteriores: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Metadatos heredados del artículo original: categoria_id, categoria_nombre, tags",
-    )
-    revision_intermedia: bool = Field(
-        default=False,
-        description="True durante revision intermedia.",
     )
     texto_base_revision_final: Optional[str] = Field(
         default=None,
@@ -662,7 +659,7 @@ class ChatOrquestadorRequest(BaseModel):
     )
     accion: Optional[str] = Field(
         default=None,
-        description="Atajo de botón ('confirmar_texto', 'enriquecer', 'descartar', 'continuar', 'editar', 'sanitizar', 'finalizar', 'copiar_borrador', 'rechazar', 'reiniciar')."
+        description="Id de una opción u acción de navegación devuelta en el turno anterior (`opciones`/`navegacion`), una opción global ('reiniciar', 'ayuda') o una acción de panel del estado ('confirmar_texto', 'enviar_datos', 'reaplicar'). Cualquier otra se rechaza. Ver contrato.py."
     )
     titulo: Optional[str] = Field(
         default=None,
@@ -781,7 +778,15 @@ class ChatOrquestadorResponse(BaseModel):
     mensaje: str
     opciones: List[str] = Field(
         default_factory=list,
-        description="Botones o acciones válidas en el estado actual."
+        description="Botones del chat válidos en el estado actual (no incluye la navegación)."
+    )
+    editables: List[str] = Field(
+        default_factory=list,
+        description="Campos del panel que el back acepta en el estado actual; el resto se descarta con aviso.",
+    )
+    navegacion: List[str] = Field(
+        default_factory=list,
+        description="Acciones de navegación disponibles (p. ej. 'volver'); el front decide cómo mostrarlas.",
     )
     botones: List[BotonOpcion] = Field(
         default_factory=list,

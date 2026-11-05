@@ -31,7 +31,8 @@ OPCIONES_PLANTILLAS = ["instructivo", "soluciones"]
 OPCIONES_REVISION_VALIDO = ["auditar", "continuar"]
 OPCIONES_REVISION_BLOQUEANTE = ["editar", "rechazar"]
 
-OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar_revision"]
+OPCIONES_REVISION_INTERMEDIA_VALIDO = ["aplicar_plantilla", "continuar"]
+OPCIONES_CONFIRMAR_RECHAZO = ["confirmar_rechazo", "cancelar_rechazo"]
 OPCIONES_REINICIAR = ["reiniciar"]
 OPCIONES_FINALIZADO = ["ver_articulo_final"]
 OPCIONES_EDICION_FINAL = ["finalizar"]
@@ -46,7 +47,6 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "continuar": {"accion": "continuar", "label": "Continuar", "estilo": "btn-primary"},
     "instructivo": {"accion": "instructivo", "label": "Instructivo", "estilo": "btn-dark"},
     "soluciones": {"accion": "soluciones", "label": "Soluciones", "estilo": "btn-dark"},
-    "continuar_revision": {"accion": "continuar_revision", "label": "Continuar", "estilo": "btn-primary"},
     "aplicar_plantilla": {"accion": "aplicar_plantilla", "label": "Aplicar plantilla", "estilo": "btn-dark"},
     "auditar": {"accion": "auditar", "label": "Auditar", "estilo": "btn-dark"},
     "editar": {"accion": "editar", "label": "Seguir editando", "estilo": "btn-ghost"},
@@ -55,6 +55,7 @@ DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
     "sanitizar": {"accion": "sanitizar", "label": "Quitar datos sensibles", "estilo": "btn-ghost"},
     "rechazar": {"accion": "rechazar", "label": "Descartar borrador", "estilo": "btn-ghost"},
     "confirmar_rechazo": {"accion": "confirmar_rechazo", "label": "Sí, descartar", "estilo": "btn-peligro"},
+    "cancelar_rechazo": {"accion": "cancelar_rechazo", "label": "No, conservarlo", "estilo": "btn-ghost"},
     "aceptar_metadatos": {"accion": "aceptar_metadatos", "label": "Mantener categoría y tags", "estilo": "btn-primary"},
     "rechazar_metadatos": {"accion": "rechazar_metadatos", "label": "Elegir otros", "estilo": "btn-secondary"},
     "enviar_datos": {"accion": "enviar_datos", "label": "Enviar datos", "estilo": "btn-primary"},
@@ -122,7 +123,7 @@ MSG_ELEGIR_PLANTILLA = (
     "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta.\n\n"
     "Vas a poder editar el título y el texto en el paso siguiente."
 )
-MSG_PEDIR_EDICION = "Hacé los cambios que necesites en el Editor."
+MSG_PEDIR_EDICION = "Hacé los cambios que necesites en el **Editor**."
 MSG_RECHAZADO = (
     "Cancelamos el borrador y no se guardó ningún cambio. "
     "Si querés comenzar otra redacción desde el principio, tocá **Empezar de nuevo**."
@@ -153,6 +154,18 @@ MSG_PLANTILLA_VALIDADA = (
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA
+MSG_OPCION_NO_DISPONIBLE = "Esa opción no está disponible en este paso. Elegí una de las opciones de abajo."
+MSG_CONFIRMAR_RECHAZO = (
+    "¿Estás seguro de que querés descartar todo el artículo? Se perderán los cambios realizados en esta sesión."
+)
+
+
+def msg_plantilla_a_aplicar(tipo_plantilla) -> str:
+    """Antes de ejecutar la skill: qué tipo de plantilla se va a usar."""
+    tipo = (tipo_plantilla or "").strip().capitalize()
+    if not tipo:
+        return ""
+    return f"Se va a aplicar la plantilla **{tipo}**. Si no es el tipo correcto, cambialo en el panel antes de aplicarla."
 MSG_USAR_CONTINUAR = (
     "Todavía faltan la categoría y las etiquetas: tocá **Continuar** para completarlas."
 )
@@ -385,18 +398,24 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
             ["volver"],
         )
 
-    if est == EstadoFlujo.REVISION_BORRADOR:
+    if est in (EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS):
         if getattr(sesion, "confirmando_rechazo", False):
             return (
-                "⚠️ ¿Seguro que querés descartar el borrador? Tocá **Sí, descartar** para cancelarlo definitivamente o **Volver** para conservarlo.",
-                ["confirmar_rechazo", "volver"],
+                "⚠️ ¿Seguro que querés descartar el borrador? Tocá **Sí, descartar** para cancelarlo definitivamente o **No, conservarlo** para seguir.",
+                list(OPCIONES_CONFIRMAR_RECHAZO),
             )
         if sesion.validacion and not sesion.validacion.valido:
             return (
                 "⚠️ El borrador tiene observaciones **bloqueantes**. Corregilas en el panel izquierdo y guardá los cambios para continuar.",
                 list(OPCIONES_REVISION_BLOQUEANTE),
             )
-        if sesion.borrador is not None and getattr(sesion.borrador, "revision_intermedia", False):
+        from baco.server.services.orquestador.contrato import auditado, plantilla_aplicada
+
+        if (est == EstadoFlujo.REVISION_TIPO and plantilla_aplicada(sesion)) or (
+            est == EstadoFlujo.REVISION_METADATOS and auditado(sesion)
+        ):
+            return ("Revisá el resultado en la **Vista previa** y tocá **Continuar** cuando esté listo.", ["continuar"])
+        if est == EstadoFlujo.REVISION_TIPO:
             return (
                 "¿Querés darle formato estándar a tu texto? Usá **Aplicar plantilla** en el panel, o seguí editando.",
                 list(OPCIONES_REVISION_INTERMEDIA_VALIDO),
@@ -423,6 +442,11 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
         "💡 Podés continuar escribiendo o tocar **Empezar de nuevo** para reiniciar.",
         OPCIONES_REINICIAR,
     )
+
+MSG_CAMBIO_PLANTILLA_DESCARTADO = (
+    "ℹ️ Descarté el cambio de tipo de plantilla que estaba pendiente de confirmar: "
+    "el tipo quedó como estaba."
+)
 
 MSG_CAMBIO_PLANTILLA_CANCELADO = (
     "Listo, **no cambié** el tipo de plantilla. Todo quedó como estaba.\n\n"

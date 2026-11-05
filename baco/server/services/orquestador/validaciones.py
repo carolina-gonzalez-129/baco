@@ -56,7 +56,8 @@ MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
     EstadoFlujo.DECISION_TEXTO: (2, "Contenido"),
     EstadoFlujo.ESPERANDO_PLANTILLA: (3, "Plantilla y etiquetas"),
     EstadoFlujo.ESPERANDO_METADATOS: (3, "Plantilla y etiquetas"),
-    EstadoFlujo.REVISION_BORRADOR: (4, "Revisión"),
+    EstadoFlujo.REVISION_TIPO: (4, "Revisión"),
+    EstadoFlujo.REVISION_METADATOS: (4, "Revisión"),
     EstadoFlujo.EDICION_FINAL: (4, "Revisión"),
     EstadoFlujo.FINALIZADO: (5, "Conformidad"),
     EstadoFlujo.RECHAZADO: (5, "Conformidad"),
@@ -840,7 +841,9 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
         "si": "enriquecer", "sí": "enriquecer", "1": "enriquecer", "enriquecer": "enriquecer",
         "actualizar": "actualizar", "actualizo": "actualizar",
         "no": "descartar", "2": "descartar", "descartar": "descartar", "continuar": "continuar",
-        "continuar_revision": "continuar_revision", "continuar revision": "continuar_revision", "continuar revisión": "continuar_revision",
+        # 'continuar_revision' queda como alias de compatibilidad: el contrato usa solo 'continuar'.
+        "continuar_revision": "continuar", "continuar revision": "continuar", "continuar revisión": "continuar",
+        "cancelar_rechazo": "cancelar_rechazo", "no, conservarlo": "cancelar_rechazo",
         "confirmar_texto": "confirmar_texto", "confirmar texto": "confirmar_texto",
         "aceptar_metadatos": "aceptar_metadatos", "aceptar metadatos": "aceptar_metadatos", "conservar": "aceptar_metadatos", "conservar metadatos": "aceptar_metadatos",
         "rechazar_metadatos": "rechazar_metadatos", "rechazar metadatos": "rechazar_metadatos",
@@ -954,9 +957,12 @@ def construir_respuesta(
 
     # Las opciones de metadatos heredados las define solo continuar.py
     # (_resp_metadatos_heredados); acá no se pisan.
-    opciones_finales = list(opciones)
+    from baco.server.services.orquestador.contrato import campos_editables, separar_opciones
+
+    opciones_finales, navegacion_final = separar_opciones(sesion, list(opciones))
 
     sesion.ultimas_opciones = list(opciones_finales)
+    sesion.ultima_navegacion = list(navegacion_final)
 
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
@@ -964,6 +970,8 @@ def construir_respuesta(
         etapa=obtener_etapa_flujo(sesion.estado, sesion),
         mensaje=mensaje,
         opciones=opciones_finales,
+        editables=campos_editables(sesion),
+        navegacion=navegacion_final,
         tags_acumulados=obtener_tags_acumulados(sesion),
         categorias_disponibles=list(sesion.categorias_disponibles),
         tags_disponibles=list(sesion.tags_disponibles),
@@ -1022,8 +1030,9 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         )
 
     res = validar_texto_y_estructura_post_duplicados(articulo)
-    if b.revision_intermedia:
-        # Revisión intermedia: categoría y tags se cargan después de 'continuar_revision',
+    es_revision_tipo = sesion.estado == EstadoFlujo.REVISION_TIPO
+    if es_revision_tipo:
+        # Revisión intermedia: categoría y tags se cargan después de 'continuar',
         # por lo que los hallazgos de la fase de metadatos todavía no bloquean.
         hallazgos_metadatos = validar_metadatos(articulo)
         res["findings"] = [f for f in res.get("findings", []) if f not in hallazgos_metadatos]
@@ -1077,16 +1086,36 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
             OPCIONES_REVISION_BLOQUEANTE,
         )
 
-    msg_cierre = MSG_ANTES_DE_CONTINUAR if b.revision_intermedia else MSG_ANTES_DE_FINALIZAR
-    ops_validas = OPCIONES_REVISION_INTERMEDIA_VALIDO if b.revision_intermedia else OPCIONES_REVISION_VALIDO
+    msg_cierre = MSG_ANTES_DE_CONTINUAR if es_revision_tipo else MSG_ANTES_DE_FINALIZAR
+    aviso_tipo = ""
+    if es_revision_tipo:
+        from baco.server.services.orquestador.contrato import plantilla_aplicada
+        from baco.server.services.orquestador.mensajes import msg_plantilla_a_aplicar
+
+        if not plantilla_aplicada(sesion):
+            aviso_tipo = msg_plantilla_a_aplicar(b.tipo_plantilla or extraer_tipo_plantilla(b.tags or []))
+            if aviso_tipo:
+                msg_cierre = f"{msg_cierre}\n\n{aviso_tipo}"
+    ops_validas = OPCIONES_REVISION_INTERMEDIA_VALIDO if es_revision_tipo else OPCIONES_REVISION_VALIDO
+    # Contrato: después de la skill del paso solo queda Continuar.
+    from baco.server.services.orquestador.contrato import auditado, plantilla_aplicada
+
+    if (es_revision_tipo and plantilla_aplicada(sesion)) or (
+        sesion.estado == EstadoFlujo.REVISION_METADATOS and auditado(sesion)
+    ):
+        ops_validas = ["continuar"]
+        msg_cierre = "Tocá **Continuar** cuando esté listo."
 
     if ajustes:
         detalle = "\n".join(f"- [{f['severity']}] {f['description']} ({f['action']})" for f in ajustes)
         return (
             f"{prefijo}El borrador está completo, pero hay {len(ajustes)} sugerencia(s) para mejorarlo:\n{detalle}\n\n"
             + (
-                "Podés corregirlas en el Editor, Aplicar plantilla o tocar Continuar para dejarlo así."
-                if b.revision_intermedia
+                "Podés corregirlas en el Editor o tocar Continuar para dejarlo así."
+                if ops_validas == ["continuar"]
+                else "Podés corregirlas en el Editor, Aplicar plantilla o tocar Continuar para dejarlo así."
+                + (f"\n\n{aviso_tipo}" if aviso_tipo else "")
+                if es_revision_tipo
                 else "Podés corregirlas en el Editor, Auditar el texto o tocar Continuar para dejarlo así."
             ),
             ops_validas,

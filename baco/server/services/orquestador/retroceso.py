@@ -144,8 +144,7 @@ def _restaurar_esperando_metadatos(sesion: SesionChat) -> None:
     sesion.limpiar_fallos("ESPERANDO_METADATOS")
     b = sesion.borrador
     if b and b.tipo_plantilla:
-        # Vuelve a la revisión intermedia (edición y skills) conservando la plantilla.
-        b.revision_intermedia = True
+        # Vuelve a REVISION_TIPO (edición y skills) conservando la plantilla.
         b.texto_base_revision_final = None
 
 
@@ -179,19 +178,24 @@ def _restaurar_skill_pendiente(sesion: SesionChat) -> None:
 
 
 def _restaurar_revision_borrador(sesion: SesionChat) -> None:
-    sesion.limpiar_fallos("REVISION_BORRADOR")
+    sesion.limpiar_fallos()
     _restaurar_skill_pendiente(sesion)
     sesion.metadatos_heredados_revisados = False
     if sesion.borrador is not None:
         sesion.borrador.metadatos_heredados_revisados = False
 
 
-def _restaurar_revision_borrador_nuevo(sesion: SesionChat) -> None:
-    sesion.limpiar_fallos("REVISION_BORRADOR")
+def _restaurar_revision_tipo(sesion: SesionChat) -> None:
+    sesion.limpiar_fallos()
     _restaurar_skill_pendiente(sesion)
-    # Desde la revisión intermedia se vuelve a elegir plantilla reseteando tipo_plantilla.
-    if sesion.borrador and sesion.borrador.revision_intermedia:
+    # Se vuelve a elegir plantilla reseteando tipo_plantilla.
+    if sesion.borrador:
         sesion.borrador.tipo_plantilla = None
+
+
+def _restaurar_revision_metadatos(sesion: SesionChat) -> None:
+    sesion.limpiar_fallos()
+    _restaurar_skill_pendiente(sesion)
 
 def _resp_decision_titulo(sesion: SesionChat) -> ChatOrquestadorResponse:
     return construir_respuesta(sesion, MSG_VOLVER_TITULO, [])
@@ -251,7 +255,7 @@ def _resp_esperando_plantilla(sesion: SesionChat) -> ChatOrquestadorResponse:
 def _destino_esperando_metadatos(sesion: SesionChat) -> EstadoFlujo:
     b = sesion.borrador
     if b and b.tipo_plantilla:
-        return EstadoFlujo.REVISION_BORRADOR
+        return EstadoFlujo.REVISION_TIPO
     return EstadoFlujo.ESPERANDO_PLANTILLA
 
 
@@ -262,29 +266,12 @@ def _resp_esperando_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
     return construir_respuesta(sesion, msg, ops)
 
 
-def _destino_revision_borrador_nuevo(sesion: SesionChat) -> EstadoFlujo:
-    b = sesion.borrador
-    if b and b.revision_intermedia:
-        return EstadoFlujo.ESPERANDO_PLANTILLA
-    return EstadoFlujo.ESPERANDO_METADATOS
+def _resp_revision_tipo(sesion: SesionChat) -> ChatOrquestadorResponse:
+    return construir_respuesta(sesion, MSG_VOLVER_PLANTILLA, OPCIONES_PLANTILLAS)
 
 
-def _resp_revision_borrador_nuevo(sesion: SesionChat) -> ChatOrquestadorResponse:
-    if sesion.estado == EstadoFlujo.ESPERANDO_PLANTILLA:
-        return construir_respuesta(sesion, MSG_VOLVER_PLANTILLA, OPCIONES_PLANTILLAS)
+def _resp_revision_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
     return construir_respuesta(sesion, MSG_VOLVER_METADATOS, ["volver"])
-
-
-def _restaurar_edicion_final(sesion: SesionChat) -> None:
-    sesion.limpiar_fallos("EDICION_FINAL")
-    b = sesion.borrador
-    if b:
-        b.revision_intermedia = False
-
-
-def _resp_edicion_final(sesion: SesionChat) -> ChatOrquestadorResponse:
-    msg, ops = validar_borrador(sesion, PREFIJO_VOLVER_REVISION)
-    return construir_respuesta(sesion, msg, ops)
 
 
 def _resp_revision_borrador_enriquecimiento(sesion: SesionChat) -> ChatOrquestadorResponse:
@@ -329,7 +316,7 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_decision_texto,
     ),
 
-    # ESPERANDO_PLANTILLA: con metadatos_anteriores restaura y va a REVISION_BORRADOR;
+    # ESPERANDO_PLANTILLA: con metadatos_anteriores restaura y va a REVISION_TIPO;
     # sin metadatos_anteriores regresa a ESPERANDO_TEXTO.
     (EstadoFlujo.ESPERANDO_PLANTILLA, "nuevo"): ReglaRetroceso(
         estado_destino=_destino_esperando_plantilla,
@@ -347,7 +334,7 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_esperando_plantilla,
     ),
 
-    # ESPERANDO_METADATOS: vuelve a la revisión intermedia (REVISION_BORRADOR) conservando
+    # ESPERANDO_METADATOS: vuelve a REVISION_TIPO conservando
     # tipo_plantilla; sin plantilla elegida vuelve a ESPERANDO_PLANTILLA.
     (EstadoFlujo.ESPERANDO_METADATOS, None): ReglaRetroceso(
         estado_destino=_destino_esperando_metadatos,
@@ -355,53 +342,20 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_esperando_metadatos,
     ),
 
-    # REVISION_BORRADOR (nuevo): desde la revisión intermedia vuelve a ESPERANDO_PLANTILLA
-    # (reseteando tipo_plantilla); desde la revisión final vuelve a ESPERANDO_METADATOS.
-    (EstadoFlujo.REVISION_BORRADOR, "nuevo"): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
+    # REVISION_TIPO: vuelve a ESPERANDO_PLANTILLA reseteando tipo_plantilla (cualquier modo).
+    (EstadoFlujo.REVISION_TIPO, None): ReglaRetroceso(
+        estado_destino=EstadoFlujo.ESPERANDO_PLANTILLA,
+        restaurar=_restaurar_revision_tipo,
+        construir_respuesta=_resp_revision_tipo,
     ),
 
-    # REVISION_BORRADOR (enriquecimiento): vuelve a DECISION_TEXTO (semántico) o DECISION_TITULO
-    (EstadoFlujo.REVISION_BORRADOR, "enriquecimiento"): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
+    # REVISION_METADATOS: vuelve a ESPERANDO_METADATOS conservando tipo_plantilla (cualquier modo).
+    (EstadoFlujo.REVISION_METADATOS, None): ReglaRetroceso(
+        estado_destino=EstadoFlujo.ESPERANDO_METADATOS,
+        restaurar=_restaurar_revision_metadatos,
+        construir_respuesta=_resp_revision_metadatos,
     ),
-    (EstadoFlujo.REVISION_BORRADOR, "actualizar"): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
-    ),
-    (EstadoFlujo.REVISION_BORRADOR, None): ReglaRetroceso(
-        estado_destino=_destino_revision_borrador_nuevo,
-        restaurar=_restaurar_revision_borrador_nuevo,
-        construir_respuesta=_resp_revision_borrador_nuevo,
-    ),
-
-    # EDICION_FINAL: vuelve a revisión final
-    (EstadoFlujo.EDICION_FINAL, "nuevo"): ReglaRetroceso(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
-        restaurar=_restaurar_edicion_final,
-        construir_respuesta=_resp_edicion_final,
-    ),
-    (EstadoFlujo.EDICION_FINAL, "enriquecimiento"): ReglaRetroceso(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
-        restaurar=_restaurar_edicion_final,
-        construir_respuesta=_resp_edicion_final,
-    ),
-    (EstadoFlujo.EDICION_FINAL, "actualizar"): ReglaRetroceso(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
-        restaurar=_restaurar_edicion_final,
-        construir_respuesta=_resp_edicion_final,
-    ),
-    (EstadoFlujo.EDICION_FINAL, None): ReglaRetroceso(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
-        restaurar=_restaurar_edicion_final,
-        construir_respuesta=_resp_edicion_final,
-    ),
-
+    # EDICION_FINAL no tiene retroceso (contrato paso 5).
 }
 
 

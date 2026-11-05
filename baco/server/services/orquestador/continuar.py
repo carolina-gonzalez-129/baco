@@ -5,9 +5,9 @@ Define la tabla de transiciones declaradas, la compuerta de validación previa
 al avance y las funciones de respuesta para el troncal convergente del flujo
 (igual para nuevo, enriquecer, actualizar y "Es un tema distinto"):
   Paso 1: Pedir tipo de plantilla (ESPERANDO_PLANTILLA).
-  Paso 2: Ofrecer la skill de plantillas, opcional (REVISION_BORRADOR, revision_intermedia=True).
+  Paso 2: Ofrecer la skill de plantillas, opcional (REVISION_TIPO).
   Paso 3: Pedir tags y categoría (ESPERANDO_METADATOS).
-  Paso 4: Ofrecer el auditor, opcional (REVISION_BORRADOR, revision_intermedia=False).
+  Paso 4: Ofrecer el auditor, opcional (REVISION_METADATOS).
   Paso 5: Edición final (EDICION_FINAL) y Finalizar.
 
 Este módulo NO ejecuta skills: las skills solo corren cuando la persona toca
@@ -151,7 +151,6 @@ def _avanzar_paso_revision_intermedia(sesion: SesionChat) -> None:
         sesion.tipo_plantilla = plantilla
         b.tags = combinar_tags(plantilla, b.tags)
         sesion.tags = list(b.tags)
-    b.revision_intermedia = True
     b.texto_base_revision_final = None
 
 
@@ -171,14 +170,13 @@ def _destino_paso_metadatos(sesion: SesionChat) -> EstadoFlujo:
         return EstadoFlujo.ESPERANDO_METADATOS
     if b and (b.categoria_id is None or len(b.tags) < 2):
         return EstadoFlujo.ESPERANDO_METADATOS
-    return EstadoFlujo.REVISION_BORRADOR
+    return EstadoFlujo.REVISION_METADATOS
 
 
 def _avanzar_paso_metadatos(sesion: SesionChat) -> None:
     b = sesion.borrador
     if not b:
         return
-    b.revision_intermedia = False
     b.texto_base_revision_final = b.texto_limpio
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
@@ -203,7 +201,6 @@ def _avanzar_paso_revision_final(sesion: SesionChat) -> None:
     b = sesion.borrador
     if not b:
         return
-    b.revision_intermedia = False
     b.texto_base_revision_final = b.texto_limpio
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
@@ -219,11 +216,10 @@ def _resp_paso_revision_final(
 
 
 def _avanzar_paso_edicion_final(sesion: SesionChat) -> None:
-    sesion.limpiar_fallos("REVISION_BORRADOR")
+    sesion.limpiar_fallos()
     b = sesion.borrador
     if not b:
         return
-    b.revision_intermedia = False
     if b.categoria_id is None and sesion.categoria_id is not None:
         b.categoria_id = sesion.categoria_id
 
@@ -237,7 +233,7 @@ def _resp_paso_edicion_final(
 
 
 def continuar_desde_revision(sesion: SesionChat) -> ChatOrquestadorResponse:
-    """Avanza desde REVISION_BORRADOR (intermedia o final) al próximo paso del troncal."""
+    """Avanza desde REVISION_TIPO o REVISION_METADATOS al próximo paso del troncal."""
     return continuar(sesion)
 
 
@@ -315,13 +311,7 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
     if b is None:
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
-    if _heredados_pendientes(sesion):
-        # Sin recursión: se vuelve al paso de tags y categoría a decidir sobre los heredados.
-        sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-        return _resp_metadatos_heredados(
-            sesion, prefijo="Antes de finalizar, decidí si mantenés los metadatos heredados. "
-        )
-
+    # Los heredados ya se resuelven antes de salir de REVISION_METADATOS (ver continuar()).
     if sesion.estado == EstadoFlujo.EDICION_FINAL:
         return continuar(sesion)
 
@@ -346,9 +336,8 @@ def gestionar_metadatos_heredados(
         return None
 
     acepta = opcion in ("aceptar", "aceptar_metadatos")
-    rechaza = opcion == "rechazar_metadatos" or (
-        opcion == "rechazar" and not b.metadatos_heredados_revisados
-    )
+    # Contrato: los heredados se rechazan solo con 'rechazar_metadatos' ('rechazar' descarta el borrador).
+    rechaza = opcion == "rechazar_metadatos"
     if not (acepta or rechaza):
         return None
 
@@ -370,7 +359,7 @@ def gestionar_metadatos_heredados(
 
     sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
     destino = _destino_paso_metadatos(sesion)
-    if destino == EstadoFlujo.REVISION_BORRADOR:
+    if destino == EstadoFlujo.REVISION_METADATOS:
         _avanzar_paso_revision_final(sesion)
         sesion.estado = destino
         return _resp_paso_revision_final(sesion, prefijo)
@@ -396,13 +385,13 @@ TABLA_CONTINUAR: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaContinuar] = {
 
     # Paso 1 -> Paso 2: Elección de plantilla hacia revisión intermedia
     (EstadoFlujo.ESPERANDO_PLANTILLA, None): ReglaContinuar(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
+        estado_destino=EstadoFlujo.REVISION_TIPO,
         avanzar=_avanzar_paso_revision_intermedia,
         construir_respuesta=_resp_paso_revision_intermedia,
     ),
 
     # Paso 2 -> Paso 3: Revisión intermedia hacia tags y categoría
-    (EstadoFlujo.REVISION_BORRADOR, "intermedia"): ReglaContinuar(
+    (EstadoFlujo.REVISION_TIPO, None): ReglaContinuar(
         estado_destino=_destino_paso_metadatos,
         avanzar=_avanzar_paso_metadatos,
         construir_respuesta=_resp_paso_metadatos,
@@ -410,13 +399,13 @@ TABLA_CONTINUAR: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaContinuar] = {
 
     # Paso 3 -> Paso 4: Metadatos definidos hacia revisión final con validador
     (EstadoFlujo.ESPERANDO_METADATOS, None): ReglaContinuar(
-        estado_destino=EstadoFlujo.REVISION_BORRADOR,
+        estado_destino=EstadoFlujo.REVISION_METADATOS,
         avanzar=_avanzar_paso_revision_final,
         construir_respuesta=_resp_paso_revision_final,
     ),
 
     # Paso 4 / Revisión final
-    (EstadoFlujo.REVISION_BORRADOR, None): ReglaContinuar(
+    (EstadoFlujo.REVISION_METADATOS, None): ReglaContinuar(
         estado_destino=EstadoFlujo.EDICION_FINAL,
         avanzar=_avanzar_paso_edicion_final,
         construir_respuesta=_resp_paso_edicion_final,
@@ -461,20 +450,17 @@ def continuar(
         if resp_meta is not None:
             return resp_meta
 
-    variante = "intermedia" if b.revision_intermedia else None
-    regla = TABLA_CONTINUAR.get((sesion.estado, variante)) or TABLA_CONTINUAR.get((sesion.estado, None))
+    regla = TABLA_CONTINUAR.get((sesion.estado, None))
     if regla is None:
-        raise ValueError(
-            f"No existe regla de avance definida para estado={sesion.estado} y variante={variante}"
-        )
+        raise ValueError(f"No existe regla de avance definida para estado={sesion.estado}")
 
     # Compuerta previa al avance desde revisión
-    if sesion.estado == EstadoFlujo.REVISION_BORRADOR and variante == "intermedia":
+    if sesion.estado == EstadoFlujo.REVISION_TIPO:
         # Los metadatos heredados se resuelven en el paso siguiente (tags y categoría).
         comp = verificar_compuerta_avance(sesion)
         if comp is not None:
             return comp
-    elif sesion.estado == EstadoFlujo.REVISION_BORRADOR:
+    elif sesion.estado == EstadoFlujo.REVISION_METADATOS:
         if _heredados_pendientes(sesion):
             sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
             return _resp_metadatos_heredados(

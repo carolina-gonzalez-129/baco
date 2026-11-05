@@ -94,6 +94,19 @@ def resolver_sesion_y_borrador_para_skills(
     return sid, borrador
 
 
+def _exigir_estado_skill(sid: str, skill: str) -> None:
+    """Contrato: cada skill solo corre en sus estados (plantilla en REVISION_TIPO y EDICION_FINAL, auditor en REVISION_METADATOS y EDICION_FINAL)."""
+    from baco.server.services.orquestador.contrato import skill_permitida
+
+    sesion = gestor_sesiones.obtener_sesion(sid)
+    if sesion is None or not skill_permitida(sesion.estado, skill):
+        estado = sesion.estado.value if sesion is not None else "sin sesión"
+        raise HTTPException(
+            status_code=409,
+            detail=f"La skill '{skill}' no está disponible en el estado actual ({estado}).",
+        )
+
+
 def resolver_sesion_activa(
     baco_session: Optional[str] = Cookie(default=None),
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
@@ -111,6 +124,22 @@ def resolver_sesion_activa(
             detail=f"No existe la sesión '{sid}' o la sesión expiró.",
         )
     return sid, sesion
+
+
+def _rechazar_si_finalizado(sesion: Optional[SesionChat]) -> None:
+    """FINALIZADO es terminal: no se aceptan mutaciones del borrador por REST."""
+    if sesion is not None and sesion.estado == EstadoFlujo.FINALIZADO:
+        raise HTTPException(
+            status_code=409,
+            detail="El artículo ya está finalizado: no se puede modificar.",
+        )
+
+
+def resolver_sesion_activa_editable(
+    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+) -> Tuple[str, SesionChat]:
+    _rechazar_si_finalizado(sesion_activa[1])
+    return sesion_activa
 
 
 def resolver_sesion_con_borrador(
@@ -140,6 +169,13 @@ def resolver_sesion_con_borrador(
             detail="La gestión multimedia se habilita una vez superada la búsqueda de duplicados.",
         )
     return sid, sesion.borrador
+
+
+def resolver_sesion_con_borrador_editable(
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+) -> Tuple[str, BorradorSesion]:
+    _rechazar_si_finalizado(gestor_sesiones.obtener_sesion(sesion_valida[0]))
+    return sesion_valida
 
 
 class ReordenarMultimediaRequest(BaseModel):
@@ -236,6 +272,7 @@ def aplicar_plantilla(
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     sid, borrador = sesion_valida
+    _exigir_estado_skill(sid, "plantilla")
     if not borrador.skills_habilitadas:
         raise HTTPException(
             status_code=422,
@@ -260,6 +297,7 @@ def auditar_semantica(
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     sid, borrador = sesion_valida
+    _exigir_estado_skill(sid, "auditor")
     if not borrador.skills_habilitadas:
         raise HTTPException(
             status_code=422,
@@ -480,7 +518,7 @@ def listar_recursos(
 )
 def eliminar_recurso(
     recurso_id: str,
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     target: Union[str, int] = recurso_id
@@ -502,7 +540,7 @@ def eliminar_recurso(
 )
 def reordenar_recursos_multimedia(
     body: ReordenarMultimediaRequest,
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, _ = sesion_valida
     try:
@@ -528,7 +566,7 @@ def reordenar_recursos_multimedia(
 )
 def agregar_recurso_multimedia(
     body: AgregarRecursoRequest,
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     try:
@@ -556,7 +594,7 @@ async def subir_recurso(
     file: UploadFile = File(...),
     posicion: Optional[int] = Form(default=None),
     bloques_texto: Optional[List[str]] = Form(default=None),
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     if not PERMITIR_SUBIDA_RECURSOS:
@@ -671,7 +709,7 @@ def listar_contenido_adicional(
 )
 def agregar_contenido_adicional(
     body: AgregarContenidoAdicionalRequest,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> ItemContenidoAdicional:
     sid, sesion = sesion_activa
     if not sesion.borrador:
@@ -703,7 +741,7 @@ def agregar_contenido_adicional(
 )
 def eliminar_contenido_adicional(
     item_id: str,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> dict:
     sid, _ = sesion_activa
     try:
@@ -725,7 +763,7 @@ def eliminar_contenido_adicional(
 )
 def reordenar_contenido_adicional(
     body: ReordenarContenidoAdicionalRequest,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> List[ItemContenidoAdicional]:
     sid, _ = sesion_activa
     try:
@@ -747,7 +785,7 @@ def reordenar_contenido_adicional(
 def modificar_contenido_adicional(
     item_id: str,
     body: ModificarContenidoAdicionalRequest,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> ItemContenidoAdicional:
     sid, _ = sesion_activa
     try:

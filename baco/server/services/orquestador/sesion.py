@@ -110,6 +110,7 @@ class SesionChat:
     busquedas_descartadas: Set[Tuple[str, str]] = field(default_factory=set)
     huella_validacion: Optional[str] = None
     ultimas_opciones: List[str] = field(default_factory=list)
+    ultima_navegacion: List[str] = field(default_factory=list)
 
     @property
     def huella(self) -> Optional[str]:
@@ -494,12 +495,12 @@ class GestorSesiones:
 
         if permitir_revision:
             if (
-                sesion.estado not in (EstadoFlujo.FINALIZADO, EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.EDICION_FINAL)
+                sesion.estado not in (EstadoFlujo.FINALIZADO, EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS, EstadoFlujo.EDICION_FINAL)
                 or sesion.borrador is None
                 or (sesion.estado == EstadoFlujo.FINALIZADO and not sesion.borrador.finalizado)
             ):
                 raise EstadoInvalidoError(
-                    f"El borrador no está en un estado válido (REVISION_BORRADOR, EDICION_FINAL o FINALIZADO) (estado actual: '{sesion.estado.value}')."
+                    f"El borrador no está en un estado válido (REVISION_TIPO, REVISION_METADATOS, EDICION_FINAL o FINALIZADO) (estado actual: '{sesion.estado.value}')."
                 )
         else:
             es_finalizado = (

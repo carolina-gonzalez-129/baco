@@ -34,6 +34,8 @@ from baco.server.services.orquestador.mensajes import (
     MSG_BORRADOR_FINALIZADO,
     OPCIONES_REVISION_BLOQUEANTE,
     OPCIONES_REVISION_VALIDO,
+    OPCIONES_CONFIRMAR_RECHAZO,
+    MSG_CONFIRMAR_RECHAZO,
     PREFIJO_BORRADOR_ACTUALIZADO,
     PREFIJO_CONTINUAR_PROPIO,
     PREFIJO_DATOS_SANITIZADOS,
@@ -1016,7 +1018,7 @@ async def handle_esperando_plantilla(
     # el texto se edita en el paso siguiente; categoría y tags, en ESPERANDO_METADATOS.
     opcion_plantilla = opcion or req.tipo_plantilla or req.mensaje or ""
     plantilla = extraer_tipo_plantilla(req.tags or [], opcion_plantilla)
-    if not plantilla and b and b.tipo_plantilla and opcion in ("continuar", "continuar_revision"):
+    if not plantilla and b and b.tipo_plantilla and opcion == "continuar":
         plantilla = b.tipo_plantilla
     if not plantilla:
         return construir_respuesta(sesion, MSG_ELEGIR_PLANTILLA, OPCIONES_PLANTILLAS)
@@ -1252,7 +1254,7 @@ def _resolver_flujo_rechazo(
         sesion.contenido_adicional = []
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
-    if opcion == "volver":
+    if opcion == "cancelar_rechazo":
         sesion.confirmando_rechazo = False
         msg, ops = validar_borrador(sesion)
         return construir_respuesta(
@@ -1267,8 +1269,8 @@ def _resolver_flujo_rechazo(
 
     return construir_respuesta(
         sesion,
-        "Por favor confirmá si querés descartar el artículo tocando **Sí, descartar** o **Volver** para continuar trabajando en él.",
-        ["confirmar_rechazo", "volver"],
+        "Por favor confirmá si querés descartar el artículo tocando **Sí, descartar** o **No, conservarlo** para seguir trabajando en él.",
+        list(OPCIONES_CONFIRMAR_RECHAZO),
     )
 
 
@@ -1309,7 +1311,6 @@ def _ejecutar_sanitizacion_borrador(
         recursos=recs_sanit_comb,
         ultimo_id_recurso=max_id,
     )
-    sesion.estado = EstadoFlujo.REVISION_BORRADOR
 
     prefijo = PREFIJO_DATOS_SANITIZADOS
 
@@ -1417,17 +1418,22 @@ def _aplicar_mutaciones_borrador(
         tipo_plantilla=plantilla_nueva,
     )
 
-    sesion.estado = EstadoFlujo.REVISION_BORRADOR
-
     prefijo = PREFIJO_BORRADOR_ACTUALIZADO
 
     msg, ops = validar_borrador(sesion, prefijo)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_priv_edicion)
 
 
-async def handle_revision_borrador(
-    sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
+async def _handle_revision_comun(
+    sesion: SesionChat,
+    req: ChatOrquestadorRequest,
+    opcion: str,
+    skill_del_paso: str,
+    opcion_skill: str,
 ) -> ChatOrquestadorResponse:
+    """Lógica compartida de REVISION_TIPO y REVISION_METADATOS.
+    Cada estado acepta solo su skill (`opcion_skill`); el resto lo filtra el contrato.
+    """
     b = sesion.borrador
     texto_edicion = req.texto if req.texto is not None else req.texto_editor
     if texto_edicion is None and opcion == "editar" and req.mensaje and req.mensaje.strip().lower() != "editar":
@@ -1440,15 +1446,7 @@ async def handle_revision_borrador(
     if resp_rechazo is not None:
         return resp_rechazo
 
-    # 2. Gestión de metadatos heredados de versión previa
-    if opcion in ("aceptar", "aceptar_metadatos", "rechazar_metadatos") or (
-        opcion == "rechazar" and b is not None and b.metadatos_anteriores and not b.metadatos_heredados_revisados
-    ):
-        resp_meta = continuar(sesion, opcion=opcion)
-        if resp_meta is not None:
-            return resp_meta
-
-    # 3. Acción explícita o silenciosa de sanitización
+    # 2. Acción explícita de sanitización
     if opcion == "sanitizar":
         return _ejecutar_sanitizacion_borrador(sesion, req)
 
@@ -1461,13 +1459,9 @@ async def handle_revision_borrador(
             req_edicion = req.model_copy(update={"texto": texto_edicion})
         res_edicion = aplicar_edicion_campos(sesion, req_edicion)
         if not res_edicion.ok:
-            ops = (
-                OPCIONES_REVISION_VALIDO
-                if (sesion.validacion and sesion.validacion.valido)
-                else OPCIONES_REVISION_BLOQUEANTE
-            )
-            return construir_respuesta(sesion, res_edicion.error or "", ops)
+            return construir_respuesta(sesion, res_edicion.error or "", sesion.ultimas_opciones)
 
+        # Categoría y etiquetas solo llegan acá si el contrato las acepta en el estado.
         if req.categoria_id is not None and b is not None:
             res_cat = resolver_categoria(req.categoria_id, sesion.categorias_disponibles)
             if res_cat.categoria_id is not None:
@@ -1487,58 +1481,51 @@ async def handle_revision_borrador(
             b.tags = tags_nuevos
             sesion.tags = tags_nuevos
 
-        if opcion in ("continuar_revision", "continuar"):
+        if opcion == "continuar":
             return continuar_desde_revision(sesion)
 
-
-
-        if opcion not in ("editar", "aplicar_plantilla", "auditar", "rechazar", "confirmar_rechazo"):
+        if opcion not in ("editar", opcion_skill, "rechazar", "confirmar_rechazo"):
             prefijo = PREFIJO_BORRADOR_ACTUALIZADO
             msg, ops = validar_borrador(sesion, prefijo)
             return construir_respuesta(sesion, msg, ops, aviso_privacidad=res_edicion.aviso_privacidad)
 
-    # 5. Opciones estándar del estado de revisión
+    # 3. Opciones del estado
     if opcion == "editar":
-        ops = (
-            OPCIONES_REVISION_VALIDO
-            if (sesion.validacion and sesion.validacion.valido)
-            else OPCIONES_REVISION_BLOQUEANTE
-        )
-        return construir_respuesta(sesion, MSG_PEDIR_EDICION, ops)
+        return construir_respuesta(sesion, MSG_PEDIR_EDICION, sesion.ultimas_opciones)
 
-    if opcion == "volver":
-        return retroceder(sesion)
-
-    if opcion == "aplicar_plantilla":
+    if opcion == opcion_skill:
         from baco.server.services.orquestador.edicion import ejecutar_skill
-        return await ejecutar_skill(sesion, req, "plantilla")
+        return await ejecutar_skill(sesion, req, skill_del_paso)
 
-    if opcion == "auditar":
-        from baco.server.services.orquestador.edicion import ejecutar_skill
-        return await ejecutar_skill(sesion, req, "auditor")
-
-    if opcion in ("continuar_revision", "continuar"):
+    if opcion == "continuar":
         return continuar_desde_revision(sesion)
-
-
 
     if opcion == "rechazar":
         sesion.confirmando_rechazo = True
-        return construir_respuesta(
-            sesion,
-            "¿Estás seguro de que querés descartar todo el artículo? Se perderán los cambios realizados en esta sesión.",
-            ["confirmar_rechazo", "volver"],
-        )
-
-    if opcion == "confirmar_rechazo":
-        sesion.confirmando_rechazo = False
-        sesion.estado = EstadoFlujo.RECHAZADO
-        sesion.borrador = None
-        sesion.contenido_adicional = []
-        return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
+        return construir_respuesta(sesion, MSG_CONFIRMAR_RECHAZO, list(OPCIONES_CONFIRMAR_RECHAZO))
 
     msg, ops = validar_borrador(sesion)
     return construir_respuesta(sesion, msg, ops)
+
+
+async def handle_revision_tipo(
+    sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
+) -> ChatOrquestadorResponse:
+    """REVISION_TIPO: tipo editable hasta aplicar la plantilla; única skill: plantilla."""
+    return await _handle_revision_comun(sesion, req, opcion, "plantilla", "aplicar_plantilla")
+
+
+async def handle_revision_metadatos(
+    sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
+) -> ChatOrquestadorResponse:
+    """REVISION_METADATOS: categoría y etiquetas editables hasta auditar; única skill: auditor.
+    Acá se resuelven los metadatos heredados (solo aceptar_metadatos / rechazar_metadatos).
+    """
+    if opcion in ("aceptar", "aceptar_metadatos", "rechazar_metadatos"):
+        resp_meta = continuar(sesion, opcion=opcion)
+        if resp_meta is not None:
+            return resp_meta
+    return await _handle_revision_comun(sesion, req, opcion, "auditor", "auditar")
 
 
 async def gestionar_cambio_plantilla_pendiente(
@@ -1607,10 +1594,9 @@ async def gestionar_cambio_plantilla_pendiente(
         # Siempre se reaplica la skill de plantillas (desde texto_original o, si no existe, el Editor).
         return await ejecutar_skill(sesion, req, skill="plantilla", es_reaplicacion=True), req
 
-    # Cualquier otra interacción descarta un pendiente previo (cancelación implícita).
+    # Cualquier otra interacción descarta un pendiente previo (cancelación implícita;
+    # el aviso lo agrega coordinador.manejar_turno).
     sesion.plantilla_pendiente = None
-    if opcion == "volver":
-        return None, req
 
     plantilla_act = (
         b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags or [])
@@ -1678,10 +1664,6 @@ async def handle_edicion_final(
     if b is None:
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
-    # 1. Volver: regresa a revisión final y se registra en retroceso.py
-    if opcion == "volver":
-        return retroceder(sesion)
-
     # 2. Reutilizá edicion.py; validá solo los campos modificados
     res_edicion = getattr(req, "_res_edicion", None)
     if res_edicion is None:
@@ -1708,7 +1690,7 @@ async def handle_edicion_final(
         return _registrar_finalizado(sesion)
 
     # 5. Edición u otra interacción en EDICION_FINAL:
-    # Botones: solo "Finalizar" y "Volver". Mensajes en mensajes.py.
+    # Botones: solo "Finalizar" (sin volver, ver contrato.py). Mensajes en mensajes.py.
     from baco.server.services.orquestador.mensajes import MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL
     aviso_priv = res_edicion.aviso_privacidad if res_edicion else None
     mensaje = (res_edicion.aviso if res_edicion and res_edicion.aviso else MSG_EDICION_FINAL)
@@ -1727,6 +1709,7 @@ STATE_HANDLERS: Dict[EstadoFlujo, EstadoHandler] = {
     EstadoFlujo.DECISION_TEXTO: handle_decision_texto,
     EstadoFlujo.ESPERANDO_PLANTILLA: handle_esperando_plantilla,
     EstadoFlujo.ESPERANDO_METADATOS: handle_esperando_metadatos,
-    EstadoFlujo.REVISION_BORRADOR: handle_revision_borrador,
+    EstadoFlujo.REVISION_TIPO: handle_revision_tipo,
+    EstadoFlujo.REVISION_METADATOS: handle_revision_metadatos,
     EstadoFlujo.EDICION_FINAL: handle_edicion_final,
 }

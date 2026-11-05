@@ -40,7 +40,8 @@ from baco.server.services.validar_articulo import sanitizar_borrador
 ESTADOS_EDICION_LIBRE = {
     EstadoFlujo.ESPERANDO_PLANTILLA,
     EstadoFlujo.ESPERANDO_METADATOS,
-    EstadoFlujo.REVISION_BORRADOR,
+    EstadoFlujo.REVISION_TIPO,
+    EstadoFlujo.REVISION_METADATOS,
 
 }
 
@@ -433,9 +434,9 @@ def aplicar_edicion_campos(
     )
 
     opcion_actual = interpretar_opcion(req)
-    es_continuar = opcion_actual in ("continuar", "continuar_revision", "finalizar", "editar")
+    es_continuar = opcion_actual in ("continuar", "finalizar", "editar")
     es_edicion_final = sesion.estado == EstadoFlujo.EDICION_FINAL
-    es_revision = sesion.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.EDICION_FINAL)
+    es_revision = sesion.estado in (EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS, EstadoFlujo.EDICION_FINAL)
     if es_edicion_final:
         es_continuar = True
     # En ESPERANDO_PLANTILLA no se aceptan categoría ni tags temáticos (se cargan en ESPERANDO_METADATOS).
@@ -918,11 +919,8 @@ async def ejecutar_skill(
         from baco.server.services.orquestador.mensajes import OPCIONES_EDICION_FINAL
         opciones = list(OPCIONES_EDICION_FINAL)
     else:
-        opciones = (
-        ["continuar_revision"]
-        if getattr(b, "revision_intermedia", False)
-        else ["continuar", "volver"]
-    )
+        # Contrato: después de la skill del paso solo queda Continuar (sin Volver).
+        opciones = ["continuar"]
     if es_reaplicacion:
         msg = (
             "Reaplicamos la **plantilla** sobre el texto actual."
@@ -931,7 +929,7 @@ async def ejecutar_skill(
         )
     else:
         msg = (
-            "🤖 Apliqué la **plantilla**. El resultado está en la **Vista previa** y tu texto original "
+            f"🤖 Apliqué la plantilla **{(b.tipo_plantilla or extraer_tipo_plantilla(b.tags or []) or '').capitalize()}**. El resultado está en la **Vista previa** y tu texto original "
             "quedó intacto en el **Editor**. Solo se enviará el texto de la Vista previa; podés editar "
             "ambos. Si volvés a aplicar la skill, se usa el texto del Editor. Tocá **Continuar** cuando esté listo."
             if not es_auditor

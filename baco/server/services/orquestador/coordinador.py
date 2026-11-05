@@ -21,14 +21,21 @@ from baco.server.services.orquestador.handlers import (
 from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
     MSG_BORRADOR_FINALIZADO,
+    MSG_CAMBIO_PLANTILLA_DESCARTADO,
     OPCIONES_FINALIZADO,
     MSG_SESION_EXPIRADA,
+    MSG_OPCION_NO_DISPONIBLE,
     OPCIONES_REINICIAR,
     msg_cambios_guardados,
     msg_sesion_finalizada,
     obtener_ayuda_contextual,
 )
 from baco.server.services.orquestador.sesion import gestor_sesiones
+from baco.server.services.orquestador.contrato import (
+    es_accion,
+    filtrar_campos_no_editables,
+    opcion_permitida,
+)
 from baco.server.services.orquestador.validaciones import (
     cargar_catalogos_sesion,
     construir_respuesta,
@@ -38,6 +45,23 @@ from baco.server.services.orquestador.validaciones import (
 
 
 async def manejar_turno(
+    req: ChatOrquestadorRequest, buscador: BuscadorDuplicados
+) -> ChatOrquestadorResponse:
+    # Si el turno descarta implícitamente un cambio de plantilla pendiente, se avisa.
+    sesion_previa = gestor_sesiones.sesiones.get(req.session_id) if req.session_id else None
+    pendiente_previo = getattr(sesion_previa, "plantilla_pendiente", None)
+    opcion_turno = interpretar_opcion(req)
+    resp = await _manejar_turno(req, buscador)
+    if (
+        pendiente_previo
+        and sesion_previa.plantilla_pendiente is None
+        and opcion_turno not in ("confirmar_plantilla", "cancelar_plantilla", "reiniciar")
+    ):
+        resp.mensaje = f"{MSG_CAMBIO_PLANTILLA_DESCARTADO}\n\n{resp.mensaje}"
+    return resp
+
+
+async def _manejar_turno(
     req: ChatOrquestadorRequest, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
     sesion, es_nueva, fue_expirada = gestor_sesiones.obtener_o_crear(req.session_id)
@@ -55,12 +79,40 @@ async def manejar_turno(
         return construir_respuesta(sesion, MSG_SESION_EXPIRADA, OPCIONES_REINICIAR)
 
     if opcion == "ayuda":
+        ops_previas = list(sesion.ultimas_opciones)
+        nav_previa = list(sesion.ultima_navegacion)
         msg, ops = obtener_ayuda_contextual(sesion)
-        return construir_respuesta(sesion, msg, ops)
+        resp_ayuda = construir_respuesta(sesion, msg, ops)
+        # La ayuda no quita lo que el turno anterior ya habilitaba.
+        sesion.ultimas_opciones = list(dict.fromkeys(ops_previas + sesion.ultimas_opciones))
+        sesion.ultima_navegacion = list(dict.fromkeys(nav_previa + sesion.ultima_navegacion))
+        return resp_ayuda
 
     entrada_titulo = (req.titulo or req.mensaje or "").strip()
     if es_nueva and not entrada_titulo and not req.accion:
         return construir_respuesta(sesion, MENSAJE_BIENVENIDA, [])
+
+    # Contrato: solo se acepta una opción que el back devolvió en el turno anterior.
+    if not es_nueva and es_accion(sesion, req, opcion) and not opcion_permitida(sesion, opcion):
+        return construir_respuesta(
+            sesion,
+            MSG_OPCION_NO_DISPONIBLE,
+            sesion.ultimas_opciones,
+        )
+
+    # Contrato: tipo, categoría y etiquetas fuera de `editables` se descartan con aviso.
+    descartes_contrato = filtrar_campos_no_editables(sesion, req)
+    hay_otra_cosa = any(
+        v is not None and (not isinstance(v, str) or v.strip())
+        for v in (req.accion, req.mensaje, req.titulo, req.texto, req.texto_editor,
+                  req.tipo_plantilla, req.categoria_id, req.tags)
+    )
+    if descartes_contrato and not hay_otra_cosa:
+        return construir_respuesta(
+            sesion,
+            msg_cambios_guardados([], descartes_contrato),
+            sesion.ultimas_opciones,
+        )
 
     if sesion.estado == EstadoFlujo.FINALIZADO:
         # FINALIZADO es terminal: la edición ocurre antes, en EDICION_FINAL.
@@ -89,7 +141,7 @@ async def manejar_turno(
         if opcion == "reaplicar":
             return await handle_reaplicar_skill(sesion, req, buscador)
 
-        if opcion in ("continuar", "continuar_revision"):
+        if opcion == "continuar":
             adoptar_resultado_skill_pendiente(sesion)
 
         b_act = sesion.borrador
@@ -141,7 +193,9 @@ async def manejar_turno(
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones
             sesion.ultimas_opciones = list(opciones_edicion)
             # Detalle de lo guardado/descartado, seguido de los avisos que correspondan.
-            partes_msg = [msg_cambios_guardados(res_edicion.cambios, res_edicion.descartes)]
+            partes_msg = [msg_cambios_guardados(
+                res_edicion.cambios, descartes_contrato + list(res_edicion.descartes or [])
+            )]
             partes_msg += [a for a in (res_edicion.aviso_skill_desactualizada, res_edicion.aviso) if a]
             mensaje_edicion = "\n\n".join(partes_msg)
             return construir_respuesta(
