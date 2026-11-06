@@ -137,6 +137,10 @@ def navegacion(sesion, opciones: List[str]) -> List[str]:
         # Sin volver: el tipo (REVISION_TIPO) y la categoría/etiquetas (REVISION_METADATOS)
         # se editan en el lugar antes de la skill; después, solo en EDICION_FINAL.
         return []
+    if e == EstadoFlujo.ESPERANDO_METADATOS and plantilla_aplicada(sesion):
+        # Con la plantilla ya aplicada, volver a REVISION_TIPO solo ofrece Continuar (callejón sin salida);
+        # el tipo se cambia en EDICION_FINAL.
+        return []
     return ["volver"]
 
 
