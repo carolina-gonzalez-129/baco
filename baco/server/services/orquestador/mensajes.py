@@ -306,6 +306,16 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     )
 
 
+def msg_confirmar_metadatos_cargados(categoria: Optional[str], tematicos: List[str], prefijo: str = "") -> str:
+    """ESPERANDO_METADATOS con categoría y etiquetas ya cargadas (p. ej. al reingresar)."""
+    etiquetas = ", ".join(tematicos) if tematicos else "sin etiquetas temáticas"
+    return (
+        f"{prefijo}En el panel están cargadas la categoría **{categoria or 'sin categoría'}** "
+        f"y las etiquetas **{etiquetas}**. Podés modificarlas y, cuando estés conforme, "
+        "tocá **Enviar datos**."
+    )
+
+
 def msg_sesion_finalizada(estado_valor: str) -> str:
     accion = "descartado" if estado_valor in (EstadoFlujo.RECHAZADO.value, "rechazado") else "enviado a revisión"
     return f"Este artículo ya fue {accion}. Para escribir uno nuevo, tocá **Empezar de nuevo**."

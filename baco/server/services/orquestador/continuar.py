@@ -30,6 +30,7 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_REINICIAR,
     PREFIJO_ERROR_CONFORMIDAD,
     PREFIJO_METADATOS_REGISTRADOS,
+    msg_confirmar_metadatos_cargados,
     msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
@@ -164,13 +165,26 @@ def _resp_paso_revision_intermedia(
 
 # --- Paso 3: Pedir tags y categoría desde revisión intermedia ---
 
-def _destino_paso_metadatos(sesion: SesionChat) -> EstadoFlujo:
+def _metadatos_completos(sesion: SesionChat) -> bool:
     b = sesion.borrador
-    if _heredados_pendientes(sesion):
-        return EstadoFlujo.ESPERANDO_METADATOS
-    if b and (b.categoria_id is None or len(b.tags) < 2):
-        return EstadoFlujo.ESPERANDO_METADATOS
-    return EstadoFlujo.REVISION_METADATOS
+    return bool(
+        b and not _heredados_pendientes(sesion)
+        and b.categoria_id is not None and len(b.tags) >= 2
+    )
+
+
+def _destino_paso_metadatos(sesion: SesionChat) -> EstadoFlujo:
+    # Contrato (5/11): desde REVISION_TIPO se entra SIEMPRE a ESPERANDO_METADATOS, aun con
+    # metadatos completos o heredados, para que la persona los confirme con "Enviar datos".
+    # metadatos_heredados_revisados no se resetea: al reingresar no se pisan sus ediciones.
+    return EstadoFlujo.ESPERANDO_METADATOS
+
+
+def _destino_tras_resolver_heredados(sesion: SesionChat) -> EstadoFlujo:
+    """Ya dentro de ESPERANDO_METADATOS: avanza solo si quedaron completos."""
+    if _metadatos_completos(sesion):
+        return EstadoFlujo.REVISION_METADATOS
+    return EstadoFlujo.ESPERANDO_METADATOS
 
 
 def _avanzar_paso_metadatos(sesion: SesionChat) -> None:
@@ -189,6 +203,17 @@ def _resp_paso_metadatos(
     if sesion.estado == EstadoFlujo.ESPERANDO_METADATOS:
         if _heredados_pendientes(sesion):
             return _resp_metadatos_heredados(sesion, prefijo, aviso_privacidad)
+        if _metadatos_completos(sesion):
+            return construir_respuesta(
+                sesion,
+                msg_confirmar_metadatos_cargados(
+                    b.categoria_nombre or DICCIONARIO_OFICIAL_CATEGORIAS.get(b.categoria_id),
+                    [t for t in b.tags if extraer_tipo_plantilla([t]) is None],
+                    prefijo,
+                ),
+                OPCIONES_CONFIRMAR_METADATOS,
+                aviso_privacidad=aviso_privacidad,
+            )
         return construir_respuesta(sesion, msg_pedir_metadatos(b.tipo_plantilla or "", prefijo), ["volver"])
     msg, ops = validar_borrador(sesion, prefijo or PREFIJO_METADATOS_REGISTRADOS)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
@@ -359,7 +384,7 @@ def gestionar_metadatos_heredados(
     sesion.categoria_nombre = b.categoria_nombre
 
     sesion.estado = EstadoFlujo.ESPERANDO_METADATOS
-    destino = _destino_paso_metadatos(sesion)
+    destino = _destino_tras_resolver_heredados(sesion)
     if destino == EstadoFlujo.REVISION_METADATOS:
         _avanzar_paso_revision_final(sesion)
         sesion.estado = destino
