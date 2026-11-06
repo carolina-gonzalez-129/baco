@@ -610,7 +610,11 @@ async def handle_esperando_texto(
                 categoria_id=req.categoria_id,
                 tags=req.tags,
             )
-            return construir_respuesta(sesion, MSG_TEXTO_EN_EDICION, ops_texto, aviso_privacidad=aviso_priv_frag)
+            msg_enriq = (
+                MSG_TEXTO_EN_EDICION
+                + "\n\nAl confirmar se toma la **Vista previa**: pasá ahí lo que quieras sumar."
+            )
+            return construir_respuesta(sesion, msg_enriq, ops_texto, aviso_privacidad=aviso_priv_frag)
 
         sesion.actualizar_contenido_borrador(
             bloques_texto=nuevos_bloques,
