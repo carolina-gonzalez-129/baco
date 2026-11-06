@@ -1586,6 +1586,7 @@
     pr.addEventListener('input', (e) => {
       const bDiv = e.target.closest('.preview-bloque-editable');
       if (!bDiv) return;
+      bDiv.dataset.dirty = '1';
       const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
       if (isNaN(idx) || idx < 0) return;
 
@@ -1645,14 +1646,20 @@
           ? st.borrador.bloques_texto.slice()
           : [''];
       }
+      // Solo se relee lo que la persona editó: la ida y vuelta markdown -> HTML -> markdown
+      // es con pérdida (## -> ####, \n -> \n\n) y daba "cambios sin guardar" falsos tras una skill.
+      let huboEdicion = false;
       bloquesEditables.forEach((bDiv) => {
+        if (bDiv.dataset.dirty !== '1') return;
         const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
         if (isNaN(idx) || idx < 0) return;
         const nuevoMd = extraerMarkdownDeBloque(bDiv);
         if (idx < estadoVistaPrevia.bloques_texto.length) {
           estadoVistaPrevia.bloques_texto[idx] = nuevoMd;
+          huboEdicion = true;
         }
       });
+      if (!huboEdicion) return;
       // No se pisa borrador.texto_limpio: es la referencia del servidor para detectar cambios.
       if (st && st.borrador) {
         st.borrador.bloques_texto = estadoVistaPrevia.bloques_texto.slice();
