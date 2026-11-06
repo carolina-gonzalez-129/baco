@@ -486,6 +486,18 @@ async def handle_decision_titulo(
                 sesion, prefijo=pref, aviso_privacidad=aviso_privacidad
             )
 
+        if txt_disp_limpio:
+            # Texto corto escrito en el panel: se conserva para que el front no lo blanquee.
+            bloques_cortos = [
+                sanitizar_borrador(texto=b)["texto_sanitizado"].strip()
+                for b in bloques_disp
+                if b.strip()
+            ]
+            sesion.actualizar_contenido_borrador(
+                bloques_texto=[b for b in bloques_cortos if b],
+                recursos=recs_disp,
+                ultimo_id_recurso=max(sesion.ultimo_id_recurso, _max_num_recurso(recs_disp)),
+            )
         sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
         return construir_respuesta(sesion, MSG_DESCARTAR_COINCIDENCIA_TITULO, ["confirmar_texto", "volver"])
 

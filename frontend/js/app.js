@@ -2151,22 +2151,43 @@
   const SKILL_POR_ACCION = { aplicar_plantilla: 'plantilla', auditar: 'auditor' };
   const IDS_NAVEGACION = ['volver', 'ver_articulo_final'];
   /* Acciones que NO viajan con los campos: con cambios sin guardar, se avisa que se descartan. */
-  const ACCIONES_SIN_GUARDADO = ['editar', 'cancelar_rechazo', 'volver'];
+  const ACCIONES_SIN_GUARDADO = ['editar', 'cancelar_rechazo', 'volver', 'descartar', 'rechazar_metadatos'];
 
+  /* ¿El borrador tiene recursos que subió la persona? (volver/descartar en ESPERANDO_TEXTO los pierden). */
+  function tieneRecursosSubidos(b) {
+    if (!b) return false;
+    const lista = Array.isArray(b.multimedia) && b.multimedia.length
+      ? b.multimedia
+      : Object.values(b.recursos || {});
+    return lista.some((r) => r && r.origen === 'subido');
+  }
+
+  /* Guardián de descarte: independiente de la acción principal del panel y de que exista borrador. */
   function hayCambiosSinGuardar(s, op) {
-    if (esAccionPanel(s, 'guardar') && s.borrador) {
-      if (!ACCIONES_SIN_GUARDADO.includes(op)) return false;
-      sincronizarTextoDesdePreview();
-      sincronizarTextoConStore();
-      return hayCambios(store.get());
-    }
     // "Continuar con mi texto" en artículos similares: el back sigue con el texto ya buscado, no con el del panel.
     if (s.flujo === 'DECISION_TEXTO' && op === 'continuar') {
       sincronizarTextoConStore();
       const sAct = store.get();
       return (sAct.form.texto || '').trim() !== (sAct.texto_servidor || '').trim();
     }
-    return false;
+    if (!ACCIONES_SIN_GUARDADO.includes(op)) return false;
+    // "Es un tema distinto" en DECISION_TITULO viaja con el texto del panel: no se pierde.
+    if (op === 'descartar' && s.flujo === 'DECISION_TITULO') return false;
+    sincronizarTextoDesdePreview();
+    sincronizarTextoConStore();
+    const sAct = store.get();
+    if (sAct.borrador) {
+      if (hayCambios(sAct)) return true;
+      return sAct.flujo === 'ESPERANDO_TEXTO' && (op === 'volver' || op === 'descartar') &&
+        tieneRecursosSubidos(sAct.borrador);
+    }
+    return (sAct.form.texto || '').trim() !== (sAct.texto_servidor || '').trim();
+  }
+
+  /* "Empezar de nuevo" borra todo: se confirma si ya hay algo cargado. */
+  function hayTrabajoCargado(s) {
+    return Boolean(s.borrador) || s.flujo !== 'ESPERANDO_TITULO' ||
+      Boolean((s.form.titulo || '').trim()) || Boolean((s.form.texto || '').trim());
   }
 
   function pintarOpciones(s) {
@@ -2195,6 +2216,11 @@
 
     if (!descartarCambios && !s.enviando && hayCambiosSinGuardar(s, op)) {
       return pedirConfirmacionDescarte(op, label);
+    }
+    if (op === 'reiniciar' && !descartarCambios && !s.enviando && hayTrabajoCargado(s)) {
+      return pedirConfirmacionDescarte(op, label,
+        'Se va a borrar todo lo cargado (título, texto, multimedia, etiquetas y categoría). ¿Empezar de nuevo?',
+        'Borrar y empezar de nuevo');
     }
 
     if (op === 'ver_articulo_final') {
@@ -2226,7 +2252,7 @@
       renderBloques();
       return enviarTurno({ accion: 'reiniciar' });
     }
-    if (op === 'enriquecer' || op === 'actualizar') {
+    if (op === 'enriquecer' || op === 'actualizar' || (op === 'descartar' && s.flujo === 'DECISION_TITULO')) {
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
       const sAct = store.get();
@@ -2294,11 +2320,11 @@
   }
 
   /* Aviso en el chat: [Descartar y seguir] ejecuta la acción sin los cambios; [Cancelar] no hace nada. */
-  function pedirConfirmacionDescarte(op, label) {
-    const m = burbuja('bot', 'Tenés cambios sin guardar; si seguís, se descartan.');
+  function pedirConfirmacionDescarte(op, label, mensaje, etiquetaOk) {
+    const m = burbuja('bot', mensaje || 'Tenés cambios sin guardar; si seguís, se descartan.');
     const bubble = m.querySelector('.bubble');
     const cont = el('div', 'acciones');
-    const bOk = el('button', 'btn btn-sm btn-dark', 'Descartar y seguir');
+    const bOk = el('button', 'btn btn-sm btn-dark', etiquetaOk || 'Descartar y seguir');
     const bNo = el('button', 'btn btn-sm btn-ghost', 'Cancelar');
     const cerrar = () => { bOk.disabled = true; bNo.disabled = true; };
     bOk.onclick = () => {
