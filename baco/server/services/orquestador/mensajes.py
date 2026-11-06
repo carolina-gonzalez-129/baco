@@ -93,7 +93,7 @@ MSG_SIN_COINCIDENCIAS_TITULO = (
 )
 MSG_DESCARTAR_COINCIDENCIA_TITULO = (
     "✨ Seguimos con tu propuesta de artículo.\n\n"
-    "Escribí o pegá el contenido acá abajo y tocá **Confirmar texto** cuando esté listo."
+    "Escribí o pegá el contenido de tu artículo y tocá **Confirmar texto** cuando esté listo."
 )
 MSG_TEXTO_EN_EDICION = (
     "📝 Guardé tu texto en el **Editor**.\n\n"
@@ -102,7 +102,7 @@ MSG_TEXTO_EN_EDICION = (
 MSG_ELEGIR_PLANTILLA = (
     "📋 Elegí el formato para tu artículo:\n\n"
     "Tocá **Instructivo** si es un paso a paso, o **Soluciones** si resuelve un error o consulta.\n\n"
-    "Vas a poder editar el título y el texto en el paso siguiente."
+    "Vas a poder editar el **título** y el **texto** en el paso siguiente."
 )
 MSG_PEDIR_EDICION = "Hacé los cambios que necesites en el **Editor**."
 MSG_RECHAZADO = (

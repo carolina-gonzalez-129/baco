@@ -1200,6 +1200,8 @@
         const catFalta = !s.form.categoria_id || Number(s.form.categoria_id) <= 1;
         btn.title = s.plantilla_pendiente
           ? MSG_PLANTILLA_PENDIENTE
+          : btn.disabled && acc.campo === 'todo' && tagsInsuficientes(s)
+          ? msgTagsInsuficientes()
           : btn.disabled && acc.campo === 'todo'
           ? 'Editá algún campo para habilitar el guardado'
           : (btn.disabled && acc.campo === 'texto'
@@ -1898,8 +1900,17 @@
     if (campo === 'titulo') return lenTitTrim >= cfg.MIN_TITULO;
     if (campo === 'texto')  return lenTxtTrim >= cfg.MIN_TEXTO && lenTxt <= cfg.MAX_TEXTO_PERCENTIL_99;
     if (campo === 'tags')   return s.form.tags.length >= cfg.MIN_TAGS && Number(s.form.categoria_id) > 1;
-    if (campo === 'todo')   return hayCambios(s) && lenTxt <= cfg.MAX_TEXTO_PERCENTIL_99;
+    if (campo === 'todo')   return hayCambios(s) && lenTxt <= cfg.MAX_TEXTO_PERCENTIL_99 && !tagsInsuficientes(s);
     return true;
+  }
+
+  /* Etiquetas editables por debajo del mínimo: no se guarda (el back descartaría la edición
+     y devolvería las anteriores, que reaparecerían en el panel). */
+  function tagsInsuficientes(s) {
+    return (s.editables || []).includes('tags') && (s.form.tags || []).length < cfg.MIN_TAGS;
+  }
+  function msgTagsInsuficientes() {
+    return 'Se requieren al menos ' + cfg.MIN_TAGS + ' etiquetas (el tipo de plantilla cuenta como una).';
   }
 
   function hayCambios(s) {
@@ -2200,6 +2211,7 @@
       const sAct = store.get();
       if (hayCambios(sAct)) {
         if (sAct.plantilla_pendiente) { toast(MSG_PLANTILLA_PENDIENTE); return; }
+        if (tagsInsuficientes(sAct)) { toast(msgTagsInsuficientes()); return; }
         return pedirConfirmacionGuardado(op, label);
       }
       return enviarTurno({ accion: op }, label);
