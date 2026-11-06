@@ -804,6 +804,10 @@ class ChatOrquestadorResponse(BaseModel):
         default_factory=list,
         description="Acciones de navegación disponibles (p. ej. 'volver'); el front decide cómo mostrarlas.",
     )
+    navegacion_etiquetas: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Texto visible de cada acción de `navegacion` (p. ej. {'volver': 'Cambiar el título'}). Si falta, el front usa 'Volver'.",
+    )
     botones: List[BotonOpcion] = Field(
         default_factory=list,
         description="Botones inyectados dinámicamente por el servidor.",

@@ -2151,10 +2151,11 @@
     const hayVolver = (s.navegacion || []).includes('volver');
     nav.hidden = !hayVolver;
     if (!hayVolver) return;
-    const b = el('button', 'btn-volver', '← Volver');
+    const etiqueta = (s.navegacion_etiquetas || {}).volver || 'Volver';
+    const b = el('button', 'btn-volver', '← ' + etiqueta);
     b.type = 'button';
     b.disabled = Boolean(s.enviando);
-    b.onclick = () => accionar('volver', 'Volver');
+    b.onclick = () => accionar('volver', etiqueta);
     nav.appendChild(b);
   }
 

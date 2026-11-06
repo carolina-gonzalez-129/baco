@@ -4,34 +4,25 @@ La salida debe contener únicamente el cuerpo publicable del artículo. Título,
 
 ## Consulta
 
-**Ruta:** [Indicar ruta de acceso, si fue proporcionada]
-
-**Problema:** [Describir el problema observado]
-
-Describir únicamente el problema observado, las acciones realizadas y el comportamiento del sistema. Escribir en tiempo presente.
-
-No incluir aquí la causa, la explicación de por qué ocurre ni los pasos para resolverlo.
+[Describir en tiempo presente el problema observado, las acciones realizadas y el comportamiento del sistema. Citar textualmente el mensaje de error entre comillas si está en el borrador. No incluir la causa ni los pasos para resolverlo].
 
 ## Respuesta
 
-**Causa:** [Explicar la causa confirmada o indicar que es posible]
-
-Explicar la causa del inconveniente y por qué ocurre. Usar únicamente información confirmada en el contenido recibido.
-
-Si la causa no está confirmada, indicarlo como posible causa. No inventar información.
+[Explicar la causa del inconveniente y por qué ocurre, solo con información del borrador. Si la causa no está confirmada, redactarla como posibilidad ("podría deberse a…")].
 
 ## Pasos a seguir
 
-**Ruta:** [Indicar ruta desde donde se accede a la solución, si fue proporcionada]
+**Ruta:** Menú → [Módulo] → [Funcionalidad]
 
-**Acciones:**
-
-Escribir únicamente acciones concretas para resolver el problema. Usar verbos en infinitivo y numerar cada paso.
-
-1. [Acción confirmada]
-2. [Acción confirmada]
-3. [Acción confirmada]
+1. [Describir la acción con verbos en infinitivo].
+2. [Describir la siguiente acción].
+3. [Describir la acción de confirmación o guardado final].
 
 ## Requiere AppBuilder
 
-**Configuración o acciones:** [Incluir solo si la solicitud confirma que aplica]
+[Indicar qué se debe verificar o modificar con AppBuilder].
+
+Reglas de esta plantilla:
+- La línea **Ruta:** es opcional: incluirla solo si el borrador indica la ruta; si no, omitirla por completo, sin marcador.
+- La sección **Requiere AppBuilder** es opcional: incluirla solo si el borrador confirma que aplica; si no, omitirla por completo, sin marcador.
+- No agregar otras etiquetas en negrita (por ejemplo, Problema, Causa, Acciones) ni otras secciones.

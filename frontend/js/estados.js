@@ -104,6 +104,7 @@ BACO.store = (function () {
     opciones: [],
     botones: [],
     navegacion: [],
+    navegacion_etiquetas: {},
     editables: ['titulo'],
     accion_panel: null,
     skills: null,
@@ -223,6 +224,8 @@ BACO.store = (function () {
       estado.opciones = rawOpciones.map(normalizarBoton);
       /* Navegación (volver, ver_articulo_final): va en el panel, no en los botones del chat. */
       estado.navegacion = Array.isArray(r.navegacion) ? r.navegacion.slice() : [];
+      estado.navegacion_etiquetas = (r.navegacion_etiquetas && typeof r.navegacion_etiquetas === 'object')
+        ? Object.assign({}, r.navegacion_etiquetas) : {};
       estado.editables = Array.isArray(r.editables) ? r.editables.slice() : [];
       estado.accion_panel = r.accion_panel || null;
       estado.skills = r.skills || null;
@@ -352,7 +355,7 @@ BACO.store = (function () {
         etapas: ETAPAS_DEFAULT.slice()
       };
       estado.opciones = []; estado.botones = []; estado.tags_acumulados = [];
-      estado.navegacion = []; estado.editables = ['titulo'];
+      estado.navegacion = []; estado.navegacion_etiquetas = {}; estado.editables = ['titulo'];
       estado.accion_panel = null; estado.skills = null;
       estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;

@@ -350,6 +350,30 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
 
 
 # ==============================================================================
+# Etiqueta del botón Volver (dice a dónde lleva)
+# ==============================================================================
+
+ETIQUETAS_VOLVER: Dict[EstadoFlujo, str] = {
+    EstadoFlujo.ESPERANDO_TITULO: "Cambiar el título",
+    EstadoFlujo.DECISION_TITULO: "Volver a los artículos similares",
+    EstadoFlujo.DECISION_TEXTO: "Volver a los artículos similares",
+    EstadoFlujo.ESPERANDO_TEXTO: "Editar el texto",
+    EstadoFlujo.ESPERANDO_PLANTILLA: "Cambiar tipo de plantilla",
+    EstadoFlujo.REVISION_TIPO: "Volver al formato",
+}
+
+
+def etiqueta_volver(sesion: SesionChat) -> str:
+    """Etiqueta del Volver según el destino que resolvería retroceder(). No muta la sesión."""
+    modo = sesion.borrador.modo if sesion.borrador else "nuevo"
+    regla = TABLA_RETROCESO.get((sesion.estado, modo)) or TABLA_RETROCESO.get((sesion.estado, None))
+    if regla is None:
+        return "Volver"
+    destino = regla.estado_destino(sesion) if callable(regla.estado_destino) else regla.estado_destino
+    return ETIQUETAS_VOLVER.get(destino, "Volver")
+
+
+# ==============================================================================
 # Función pública única de retroceso
 # ==============================================================================
 

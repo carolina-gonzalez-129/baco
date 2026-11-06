@@ -967,6 +967,10 @@ def construir_respuesta(
 
     sesion.ultimas_opciones = list(opciones_finales)
     sesion.ultima_navegacion = list(navegacion_final)
+    navegacion_etiquetas = {}
+    if "volver" in navegacion_final:
+        from baco.server.services.orquestador.retroceso import etiqueta_volver
+        navegacion_etiquetas["volver"] = etiqueta_volver(sesion)
 
     return ChatOrquestadorResponse(
         session_id=sesion.session_id,
@@ -976,6 +980,7 @@ def construir_respuesta(
         opciones=opciones_finales,
         editables=campos_editables(sesion),
         navegacion=navegacion_final,
+        navegacion_etiquetas=navegacion_etiquetas,
         accion_panel=accion_panel(sesion),
         skills=estado_skills(sesion, skills_hab, skills_mot),
         tags_acumulados=obtener_tags_acumulados(sesion),

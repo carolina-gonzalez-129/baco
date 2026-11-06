@@ -141,6 +141,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 | `opciones` | `list[str]` | Botones del chat válidos ahora. Nunca incluye navegación. |
 | `botones` | `list[BotonOpcion]` | Las mismas `opciones` con etiqueta para mostrar. |
 | `navegacion` | `list[str]` | `volver` o `ver_articulo_final`; el front decide cómo mostrarlas (no necesariamente como botón del chat). |
+| `navegacion_etiquetas` | `dict[str, str]` | Texto visible de cada acción de `navegacion`, calculado por el back según el destino (p. ej. `{"volver": "Cambiar el título"}`). Si falta, el front usa `Volver`. |
 | `editables` | `list[str]` | Campos del panel que el back acepta ahora. |
 | `frenar_finalizar` | `bool` | El guardado previo a Finalizar dejó un aviso: no encadenar `finalizar`. |
 | `multimedia_habilitada` | `bool` | Mini panel multimedia operativo (superado `buscar_duplicados`). |

@@ -45,7 +45,7 @@ No incluir tiempo de lectura.
 
 Usar cuando el contenido describe la resolución de un mensaje de error, un comportamiento anómalo o una consulta frecuente (*Q&A técnico*). Estructura detallada en [references/plantilla-soluciones.md](references/plantilla-soluciones.md).
 
-Incluir exactamente estas tres secciones:
+Incluir estas tres secciones, y una cuarta solo si aplica:
 
 1. `## Consulta`
    - Describir el síntoma o la consulta en tiempo presente.
@@ -55,8 +55,13 @@ Incluir exactamente estas tres secciones:
    - Explicar la causa raíz y el porqué del comportamiento, según la fuente.
    - **No** listar pasos operativos ni instrucciones numeradas.
 3. `## Pasos a seguir`
+   - Línea `**Ruta:** Menú → …` solo si el borrador indica la ruta; si no, omitirla (sin marcador).
    - Secuencia ordenada y numerada de pasos para resolver el problema.
    - Verbos en infinitivo, directos y enfocados exclusivamente en la acción de corrección.
+4. `## Requiere AppBuilder` (opcional)
+   - Solo si el borrador confirma que aplica; si no, omitir la sección (sin marcador).
+
+No usar etiquetas en negrita como **Problema**, **Causa** o **Acciones**.
 
 ---
 
