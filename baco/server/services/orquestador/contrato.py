@@ -133,9 +133,9 @@ def navegacion(sesion, opciones: List[str]) -> List[str]:
         return []
     if getattr(sesion, "confirmando_rechazo", False) or e == EstadoFlujo.ESPERANDO_TITULO:
         return []
-    if e == EstadoFlujo.REVISION_TIPO and plantilla_aplicada(sesion):
-        return []
-    if e == EstadoFlujo.REVISION_METADATOS and auditado(sesion):
+    if e in (EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS):
+        # Sin volver: el tipo (REVISION_TIPO) y la categoría/etiquetas (REVISION_METADATOS)
+        # se editan en el lugar antes de la skill; después, solo en EDICION_FINAL.
         return []
     return ["volver"]
 

@@ -108,7 +108,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 
    Cualquier otra acción se responde con `MSG_OPCION_NO_DISPONIBLE` sin cambiar de estado.
 3. **Editables.** El back acepta solo los campos de `editables`; el resto se descarta con aviso.
-4. **Sin volver después de una skill.** Aplicada la plantilla (`REVISION_TIPO`) o el auditor (`REVISION_METADATOS`), desaparece `volver` y lo clasificatorio deja de ser editable; se corrige en `EDICION_FINAL`.
+4. **Sin volver en `REVISION_TIPO` ni `REVISION_METADATOS`.** El tipo y la categoría/etiquetas se editan en el lugar antes de la skill; aplicada la plantilla o el auditor dejan de ser editables y se corrigen en `EDICION_FINAL`.
 5. **Terminales.** `FINALIZADO` y `RECHAZADO` no admiten mutaciones.
 
 ---
@@ -190,8 +190,8 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | `DECISION_TEXTO` | `enriquecer, continuar` | `volver` | `texto` | — |
 | `ESPERANDO_PLANTILLA` | `instructivo, soluciones` | `volver` | `[]` (el tipo se elige solo por chat) | — |
 | `ESPERANDO_METADATOS` | `[]` (se confirma con `enviar_datos`, solo desde el panel) · categoría ambigua: nombres de categorías candidatas (dinámicos) | `volver` | `C`, `categoria_id`, `tags` | — |
-| `REVISION_TIPO` | válido sin skill: `aplicar_plantilla, continuar` · plantilla aplicada: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | sin skill: `volver` · con skill o confirmando rechazo: `[]` | sin skill: `C`, `tipo_plantilla` · con skill: `C` | `plantilla` (no con bloqueantes) |
-| `REVISION_METADATOS` | válido sin skill: `auditar, continuar` · auditado: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | sin skill: `volver` · con skill o confirmando rechazo: `[]` | sin skill: `C`, `categoria_id`, `tags` · con skill: `C` | `auditor` (no con bloqueantes) |
+| `REVISION_TIPO` | válido sin skill: `aplicar_plantilla, continuar` · plantilla aplicada: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | `[]` | sin skill: `C`, `tipo_plantilla` · con skill: `C` | `plantilla` (no con bloqueantes) |
+| `REVISION_METADATOS` | válido sin skill: `auditar, continuar` · auditado: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | `[]` | sin skill: `C`, `categoria_id`, `tags` · con skill: `C` | `auditor` (no con bloqueantes) |
 | `EDICION_FINAL` | `finalizar` · cambio de plantilla pedido: `confirmar_plantilla, cancelar_plantilla` | `[]` | `C`, `tipo_plantilla`, `categoria_id`, `tags` | `plantilla`, `auditor` |
 | `FINALIZADO` | `[]` · ayuda o sesión expirada: `reiniciar` | `ver_articulo_final` | `[]` | — |
 | `RECHAZADO` | `reiniciar` | `[]` | `[]` | — |
