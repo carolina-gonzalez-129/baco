@@ -1667,6 +1667,7 @@
       store.setForm({ texto: estadoVistaPrevia.bloques_texto.join('\n\n').trim() });
     } else {
       bloquesEditables.forEach((bDiv) => {
+        if (bDiv.dataset.dirty !== '1') return;  // ídem: solo lo que la persona editó
         const idx = parseInt(bDiv.getAttribute('data-bloque-idx'), 10);
         if (isNaN(idx) || idx < 0) return;
         const nuevoMd = extraerMarkdownDeBloque(bDiv);
