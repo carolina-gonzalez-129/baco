@@ -135,6 +135,8 @@
       const rec = clasificarRecurso(url, title, false, false);
       return '<a class="chat-link" href="' + url + '" target="_blank" rel="noopener">' + rec.icono + ' ' + title + ' ↗</a>';
     });
+    // "(*)" (campo obligatorio): el asterisco como entidad para que no lo tome la cursiva/negrita.
+    txt = txt.replace(/\(\*\)/g, '(&#42;)');
     txt = txt.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
     txt = txt.replace(/(^|[^\*])\*([^\*]+)\*([^\*]|$)/g, '$1<em>$2</em>$3');
     txt = txt.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -2148,6 +2150,24 @@
   /* Botón de skill del chat -> nombre en s.skills (lo declara el back). */
   const SKILL_POR_ACCION = { aplicar_plantilla: 'plantilla', auditar: 'auditor' };
   const IDS_NAVEGACION = ['volver', 'ver_articulo_final'];
+  /* Acciones que NO viajan con los campos: con cambios sin guardar, se avisa que se descartan. */
+  const ACCIONES_SIN_GUARDADO = ['editar', 'cancelar_rechazo', 'volver'];
+
+  function hayCambiosSinGuardar(s, op) {
+    if (esAccionPanel(s, 'guardar') && s.borrador) {
+      if (!ACCIONES_SIN_GUARDADO.includes(op)) return false;
+      sincronizarTextoDesdePreview();
+      sincronizarTextoConStore();
+      return hayCambios(store.get());
+    }
+    // "Continuar con mi texto" en artículos similares: el back sigue con el texto ya buscado, no con el del panel.
+    if (s.flujo === 'DECISION_TEXTO' && op === 'continuar') {
+      sincronizarTextoConStore();
+      const sAct = store.get();
+      return (sAct.form.texto || '').trim() !== (sAct.texto_servidor || '').trim();
+    }
+    return false;
+  }
 
   function pintarOpciones(s) {
     /* Las opciones del back van solo en el chat; el panel muestra Guardar (principal) y Volver. */
@@ -2170,8 +2190,12 @@
   /* =========================================================
      Acciones
      ========================================================= */
-  async function accionar(op, label) {
+  async function accionar(op, label, descartarCambios) {
     const s = store.get();
+
+    if (!descartarCambios && !s.enviando && hayCambiosSinGuardar(s, op)) {
+      return pedirConfirmacionDescarte(op, label);
+    }
 
     if (op === 'ver_articulo_final') {
       const sid = s.session_id || (api.sesionActual ? api.sesionActual() : '');
@@ -2261,6 +2285,26 @@
       sincronizarTextoConStore();
       const payload = Object.assign(camposFormulario(store.get()), { accion: op });
       return enviarTurno(payload, 'Guardar cambios y ' + String(label || op).toLowerCase());
+    };
+    bNo.onclick = cerrar;
+    cont.appendChild(bOk);
+    cont.appendChild(bNo);
+    bubble.insertBefore(cont, bubble.querySelector('.stamp'));
+    return m;
+  }
+
+  /* Aviso en el chat: [Descartar y seguir] ejecuta la acción sin los cambios; [Cancelar] no hace nada. */
+  function pedirConfirmacionDescarte(op, label) {
+    const m = burbuja('bot', 'Tenés cambios sin guardar; si seguís, se descartan.');
+    const bubble = m.querySelector('.bubble');
+    const cont = el('div', 'acciones');
+    const bOk = el('button', 'btn btn-sm btn-dark', 'Descartar y seguir');
+    const bNo = el('button', 'btn btn-sm btn-ghost', 'Cancelar');
+    const cerrar = () => { bOk.disabled = true; bNo.disabled = true; };
+    bOk.onclick = () => {
+      cerrar();
+      if (store.get().enviando) return;
+      return accionar(op, label, true);
     };
     bNo.onclick = cerrar;
     cont.appendChild(bOk);
@@ -3030,6 +3074,7 @@
       );
 
       return res
+        .replace(/\(\*\)/g, '(&#42;)')  // "(*)": que no lo tome la cursiva/negrita
         .replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^\*]+)\*/g, '<em>$1</em>')
         .replace(/`([^`]+)`/g, '<code>$1</code>');

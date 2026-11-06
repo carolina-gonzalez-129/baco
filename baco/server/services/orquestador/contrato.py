@@ -117,6 +117,9 @@ def campos_editables(sesion) -> List[str]:
     if e == EstadoFlujo.REVISION_METADATOS:
         return CAMPOS_CONTENIDO + ([] if auditado(sesion) else ["categoria_id", "tags"])
     if e == EstadoFlujo.EDICION_FINAL:
+        if getattr(sesion, "plantilla_pendiente", None):
+            # Confirmar/Cancelar el cambio no envía los campos: lo editado ahora se perdería.
+            return []
         return CAMPOS_CONTENIDO + ["tipo_plantilla", "categoria_id", "tags"]
     return []
 

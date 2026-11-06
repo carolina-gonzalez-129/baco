@@ -69,6 +69,8 @@
 
     const formatearEnLinea = (texto) => {
       let t = esc(texto);
+      // "(*)" (campo obligatorio): el asterisco como entidad para que no lo tome la cursiva/negrita.
+      t = t.replace(/\(\*\)/g, '(&#42;)');
       // Enlaces: [texto](url)
       t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1 ↗</a>');
       // Negrita: **texto**

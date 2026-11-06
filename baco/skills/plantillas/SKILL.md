@@ -36,7 +36,7 @@ Secciones, en este orden (el servidor envía la estructura completa en `<plantil
 - Párrafo inicial sin encabezado: `Esta aplicación tiene como objetivo…` con una descripción breve.
 - `## ¿Para qué sirve?`: explicación como cita (`> ...`).
 - `## Antes de empezar`: `### Configuraciones iniciales en el sistema` y las configuraciones previas en los maestros y componentes, con verbos en infinitivo.
-- `## Modo de uso`: línea `**Ruta:** Menú → Gestión Empresarial → …` y pasos numerados en infinitivo. Detallar campos solo si no son deducibles (`**Campo (*):** descripción`) y agregar la nota aclaratoria de campos obligatorios si se usan asteriscos.
+- `## Modo de uso`: línea `**Ruta:** Menú → Gestión Empresarial → …` y pasos numerados en infinitivo. Detallar campos (`**Campo (*):** descripción`) solo si el borrador los nombra explícitamente; nunca inventar campos y agregar la nota aclaratoria de campos obligatorios si se usan asteriscos.
 - `## Qué hace y qué no hace`: opcional, al final, solo si la fuente menciona los límites.
 
 No incluir tiempo de lectura.

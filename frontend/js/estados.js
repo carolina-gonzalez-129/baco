@@ -107,6 +107,7 @@ BACO.store = (function () {
     navegacion_etiquetas: {},
     editables: ['titulo'],
     accion_panel: null,
+    texto_servidor: '',  // texto_limpio que tiene el back (base para detectar cambios sin borrador)
     skills: null,
     tags_acumulados: [],
     categorias_disponibles: [],
@@ -240,6 +241,8 @@ BACO.store = (function () {
       }
       estado.coincidencias = r.coincidencias || [];
       estado.borrador = r.borrador || null;
+      estado.texto_servidor = (typeof r.texto_limpio === 'string') ? r.texto_limpio
+        : (r.borrador ? (r.borrador.texto_limpio || '') : '');
       estado.plantilla_pendiente = r.plantilla_pendiente || null;
       estado.validacion = r.validacion || null;
       estado.aviso_metadatos_heredados = r.aviso_metadatos_heredados || null;
