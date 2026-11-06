@@ -499,6 +499,37 @@ async def handle_decision_titulo(
     return construir_respuesta(sesion, msg_opcion_invalida(intento), ops)
 
 
+def _crear_borrador_nuevo_desde_sesion(sesion: SesionChat) -> None:
+    """Crea un borrador modo="nuevo" con el texto propio ya guardado en la sesión."""
+    bloques_propios = list(sesion.bloques_texto) if sesion.bloques_texto else (
+        [sesion.texto_limpio.strip()] if (sesion.texto_limpio or "").strip() else []
+    )
+    max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(sesion.recursos))
+    sesion.contenido_adicional = []
+    sesion.borrador = BorradorSesion(
+        modo="nuevo",
+        titulo=sesion.titulo,
+        bloques_texto=bloques_propios,
+        recursos=sesion.recursos,
+        ultimo_id_recurso=max_id,
+        contenido_adicional=[],
+        tipo_plantilla=(sesion.borrador.tipo_plantilla if sesion.borrador else None) or extraer_tipo_plantilla(sesion.tags),
+        categoria_id=sesion.categoria_id,
+        tags=list(sesion.tags),
+    )
+    sesion.texto = sesion.borrador.texto_alineado_discourse
+
+
+def _limpiar_restos_articulo_descartado(sesion: SesionChat) -> None:
+    """Tras "Es un tema distinto": quita de la sesión los recursos y metadatos heredados
+    del artículo descartado; conserva solo los recursos presentes en el texto propio."""
+    bloques, recs = extraer_recursos_y_bloques_texto(sesion.texto_en_edicion or "")
+    sesion.recursos = {}
+    sesion.actualizar_contenido_borrador(bloques_texto=bloques, recursos=recs)
+    sesion.metadatos_anteriores = None
+    sesion.metadatos_heredados_revisados = False
+
+
 async def handle_esperando_texto(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str, buscador: BuscadorDuplicados
 ) -> ChatOrquestadorResponse:
@@ -506,9 +537,19 @@ async def handle_esperando_texto(
         return retroceder(sesion)
 
     if opcion in ("descartar", "continuar"):
-        resetear_enriquecimiento_descartado(sesion, agregar_a_descartados=True, texto_extra=req.texto)
+        texto_propio = resetear_enriquecimiento_descartado(sesion, agregar_a_descartados=True, texto_extra=req.texto)
+        _limpiar_restos_articulo_descartado(sesion)
 
         texto_directo = (req.texto or "").strip()
+        if not texto_directo and texto_propio:
+            # El texto propio ya pasó por la búsqueda de duplicados: no se pide de nuevo
+            # ni se vuelve a buscar; sigue por el tronco (tipo de plantilla).
+            texto_buscado = texto_efectivo_sin_marcadores(sesion.texto_limpio or sesion.texto or "")
+            if texto_buscado:
+                sesion.busquedas_descartadas.add(clave_busqueda("texto", texto_buscado))
+            _crear_borrador_nuevo_desde_sesion(sesion)
+            return continuar(sesion, prefijo=PREFIJO_CONTINUAR_PROPIO)
+
         if not texto_directo:
             return construir_respuesta(
                 sesion,
@@ -991,23 +1032,7 @@ async def handle_decision_texto(
             if c.id and c.id not in sesion.articulos_descartados_ids:
                 sesion.articulos_descartados_ids.append(c.id)
         sesion.coincidencias = []
-        bloques_propios = list(sesion.bloques_texto) if sesion.bloques_texto else (
-            [sesion.texto_limpio.strip()] if (sesion.texto_limpio or "").strip() else []
-        )
-        max_id = max(sesion.ultimo_id_recurso, _max_num_recurso(sesion.recursos))
-        sesion.contenido_adicional = []
-        sesion.borrador = BorradorSesion(
-            modo="nuevo",
-            titulo=sesion.titulo,
-            bloques_texto=bloques_propios,
-            recursos=sesion.recursos,
-            ultimo_id_recurso=max_id,
-            contenido_adicional=[],
-            tipo_plantilla=(sesion.borrador.tipo_plantilla if sesion.borrador else None) or extraer_tipo_plantilla(sesion.tags),
-            categoria_id=sesion.categoria_id,
-            tags=list(sesion.tags),
-        )
-        sesion.texto = sesion.borrador.texto_alineado_discourse
+        _crear_borrador_nuevo_desde_sesion(sesion)
         return continuar(sesion, prefijo=PREFIJO_CONTINUAR_PROPIO)
 
     if opcion == "volver":

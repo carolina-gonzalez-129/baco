@@ -213,8 +213,9 @@ def ejecutar_skill_validador(borrador: BorradorSesion, baco) -> Tuple[str, Optio
         f"<<<VERSION_CORREGIDA>>>\n"
         f"[texto corregido en Markdown]\n"
         f"<<<FIN_VERSION>>>\n"
-        f"La versión corregida debe conservar la estructura de la plantilla indicada abajo, si la hay.\n\n"
-        f"{_bloque_plantilla_referencia(borrador.tipo_plantilla)}"
+        # Sin <plantilla_referencia>: con ella el modelo reformateaba como la skill de plantillas.
+        f"La versión corregida debe conservar la estructura, los encabezados y el orden que ya tiene el texto; "
+        f"no lo reformatees a una plantilla ni agregues o quites secciones.\n\n"
         f"<borrador_contenido>\n"
         f"{texto_seguro}\n"
         f"</borrador_contenido>"

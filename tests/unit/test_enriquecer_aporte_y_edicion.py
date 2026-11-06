@@ -189,11 +189,19 @@ def test_descartar_en_esperando_texto_restaura_aporte(client, mock_buscador):
     r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
 
-    # Elige descartar el artículo existente
+    llamadas_texto = mock_buscador.evaluar_texto.call_count
+
+    # "Es un tema distinto": con texto propio ya buscado, sigue al tronco sin pedirlo ni buscar de nuevo
     r3 = client.post("/chat", json={"session_id": sid, "accion": "descartar"}).json()
-    # Continúa en ESPERANDO_TEXTO pero habiendo descartado el existente
-    assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    assert SESIONES[sid].borrador is None
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    sesion = SESIONES[sid]
+    assert sesion.borrador is not None and sesion.borrador.modo == "nuevo"
+    assert sesion.borrador.texto_limpio == aporte_original
+    assert mock_buscador.evaluar_texto.call_count == llamadas_texto
+    assert 999 in sesion.articulos_descartados_ids
+    # No quedan restos del artículo descartado
+    assert sesion.recursos == {}
+    assert sesion.metadatos_anteriores is None
 
 
 def test_enriquecer_respeta_borrados_y_no_reinyecta_base(client, mock_buscador):
