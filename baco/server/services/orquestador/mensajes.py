@@ -127,7 +127,6 @@ MSG_PLANTILLA_VALIDADA = (
     "¡Perfecto! ¿Querés que le dé a tu artículo el formato estándar de su tipo? "
     "Tocá **Aplicar Plantilla**.\n"
     "Si ya tiene ese formato, tocá **Continuar**.\n\n"
-    "El tipo de plantilla vas a poder cambiarlo en la edición final."
 )
 MSG_ANTES_DE_FINALIZAR = MSG_CATEGORIA_TAGS_COMPLETOS
 MSG_ANTES_DE_CONTINUAR = MSG_PLANTILLA_VALIDADA

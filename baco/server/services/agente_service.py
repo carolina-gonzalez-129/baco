@@ -40,8 +40,7 @@ def _obtener_texto_limpio_estricto(borrador: BorradorSesion) -> str:
 
 _DIR_REFERENCIAS_PLANTILLAS = Path(__file__).resolve().parents[2] / "skills" / "plantillas" / "references"
 # Plantillas cuya referencia ya está alineada con la plantilla original de la Base de Conocimiento.
-# Soluciones queda afuera hasta alinear su referencia (sigue usando la descripción del SKILL.md / agent.py).
-_PLANTILLAS_CON_REFERENCIA = {"instructivo"}
+_PLANTILLAS_CON_REFERENCIA = {"instructivo", "soluciones"}
 
 
 @lru_cache(maxsize=None)
@@ -76,6 +75,58 @@ def _bloque_plantilla_referencia(tipo_plantilla: Optional[str]) -> str:
         f"<plantilla_referencia>\n{cuerpo}\n</plantilla_referencia>\n\n"
     )
 
+# Caché en disco de la skill de plantillas (para la demo: el modelo gratuito tarda minutos).
+# Misma entrada (prompt completo: tipo + título + texto + plantilla) -> misma salida, al instante.
+# Desactivar con BACO_CACHE_SKILLS=0. Para regenerar, borrar data/cache_skills.json.
+# No se guardan salidas con marcadores [Indicar...] ni fuera de los límites de largo.
+_CACHE_SKILLS_PATH = Path(__file__).resolve().parents[3] / "data" / "cache_skills.json"
+
+
+def _cache_skills_activa() -> bool:
+    import os
+    return os.getenv("BACO_CACHE_SKILLS", "1") != "0"
+
+
+def _clave_cache(prompt: str) -> str:
+    import hashlib
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+def _leer_cache_skill(prompt: str) -> Optional[str]:
+    if not _cache_skills_activa():
+        return None
+    try:
+        import json
+        datos = json.loads(_CACHE_SKILLS_PATH.read_text(encoding="utf-8"))
+        return datos.get(_clave_cache(prompt))
+    except (OSError, ValueError):
+        return None
+
+
+def _guardar_cache_skill(prompt: str, resultado: str) -> None:
+    if not _cache_skills_activa() or not resultado:
+        return
+    if re.search(r"\[Indicar[^]]*]", resultado, re.IGNORECASE):
+        return
+    # Un modelo débil puede devolver una llamada a herramienta como texto en vez del artículo.
+    if re.search(r"<\s*/?\s*(tool_call|param_key|param_value)", resultado, re.IGNORECASE):
+        return
+    largo = len(texto_efectivo_sin_marcadores(resultado))
+    if largo < TEXTO_MIN or largo > TEXTO_MAX:
+        return
+    try:
+        import json
+        try:
+            datos = json.loads(_CACHE_SKILLS_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            datos = {}
+        datos[_clave_cache(prompt)] = resultado
+        _CACHE_SKILLS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _CACHE_SKILLS_PATH.write_text(json.dumps(datos, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
 def ejecutar_skill_plantillas(session_id: str, borrador: BorradorSesion, baco) -> str:
     texto_entrada = _obtener_texto_limpio_estricto(borrador)
     texto_seguro = _escapar_delimitadores_xml(texto_entrada)
@@ -96,7 +147,10 @@ def ejecutar_skill_plantillas(session_id: str, borrador: BorradorSesion, baco) -
         f"</borrador_contenido>"
     )
 
-    resultado_bruto = str(baco(prompt)).strip()
+    resultado_bruto = _leer_cache_skill(prompt)
+    if resultado_bruto is None:
+        resultado_bruto = str(baco(prompt)).strip()
+        _guardar_cache_skill(prompt, resultado_bruto)
     resultado_verificado = sanitizar_borrador(texto=resultado_bruto)["texto_sanitizado"].strip()
 
     largo_efectivo = len(texto_efectivo_sin_marcadores(resultado_verificado))

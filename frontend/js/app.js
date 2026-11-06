@@ -1430,6 +1430,8 @@
 
   /* Renderiza la vista previa interactiva/editable preservando formato y multimedia */
   function renderVistaPreviaEditable(s) {
+    // Varias llamadas no pasan el estado: sin esto la vista previa quedaba siempre de solo lectura.
+    s = s || store.get();
     const textoEditablePreview = Boolean(BACO.camposActivos(s).texto) && !s.enviando;
     let pr = $('#preview');
     if (!pr && $('#campoTexto')) {
@@ -2209,11 +2211,15 @@
 
   /* Campos del formulario que viajan junto con la acción (el back los guarda antes de ejecutarla). */
   function camposFormulario(s) {
+    // Si tags no es editable (REVISION_TIPO), el tipo viaja aparte como tipo_plantilla (igual que enviarPrincipal).
+    const act = BACO.camposActivos(s);
     return {
       titulo: s.form.titulo,
       texto: s.form.texto,
       texto_editor: separaPaneles(s.borrador) ? s.form.texto_editor : undefined,
-      tags: s.form.tags,
+      tags: act.tags ? s.form.tags : undefined,
+      tipo_plantilla: (!act.tags && act.tipo_plantilla)
+        ? ((s.form.tags || []).find(esTipoPlantilla) || undefined) : undefined,
       categoria_id: s.form.categoria_id
     };
   }
@@ -2446,13 +2452,7 @@
     sincronizarTextoConStore();
     const sAct = store.get();
     if (sAct.borrador && hayCambios(sAct)) {
-      const payloadGuardar = {
-        titulo: sAct.form.titulo,
-        texto: sAct.form.texto,
-        texto_editor: separaPaneles(sAct.borrador) ? sAct.form.texto_editor : undefined,
-        tags: sAct.form.tags,
-        categoria_id: sAct.form.categoria_id
-      };
+      const payloadGuardar = camposFormulario(sAct);
       await enviarTurno(payloadGuardar, 'Guardar cambios');
     }
 
