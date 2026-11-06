@@ -913,9 +913,11 @@ async def ejecutar_skill(
         opciones = ["continuar"]
     if es_reaplicacion:
         msg = (
-            "Reaplicamos la **plantilla** sobre el texto actual."
+            "Reaplicamos la **plantilla** sobre el texto del **Editor**. El nuevo resultado está en la **Vista previa**; "
+            "al tocar **Continuar** o **Finalizar** se toma solo la Vista previa y el Editor se reemplaza por ella."
             if not es_auditor
-            else "Reauditamos el artículo con el texto actual."
+            else "Reauditamos el artículo con el texto del **Editor**. El nuevo resultado está en la **Vista previa**; "
+            "al tocar **Continuar** o **Finalizar** se toma solo la Vista previa y el Editor se reemplaza por ella."
         )
     else:
         msg = (

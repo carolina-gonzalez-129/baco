@@ -84,16 +84,19 @@ MSG_OPERACION_CANCELADA = (
     "Operación cancelada. Mantenemos tu borrador intacto:\n\n"
 )
 
+MSG_SIN_COINCIDENCIAS_TEXTO = (
+    "No encontré artículos con **contenido** parecido."
+)
 
 MSG_SIN_COINCIDENCIAS_TITULO = (
-    "No encontré nada parecido. Por favor, enviame el texto o desarrollo del artículo."
+    "No encontré artículos con un **título** parecido. Enviame el desarrollo del artículo."
 )
 MSG_DESCARTAR_COINCIDENCIA_TITULO = (
     "✨ Seguimos con tu propuesta de artículo.\n\n"
     "Escribí o pegá el contenido acá abajo y tocá **Confirmar texto** cuando esté listo."
 )
 MSG_TEXTO_EN_EDICION = (
-    "📝 Guardé tu texto en el editor.\n\n"
+    "📝 Guardé tu texto en el **Editor**.\n\n"
     "Podés seguir escribiendo o pegando más contenido, y cuando esté listo tocá **Confirmar texto**."
 )
 MSG_ELEGIR_PLANTILLA = (
@@ -208,17 +211,17 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"📄 Cargué el artículo **{titulo}** en la **Vista previa**.\n\n"
-        "Al tocar **Confirmar texto** se toma el texto de la **Vista previa**: "
-        "tu texto queda en el **Editor** como referencia. Si querés sumar algo tuyo, "
+        f"📄 Cargué el artículo **{titulo}** en la **Vista previa**. Tu texto quedó en el **Editor** como referencia.\n\n"
+        "Al tocar **Confirmar texto** avanza solo la **Vista previa**: si querés sumar algo de tu texto, "
         "pasalo a la Vista previa antes de confirmar."
     )
 
 
 def msg_actualizar_serie_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f'📄 Cargué la ultima publicación de la serie ("{titulo}") en la **Vista previa** .\n\n'
-        "Hace los cambios que necesites y toca **Confirmar texto**."
+        f'📄 Cargué la última publicación de la serie ("{titulo}") en la **Vista previa**. Tu texto quedó en el **Editor** como referencia.\n\n'
+        "Al tocar **Confirmar texto** avanza solo la **Vista previa**: hacé ahí los cambios que necesites "
+        "(si querés sumar algo de tu texto, pasalo a la Vista previa) y después confirmá."
     )
 
 
@@ -242,7 +245,9 @@ VARIANTES_CATEGORIA_FALTANTE = [
 ]
 
 
-OPCIONES_CONFIRMAR_METADATOS = ["enviar_datos", "volver"]
+# "Enviar datos" es solo acción del panel (accion_panel): no va como botón del chat, porque
+# el del chat no adjunta los campos del formulario y descartaba las ediciones del panel.
+OPCIONES_CONFIRMAR_METADATOS = ["volver"]
 
 
 def msg_confirmar_metadatos(categoria: str, tags: List[str]) -> str:
@@ -301,7 +306,7 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
         # R9: el tipo de plantilla ya se mostró en REVISION_TIPO; no se repite.
-        f"{prefijo}Para seguir, elegí la categoría y sumá al menos una etiqueta temática "
+        f"{prefijo} Para seguir, elegí la **categoría** y suma al menos **una etiqueta temática** "
         "(el tipo de plantilla ya cuenta como una)."
     )
 
@@ -351,7 +356,7 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
     if est == EstadoFlujo.ESPERANDO_TEXTO:
         if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
             return (
-                "📄 Tenés cargado el artículo base en el editor.\n\n"
+                "📄 Tenés cargado el artículo base en el **Editor**.\n\n"
                 "Hacé los cambios necesarios y tocá **Confirmar texto**, o elegí **Es un tema distinto** para empezar de cero.",
                 ["confirmar_texto", "descartar"],
             )

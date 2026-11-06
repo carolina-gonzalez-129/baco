@@ -23,6 +23,7 @@ from baco.server.services.orquestador.mensajes import (
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
     msg_cambios_guardados,
+    MSG_SIN_COINCIDENCIAS_TEXTO,
     MSG_SIN_COINCIDENCIAS_TITULO,
     MSG_TEXTO_EN_EDICION,
     OPCIONES_ENRIQUECER_CONTINUAR,
@@ -473,10 +474,12 @@ async def handle_decision_titulo(
                 tags=list(req.tags or sesion.tags),
             )
             sesion.texto = sesion.borrador.texto_alineado_discourse
+            # Sin coincidencias de contenido se informa antes de pedir la plantilla
+            # (si la búsqueda se omitió por descartada, no se afirma que no hubo).
             pref = (
-                f"Omití las coincidencias que ya descartaste. {PREFIJO_SIN_DUPLICADOS}"
+                "Omití las coincidencias que ya descartaste. "
                 if omitir_txt
-                else PREFIJO_SIN_DUPLICADOS
+                else f"{MSG_SIN_COINCIDENCIAS_TEXTO}\n\n"
             )
             sesion.estado = EstadoFlujo.ESPERANDO_TEXTO
             return continuar(
@@ -830,8 +833,13 @@ async def handle_esperando_texto(
         tags=list(sesion.tags),
     )
     sesion.texto = sesion.borrador.texto_alineado_discourse
-    pref_descarte = "Omití las coincidencias que ya descartaste. " if omitir_txt else ""
-    pref_final = f"{pref_descarte}{PREFIJO_SIN_DUPLICADOS}"
+    # Sin coincidencias de contenido se informa antes de pedir la plantilla
+    # (si la búsqueda se omitió por descartada, no se afirma que no hubo).
+    pref_final = (
+        "Omití las coincidencias que ya descartaste. "
+        if omitir_txt
+        else f"{MSG_SIN_COINCIDENCIAS_TEXTO}\n\n"
+    )
     return continuar(
         sesion, prefijo=pref_final, aviso_privacidad=aviso_privacidad
     )

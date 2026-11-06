@@ -1128,7 +1128,7 @@ def validar_borrador(
         return (
             f"{prefijo}El borrador está completo, pero hay {len(ajustes)} sugerencia(s) para mejorarlo:\n{detalle}\n\n"
             + (
-                "Podés corregirlas en el Editor o tocar Continuar para dejarlo así."
+                "Podés corregirlas en la **Vista previa** (es el texto que avanza) o tocar Continuar para dejarlo así."
                 if ops_validas == ["continuar"]
                 else "Podés corregirlas en el Editor, Aplicar plantilla o tocar Continuar para dejarlo así."
                 + (f"\n\n{aviso_tipo}" if aviso_tipo else "")

@@ -306,8 +306,8 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
         construir_respuesta=_resp_decision_texto,
     ),
 
-    # ESPERANDO_PLANTILLA: con metadatos_anteriores restaura y va a REVISION_TIPO;
-    # sin metadatos_anteriores regresa a ESPERANDO_TEXTO.
+    # ESPERANDO_PLANTILLA: vuelve siempre a ESPERANDO_TEXTO; con metadatos_anteriores
+    # además restaura los heredados (se vuelven a confirmar en ESPERANDO_METADATOS).
     (EstadoFlujo.ESPERANDO_PLANTILLA, "nuevo"): ReglaRetroceso(
         estado_destino=_destino_esperando_plantilla,
         restaurar=_restaurar_esperando_plantilla,

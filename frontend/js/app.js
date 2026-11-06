@@ -2579,7 +2579,7 @@
 
     const botonesCompanion = listaBotones.filter((btnDef) => {
       const accion = (typeof btnDef === 'object' && btnDef !== null) ? btnDef.accion : btnDef;
-      return accion !== 'confirmar_texto' && !IDS_NAVEGACION.includes(accion);
+      return !IDS_NAVEGACION.includes(accion);
     });
 
     if (botonesCompanion.length) {

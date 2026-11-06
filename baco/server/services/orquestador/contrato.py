@@ -141,8 +141,16 @@ def navegacion(sesion, opciones: List[str]) -> List[str]:
 
 
 def separar_opciones(sesion, opciones: List[str]) -> Tuple[List[str], List[str]]:
-    """Separa los botones del chat de la navegación."""
-    chat = [o for o in opciones if not (isinstance(o, str) and o in IDS_NAVEGACION)]
+    """Separa los botones del chat de la navegación.
+    La acción principal del panel (accion_panel) no se repite como botón del chat: el del
+    panel es el que envía los campos del formulario (sigue permitida por ACCIONES_PANEL_POR_ESTADO).
+    """
+    par = _ACCION_PANEL.get(sesion.estado)
+    del_panel = par[0] if par else None
+    chat = [
+        o for o in opciones
+        if not (isinstance(o, str) and (o in IDS_NAVEGACION or o == del_panel))
+    ]
     return chat, navegacion(sesion, opciones)
 
 

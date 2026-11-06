@@ -155,7 +155,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 
 #### 2.3. `accion_panel` y `skills`
 
-**`accion_panel`** (`contrato.accion_panel`): el front pinta el botón principal desde acá, no desde `estado`.
+**`accion_panel`** (`contrato.accion_panel`): el front pinta el botón principal desde acá, no desde `estado`. Esa acción nunca se repite en `opciones` (no hay botón equivalente en el chat).
 
 | Estado | `accion` | `label` | Qué envía el front |
 | :--- | :--- | :--- | :--- |
@@ -186,10 +186,10 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | :--- | :--- | :--- | :--- | :--- |
 | `ESPERANDO_TITULO` | `[]` | `[]` | `titulo` | — |
 | `DECISION_TITULO` | serie: `actualizar, descartar` · estándar: `enriquecer, descartar` | `volver` | `texto` | — |
-| `ESPERANDO_TEXTO` | nuevo: `confirmar_texto` · enriquecimiento: `confirmar_texto, descartar` · error de longitud/marcadores: `[]` | `volver` | `texto` | — |
+| `ESPERANDO_TEXTO` | nuevo: `[]` · enriquecimiento: `descartar` (`confirmar_texto` solo desde el panel) | `volver` | `texto` | — |
 | `DECISION_TEXTO` | `enriquecer, continuar` | `volver` | `texto` | — |
 | `ESPERANDO_PLANTILLA` | `instructivo, soluciones` | `volver` | `[]` (el tipo se elige solo por chat) | — |
-| `ESPERANDO_METADATOS` | carga por panel: `[]` · confirmar lo cargado por chat: `enviar_datos` · categoría ambigua: nombres de categorías candidatas (dinámicos) | `volver` | `C`, `categoria_id`, `tags` | — |
+| `ESPERANDO_METADATOS` | `[]` (se confirma con `enviar_datos`, solo desde el panel) · categoría ambigua: nombres de categorías candidatas (dinámicos) | `volver` | `C`, `categoria_id`, `tags` | — |
 | `REVISION_TIPO` | válido sin skill: `aplicar_plantilla, continuar` · plantilla aplicada: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | sin skill: `volver` · con skill o confirmando rechazo: `[]` | sin skill: `C`, `tipo_plantilla` · con skill: `C` | `plantilla` (no con bloqueantes) |
 | `REVISION_METADATOS` | válido sin skill: `auditar, continuar` · auditado: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | sin skill: `volver` · con skill o confirmando rechazo: `[]` | sin skill: `C`, `categoria_id`, `tags` · con skill: `C` | `auditor` (no con bloqueantes) |
 | `EDICION_FINAL` | `finalizar` · cambio de plantilla pedido: `confirmar_plantilla, cancelar_plantilla` | `[]` | `C`, `tipo_plantilla`, `categoria_id`, `tags` | `plantilla`, `auditor` |
@@ -197,7 +197,7 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | `RECHAZADO` | `reiniciar` | `[]` | `[]` | — |
 
 **Notas**
-- Los enriquecidos pasan por `ESPERANDO_PLANTILLA` y `REVISION_TIPO` como cualquier borrador. Al salir de `REVISION_TIPO` con `continuar`, si el borrador ya tiene categoría y al menos 2 etiquetas (y no hay metadatos heredados pendientes de confirmar), se saltea `ESPERANDO_METADATOS` y se pasa directo a `REVISION_METADATOS`, donde categoría y etiquetas siguen editables hasta auditar.
+- Los enriquecidos pasan por `ESPERANDO_PLANTILLA` y `REVISION_TIPO` como cualquier borrador. Al salir de `REVISION_TIPO` con `continuar` se entra siempre a `ESPERANDO_METADATOS`, aunque los metadatos estén completos o sean heredados (estos llegan precargados en el borrador); la persona los confirma con `enviar_datos` desde el panel.
 - En `ESPERANDO_METADATOS` las opciones de categoría no son ids fijos: el front envía el nombre tal cual lo recibió.
 - `ver_articulo_final` reemite el mensaje de artículo finalizado; no muta nada.
 - Al pasar a `RECHAZADO` el servidor destruye la cookie de sesión.
