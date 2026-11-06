@@ -208,8 +208,10 @@ def msg_articulo_muy_largo(max_c: int) -> str:
 
 def msg_enriquecer_cargado(articulo_id: int, titulo: str) -> str:
     return (
-        f"📄 Cargué el artículo ('{titulo}') en la **Vista previa** .\n\n"
-        "Hacé los cambios que necesites y toca **Confirmar texto**."
+        f"📄 Cargué el artículo **{titulo}** en la **Vista previa**.\n\n"
+        "Al tocar **Confirmar texto** se toma el texto de la **Vista previa**: "
+        "tu texto queda en el **Editor** como referencia. Si querés sumar algo tuyo, "
+        "pasalo a la Vista previa antes de confirmar."
     )
 
 
@@ -298,8 +300,9 @@ def msg_pedir_plantilla(prefijo: str = "") -> str:
 
 def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     return (
-        f"{prefijo}🏷️ Tipo de plantilla **{plantilla.capitalize()}**.\n\n"
-        "Para seguir, sumá al menos una etiqueta más y elegí la categoría. "
+        # R9: el tipo de plantilla ya se mostró en REVISION_TIPO; no se repite.
+        f"{prefijo}Para seguir, elegí la categoría y sumá al menos una etiqueta temática "
+        "(el tipo de plantilla ya cuenta como una)."
     )
 
 
@@ -417,6 +420,13 @@ MSG_CAMBIO_PLANTILLA_DESCARTADO = (
     "el tipo quedó como estaba."
 )
 
+# R9: reingreso dentro de EDICION_FINAL; la explicación completa ya se mostró al entrar.
+MSG_SEGUIR_EDICION_FINAL = "Podés seguir editando en el panel. Cuando esté todo listo, tocá **Finalizar**."
+
+# R9: reingreso a REVISION_TIPO / REVISION_METADATOS (cancelar descarte, guardar cambios).
+MSG_CIERRE_REINGRESO_TIPO = "Podés tocar **Aplicar Plantilla** o **Continuar**."
+MSG_CIERRE_REINGRESO_METADATOS = "Podés tocar **Auditar** o **Continuar**."
+
 MSG_CAMBIO_PLANTILLA_CANCELADO = (
     "Listo, **no cambié** el tipo de plantilla. Todo quedó como estaba.\n\n"
     "Cuando esté todo listo, tocá **Finalizar**."
@@ -445,13 +455,11 @@ def msg_plantilla_obligatoria(actual: str) -> str:
         "El **tipo de plantilla** es obligatorio, así que no lo quité"
         + (f": sigue siendo **{actual}**" if actual else "")
         + ". El resto de los cambios quedó guardado.\n\n"
-        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel o escribiéndolo acá.\n\n"
-        "Al tocar **Finalizar** registramos el borrador y ya no vas a poder editarlo; después lo revisa y publica un moderador."
+        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel o escribiéndolo acá."
     )
 
 
 def msg_plantilla_sin_cambio(actual: str) -> str:
     return (
-        f"El tipo de plantilla ya es **{actual}**, no hay nada que cambiar.\n\n"
-        "Al tocar **Finalizar** registramos el borrador y ya no vas a poder editarlo; después lo revisa y publica un moderador."
+        f"El tipo de plantilla ya es **{actual}**, no hay nada que cambiar."
     )

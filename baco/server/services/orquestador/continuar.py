@@ -295,11 +295,12 @@ def _verificar_obligatorios_finalizar(sesion: SesionChat) -> Optional[ChatOrques
     lineas = []
     for f in bloqueantes:
         accion = _campo(f, "action")
-        lineas.append(f"- {_campo(f, 'description')}" + (f" ({accion})" if accion else ""))
-    detalle = "\n".join(lineas) or "- Hay campos obligatorios sin completar."
+        descripcion = str(_campo(f, "description") or "").strip().rstrip(".")
+        lineas.append(f"- **{descripcion}.**" + (f" {accion}" if accion else ""))
+    detalle = "\n".join(lineas) or "- **Hay campos obligatorios sin completar.**"
     msg = (
-        f"Antes de finalizar falta completar:\n{detalle}\n\n"
-        "Corregilo en el panel del borrador y tocá **Finalizar** de nuevo."
+        f"⚠️ **Todavía no se puede finalizar.** Falta resolver:\n\n{detalle}\n\n"
+        "Corregilo en el panel y tocá **Finalizar** de nuevo."
     )
     sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
     return construir_respuesta(sesion, msg, OPCIONES_EDICION_FINAL)

@@ -22,6 +22,7 @@ from baco.server.services.orquestador.mensajes import (
     MSG_OPERACION_CANCELADA,
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
+    msg_cambios_guardados,
     MSG_SIN_COINCIDENCIAS_TITULO,
     MSG_TEXTO_EN_EDICION,
     OPCIONES_ENRIQUECER_CONTINUAR,
@@ -595,6 +596,22 @@ async def handle_esperando_texto(
             return construir_respuesta(sesion, msg_error_longitud_maxima("texto", TEXTO_MAX_PERCENTIL_99, intento), ops_texto)
 
         max_id_frag = max(ultimo_id_prev, _max_num_recurso(recs_combinados))
+        if sesion.borrador is not None and sesion.borrador.modo == "enriquecimiento":
+            # Regla de texto vigente: lo escrito por chat va solo al Editor; la Vista previa no se toca.
+            if req.texto is not None:
+                texto_editor_nuevo = fragmento_limpio
+            else:
+                previo_editor = (sesion.borrador.texto_editor or "").strip()
+                texto_editor_nuevo = f"{previo_editor}\n\n{fragmento_limpio}".strip() if previo_editor else fragmento_limpio
+            sesion.actualizar_contenido_borrador(
+                texto_editor=texto_editor_nuevo,
+                recursos=recs_combinados,
+                ultimo_id_recurso=max_id_frag,
+                categoria_id=req.categoria_id,
+                tags=req.tags,
+            )
+            return construir_respuesta(sesion, MSG_TEXTO_EN_EDICION, ops_texto, aviso_privacidad=aviso_priv_frag)
+
         sesion.actualizar_contenido_borrador(
             bloques_texto=nuevos_bloques,
             texto_en_edicion=nuevo_borrador_txt,
@@ -637,54 +654,42 @@ async def handle_esperando_texto(
         )
         bloques_base_enriq = list(sesion.borrador.bloques_texto or [])
         texto_base_limpio = sesion.borrador.texto_base_limpio or "\n\n".join(bloques_base_enriq)
-        # Regla 6: Adiciones breves (<= 70 chars) que no contienen la base se agregan al final
-        if bloques_base_enriq and len(texto_raw) <= 70 and texto_base_limpio not in texto_raw:
-            bloques_enriq, recursos_finales, aviso_priv, _ = _consolidar_bloques_y_recursos_enriquecimiento(
-                bloques_base_enriq,
-                sesion.borrador.recursos,
-                texto_raw,
-                ultimo_id=ultimo_id_enriq,
-                validar_marcadores_existentes=True,
-                forzar_preservar_base=True,
-            )
-            aviso_priv = aviso_priv or getattr(req, "aviso_privacidad_detectado", None)
-        else:
-            # Edición manual del editor: tiene prioridad sobre la concatenación cruda y respeta borrados
-            bloques_raw, recs_nuevos = extraer_recursos_y_bloques_texto(
-                texto_raw,
-                recursos_previos=sesion.borrador.recursos,
-                ultimo_id=ultimo_id_enriq,
-            )
-            parrafos_base = (
-                {p.strip() for p in re.split(r"\n\s*\n", texto_base_limpio) if p.strip()}
-                if texto_base_limpio
-                else set()
-            )
-            bloques_san = []
-            avisos_priv = []
-            for b in bloques_raw:
-                b_strip = b.strip()
-                if not b_strip:
-                    continue
-                if texto_base_limpio and (b_strip == texto_base_limpio or b_strip in parrafos_base):
-                    bloques_san.append(b_strip)
-                elif texto_base_limpio and texto_base_limpio in b_strip:
-                    txt_cons, av = consolidar_texto_enriquecimiento(texto_base_limpio, b_strip)
-                    bloques_san.append(txt_cons)
-                    if av:
-                        avisos_priv.append(av)
-                else:
-                    s_b = sanitizar_borrador(texto=b_strip)
-                    bloques_san.append(s_b["texto_sanitizado"].strip())
-                    if s_b.get("aviso_privacidad"):
-                        avisos_priv.append(s_b["aviso_privacidad"])
-            aviso_priv = (avisos_priv[0] if avisos_priv else None) or getattr(req, "aviso_privacidad_detectado", None)
-            bloques_enriq, recursos_finales = fusionar_bloques_y_recursos_sin_colision(
-                bloques_san,
-                sesion.borrador.recursos,
-                recs_nuevos,
-                ultimo_id=ultimo_id_enriq,
-            )
+        # Regla de texto vigente: se confirma la Vista previa completa (respeta borrados y ediciones)
+        bloques_raw, recs_nuevos = extraer_recursos_y_bloques_texto(
+            texto_raw,
+            recursos_previos=sesion.borrador.recursos,
+            ultimo_id=ultimo_id_enriq,
+        )
+        parrafos_base = (
+            {p.strip() for p in re.split(r"\n\s*\n", texto_base_limpio) if p.strip()}
+            if texto_base_limpio
+            else set()
+        )
+        bloques_san = []
+        avisos_priv = []
+        for b in bloques_raw:
+            b_strip = b.strip()
+            if not b_strip:
+                continue
+            if texto_base_limpio and (b_strip == texto_base_limpio or b_strip in parrafos_base):
+                bloques_san.append(b_strip)
+            elif texto_base_limpio and texto_base_limpio in b_strip:
+                txt_cons, av = consolidar_texto_enriquecimiento(texto_base_limpio, b_strip)
+                bloques_san.append(txt_cons)
+                if av:
+                    avisos_priv.append(av)
+            else:
+                s_b = sanitizar_borrador(texto=b_strip)
+                bloques_san.append(s_b["texto_sanitizado"].strip())
+                if s_b.get("aviso_privacidad"):
+                    avisos_priv.append(s_b["aviso_privacidad"])
+        aviso_priv = (avisos_priv[0] if avisos_priv else None) or getattr(req, "aviso_privacidad_detectado", None)
+        bloques_enriq, recursos_finales = fusionar_bloques_y_recursos_sin_colision(
+            bloques_san,
+            sesion.borrador.recursos,
+            recs_nuevos,
+            ultimo_id=ultimo_id_enriq,
+        )
         texto_limpio = "\n\n".join(bloques_enriq).strip()
         largo_efectivo = len(texto_efectivo_sin_marcadores(texto_limpio))
 
@@ -1254,7 +1259,7 @@ def _resolver_flujo_rechazo(
 
     if opcion == "cancelar_rechazo":
         sesion.confirmando_rechazo = False
-        msg, ops = validar_borrador(sesion)
+        msg, ops = validar_borrador(sesion, reingreso=True)
         return construir_respuesta(
             sesion,
             f"{MSG_OPERACION_CANCELADA}{msg}",
@@ -1435,8 +1440,13 @@ async def _handle_revision_comun(
             return continuar_desde_revision(sesion)
 
         if opcion not in ("editar", opcion_skill, "rechazar", "confirmar_rechazo"):
-            prefijo = PREFIJO_BORRADOR_ACTUALIZADO
-            msg, ops = validar_borrador(sesion, prefijo)
+            # R9: se confirma lo guardado y solo se recuerdan los botones del paso.
+            prefijo = (
+                msg_cambios_guardados(res_edicion.cambios, list(res_edicion.descartes or []))
+                if (res_edicion.cambios or res_edicion.descartes)
+                else "Guardé tus cambios."
+            )
+            msg, ops = validar_borrador(sesion, prefijo, reingreso=True)
             return construir_respuesta(sesion, msg, ops, aviso_privacidad=res_edicion.aviso_privacidad)
 
     # 3. Opciones del estado
@@ -1494,8 +1504,8 @@ async def gestionar_cambio_plantilla_pendiente(
     )
     from baco.server.services.orquestador.mensajes import (
         MSG_CAMBIO_PLANTILLA_CANCELADO,
-        MSG_EDICION_FINAL,
         MSG_ELEGIR_UNA_PLANTILLA,
+        MSG_SEGUIR_EDICION_FINAL,
         OPCIONES_CONFIRMAR_PLANTILLA,
         OPCIONES_EDICION_FINAL,
         msg_confirmar_cambio_plantilla,
@@ -1517,7 +1527,7 @@ async def gestionar_cambio_plantilla_pendiente(
         sesion.plantilla_pendiente = None
         if not pendiente:
             sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
-            return construir_respuesta(sesion, MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL), req
+            return construir_respuesta(sesion, MSG_SEGUIR_EDICION_FINAL, OPCIONES_EDICION_FINAL), req
         plantilla_anterior = (
             b.tipo_plantilla or sesion.tipo_plantilla or extraer_tipo_plantilla(b.tags or [])
         )
@@ -1641,9 +1651,10 @@ async def handle_edicion_final(
 
     # 5. Edición u otra interacción en EDICION_FINAL:
     # Botones: solo "Finalizar" (sin volver, ver contrato.py). Mensajes en mensajes.py.
-    from baco.server.services.orquestador.mensajes import MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL
+    from baco.server.services.orquestador.mensajes import MSG_SEGUIR_EDICION_FINAL, OPCIONES_EDICION_FINAL
     aviso_priv = res_edicion.aviso_privacidad if res_edicion else None
-    mensaje = (res_edicion.aviso if res_edicion and res_edicion.aviso else MSG_EDICION_FINAL)
+    # R9: la explicación completa (MSG_EDICION_FINAL) ya se mostró al entrar al estado.
+    mensaje = (res_edicion.aviso if res_edicion and res_edicion.aviso else MSG_SEGUIR_EDICION_FINAL)
     return construir_respuesta(sesion, mensaje, OPCIONES_EDICION_FINAL, aviso_privacidad=aviso_priv)
 
 

@@ -78,7 +78,8 @@ def _bloque_plantilla_referencia(tipo_plantilla: Optional[str]) -> str:
 # Caché en disco de la skill de plantillas (para la demo: el modelo gratuito tarda minutos).
 # Misma entrada (prompt completo: tipo + título + texto + plantilla) -> misma salida, al instante.
 # Desactivar con BACO_CACHE_SKILLS=0. Para regenerar, borrar data/cache_skills.json.
-# No se guardan salidas con marcadores [Indicar...] ni fuera de los límites de largo.
+# Se guardan también salidas con marcadores [Indicar...] (se corrigen a mano en la Vista previa);
+# no se guardan llamadas a herramienta devueltas como texto ni salidas fuera de los límites de largo.
 _CACHE_SKILLS_PATH = Path(__file__).resolve().parents[3] / "data" / "cache_skills.json"
 
 
@@ -105,8 +106,6 @@ def _leer_cache_skill(prompt: str) -> Optional[str]:
 
 def _guardar_cache_skill(prompt: str, resultado: str) -> None:
     if not _cache_skills_activa() or not resultado:
-        return
-    if re.search(r"\[Indicar[^]]*]", resultado, re.IGNORECASE):
         return
     # Un modelo débil puede devolver una llamada a herramienta como texto en vez del artículo.
     if re.search(r"<\s*/?\s*(tool_call|param_key|param_value)", resultado, re.IGNORECASE):

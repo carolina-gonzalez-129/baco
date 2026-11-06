@@ -997,7 +997,12 @@ def construir_respuesta(
     )
 
 
-def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[str]]:
+def validar_borrador(
+    sesion: SesionChat, prefijo: str = "", reingreso: bool = False
+) -> Tuple[str, List[str]]:
+    """reingreso=True (R9): la persona ya leyó la invitación del paso (cancelar descarte,
+    guardar cambios); se omite la introducción y el aviso de plantilla, se conservan
+    los hallazgos y la línea de botones."""
     b = sesion.borrador
     texto_eval = (b.texto_limpio if (b and b.texto_limpio) else (b.texto_alineado_discourse if b else ""))
     try:
@@ -1098,10 +1103,16 @@ def validar_borrador(sesion: SesionChat, prefijo: str = "") -> Tuple[str, List[s
         from baco.server.services.orquestador.contrato import plantilla_aplicada
         from baco.server.services.orquestador.mensajes import msg_plantilla_a_aplicar
 
-        if not plantilla_aplicada(sesion):
+        if not plantilla_aplicada(sesion) and not reingreso:
             aviso_tipo = msg_plantilla_a_aplicar(b.tipo_plantilla or extraer_tipo_plantilla(b.tags or []))
             if aviso_tipo:
-                msg_cierre = f"{msg_cierre}\n\n{aviso_tipo}"
+                msg_cierre = f"{msg_cierre.rstrip()}\n\n{aviso_tipo}"
+    if reingreso and (es_revision_tipo or sesion.estado == EstadoFlujo.REVISION_METADATOS):
+        from baco.server.services.orquestador.mensajes import (
+            MSG_CIERRE_REINGRESO_METADATOS,
+            MSG_CIERRE_REINGRESO_TIPO,
+        )
+        msg_cierre = MSG_CIERRE_REINGRESO_TIPO if es_revision_tipo else MSG_CIERRE_REINGRESO_METADATOS
     ops_validas = OPCIONES_REVISION_INTERMEDIA_VALIDO if es_revision_tipo else OPCIONES_REVISION_VALIDO
     # Contrato: después de la skill del paso solo queda Continuar.
     from baco.server.services.orquestador.contrato import auditado, plantilla_aplicada

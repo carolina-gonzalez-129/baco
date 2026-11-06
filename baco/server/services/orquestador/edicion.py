@@ -202,11 +202,15 @@ def revalidar_estructura_plantilla(
             if f not in hallazgos_meta and f.get("field") != "titulo"
         ]
         if findings:
-            detalle = "\n".join(
-                f"- [{f['severity']}] {f['description']} ({f['action']})"
-                for f in findings
+            def _linea(f):
+                desc = str(f.get("description") or "").strip().rstrip(".")
+                accion = str(f.get("action") or "").strip()
+                return f"- **{desc}.**" + (f" {accion}" if accion else "") + f" _({f['severity']})_"
+            detalle = "\n".join(_linea(f) for f in findings)
+            return (
+                f"⚠️ **Revisá la estructura de la plantilla {plantilla_evaluar.capitalize()}:**"
+                f"\n\n{detalle}"
             )
-            return f"Aviso sobre la estructura de la plantilla '{plantilla_evaluar}':\n{detalle}"
     except Exception:
         pass
     return None
@@ -662,20 +666,6 @@ def adoptar_resultado_skill_pendiente(sesion: SesionChat) -> None:
     if b is None:
         return
 
-    if getattr(b, "resultado_skill_desactualizado", False) or getattr(b, "skill_desactualizada", False):
-        texto_a_usar = b.texto_editor or getattr(sesion, "texto_editor", None)
-        if texto_a_usar:
-            sesion.actualizar_contenido_borrador(
-                bloques_texto=[texto_a_usar],
-                texto_base_limpio=texto_a_usar,
-                texto_editor=texto_a_usar,
-                texto_original=texto_a_usar,
-                resultado_skill_desactualizado=False,
-                resultado_skill_pendiente=False,
-            )
-            b.skill_pendiente = None
-        return
-
     if getattr(b, "resultado_skill_pendiente", False):
         bloques_adoptados = list(b.bloques_texto) if b.bloques_texto else []
         texto_adoptado = b.texto_limpio
@@ -930,11 +920,13 @@ async def ejecutar_skill(
     else:
         msg = (
             f"🤖 Apliqué la plantilla **{(b.tipo_plantilla or extraer_tipo_plantilla(b.tags or []) or '').capitalize()}**. El resultado está en la **Vista previa** y tu texto original "
-            "quedó intacto en el **Editor**. Solo se enviará el texto de la Vista previa; podés editar "
-            "ambos. Si volvés a aplicar la skill, se usa el texto del Editor. Tocá **Continuar** cuando esté listo."
+            "quedó intacto en el **Editor**. Solo se enviará el texto de la Vista previa. Lo que cambies en el "
+            "**Editor** solo se usa si volvés a aplicar la skill; al tocar **Continuar**, el Editor se reemplaza por la Vista previa. "
+            "Tocá **Continuar** cuando esté listo."
             if not es_auditor
             else "🤖 Revisé el texto. El resultado está en la **Vista previa** y tu texto original quedó "
-            "intacto en el **Editor**. Solo se enviará el texto de la Vista previa; podés editar ambos. "
+            "intacto en el **Editor**. Solo se enviará el texto de la Vista previa. Lo que cambies en el **Editor** "
+            "solo se usa si volvés a auditar; al tocar **Continuar**, el Editor se reemplaza por la Vista previa. "
             "Tocá **Continuar** cuando esté listo."
         )
 
