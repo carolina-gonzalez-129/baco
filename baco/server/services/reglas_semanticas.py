@@ -17,11 +17,18 @@ JURISDICCIONES: Dict[str, Set[str]] = {
     "PE": {"peru", "perú", "sunat", "ple", "detracciones", "detraccion", "detracción", "ruc"},
     "CO": {"colombia", "dian", "exogena", "exógena"},
     "MX": {"mexico", "méxico", "sat", "cfdi"},
-    "PY": {"paraguay", "set", "marangatu", "paraguayapp"},
+    "PY": {"paraguay", "marangatu", "paraguayapp"},
     "UY": {"uruguay", "dgi", "uruguayapp"},
     "CL": {"chile", "sii"},
-    "BO": {"bolivia", "sin"},
+    "BO": {"bolivia"},
     "EC": {"ecuador", "sri"},
+}
+
+# Siglas de organismos que coinciden con palabras comunes ("sin", "set").
+# Solo cuentan en el texto original y en MAYÚSCULAS (SIN = Bolivia, SET = Paraguay).
+SIGLAS_AMBIGUAS: Dict[str, Set[str]] = {
+    "BO": {"SIN"},
+    "PY": {"SET"},
 }
 
 CIRCUITOS_OPUESTOS: List[Tuple[Set[str], Set[str]]] = [
@@ -60,7 +67,7 @@ def _tokenizar(texto: str) -> Set[str]:
     return set(re.findall(r"\w+", texto.lower())) if texto else set()
 
 
-def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]]) -> Optional[str]:
+def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]], texto_raw: str = "") -> Optional[str]:
     if isinstance(tokens_o_texto, set):
         tokens = {t.lower() for t in tokens_o_texto}
     else:
@@ -69,6 +76,13 @@ def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]]) -> Optional[str]
     for pais, keywords in JURISDICCIONES.items():
         if tokens & keywords:
             return pais
+
+    # Siglas ambiguas: solo sobre el texto original, respetando mayúsculas.
+    if texto_raw:
+        tokens_raw = set(re.findall(r"\w+", texto_raw))
+        for pais, siglas in SIGLAS_AMBIGUAS.items():
+            if tokens_raw & siglas:
+                return pais
     return None
 
 
@@ -87,12 +101,12 @@ def son_semanticas_divergentes(
     tokens_cand = _tokenizar(cand_normalizado)
     tokens_cons = _tokenizar(cons_normalizada)
 
-    pais_cand = detectar_jurisdiccion(tokens_cand)
-    pais_cons = detectar_jurisdiccion(tokens_cons)
+    pais_cand = detectar_jurisdiccion(tokens_cand, cand_raw)
+    pais_cons = detectar_jurisdiccion(tokens_cons, cons_raw)
     if not pais_cand and cand_texto:
-        pais_cand = detectar_jurisdiccion(_tokenizar(cand_texto[:1000]))
+        pais_cand = detectar_jurisdiccion(_tokenizar(cand_texto[:1000]), cand_texto[:1000])
     if not pais_cons and cons_texto:
-        pais_cons = detectar_jurisdiccion(_tokenizar(cons_texto[:1000]))
+        pais_cons = detectar_jurisdiccion(_tokenizar(cons_texto[:1000]), cons_texto[:1000])
 
     if pais_cand and pais_cons and pais_cand != pais_cons:
         return True

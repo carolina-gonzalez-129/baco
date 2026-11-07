@@ -58,3 +58,30 @@ def test_son_semanticas_divergentes_detecta_versiones_y_fases():
         "facturacion - diseño",
         "facturacion - ejecución",
     )
+
+def test_siglas_ambiguas_sin_set_solo_en_mayusculas():
+    # "sin"/"set" como palabras comunes no son jurisdicción
+    assert detectar_jurisdiccion("facturas sin cae pendientes") == "AR"  # por "cae"
+    assert detectar_jurisdiccion("remitos sin stock") is None
+    assert detectar_jurisdiccion("set de datos de prueba") is None
+    # Como siglas en el texto original (mayúsculas) sí cuentan
+    assert detectar_jurisdiccion("libro de ventas", "Libro de ventas SIN") == "BO"
+    assert detectar_jurisdiccion("declaracion jurada", "Declaración jurada SET") == "PY"
+    assert detectar_jurisdiccion("remitos sin stock", "Remitos sin stock") is None
+
+
+def test_sin_en_texto_no_descarta_duplicado_real():
+    # Antes: "sin" en el texto del candidato lo marcaba BO y se descartaba contra AFIP (AR)
+    assert son_semanticas_divergentes(
+        "configurar comprobantes electronicos",
+        "configurar comprobantes electronicos afip",
+        cand_texto="pasos para emitir sin errores",
+        cons_texto="Pasos para emitir comprobantes",
+    ) is False
+
+
+def test_sigla_sin_en_titulo_raw_sigue_separando_paises():
+    assert son_semanticas_divergentes(
+        "libro de ventas sin", "libro de ventas sunat",
+        cand_raw="Libro de ventas SIN", cons_raw="Libro de ventas SUNAT",
+    ) is True
