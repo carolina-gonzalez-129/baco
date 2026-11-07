@@ -168,10 +168,15 @@
     menuAbiertoPos: null
   };
 
-  /* Editor y Vista previa se separan en enriquecimiento y mientras hay un resultado de skill pendiente:
-     el Editor conserva el texto fuente y la Vista previa muestra el texto que se enviará. */
-  function separaPaneles(b) {
-    return Boolean(b && (b.modo === 'enriquecimiento' || b.resultado_skill_pendiente === true));
+  /* Editor y Vista previa separados: con skill pendiente, o en enriquecimiento mientras se espera el texto.
+     Tras confirmar el texto avanza la Vista previa y el back iguala el Editor a ella: mostrarlo aparte
+     dejaría editar un texto que el guardado descarta. */
+  function separaPaneles(b, flujo) {
+    if (!b) return false;
+    if (b.resultado_skill_pendiente === true) return true;
+    if (b.modo !== 'enriquecimiento') return false;
+    const f = flujo || ((store.get() || {}).flujo);
+    return f === 'ESPERANDO_TEXTO';
   }
   BACO.separaPaneles = separaPaneles;
 
@@ -944,7 +949,7 @@
 
     if (sesionCambio) {
       sesionCargadaId = s.session_id;
-      if (separaPaneles(b)) {
+      if (separaPaneles(b, s.flujo)) {
         const textoUsuario = (typeof b.texto_editor === 'string') ? b.texto_editor : '';
         reconstruirBloques([textoUsuario], [], b);
         estadoVistaPrevia.bloques_texto = Array.isArray(b.bloques_texto) ? b.bloques_texto.map((t) => String(t == null ? '' : t)) : [''];
@@ -954,7 +959,7 @@
       }
       renderBloques();
     } else if (!estadoEditor.bloques_texto || !estadoEditor.bloques_texto.length) {
-      if (separaPaneles(b)) {
+      if (separaPaneles(b, s.flujo)) {
         const textoUsuario = (typeof b.texto_editor === 'string') ? b.texto_editor : '';
         reconstruirBloques([textoUsuario], [], b);
         estadoVistaPrevia.bloques_texto = Array.isArray(b.bloques_texto) ? b.bloques_texto.map((t) => String(t == null ? '' : t)) : [''];
@@ -1025,7 +1030,7 @@
       ultimoFallo = null;
       if (r && (r.borrador || typeof r.texto_limpio === 'string')) {
         const b = r.borrador;
-        if (separaPaneles(b)) {
+        if (separaPaneles(b, r.estado)) {
           const textoUsuario = (typeof b.texto_editor === 'string') ? b.texto_editor : '';
           reconstruirBloques([textoUsuario], [], b);
           if (Array.isArray(b.bloques_texto)) {
