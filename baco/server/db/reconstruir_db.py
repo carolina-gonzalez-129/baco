@@ -77,6 +77,25 @@ def cargar_y_validar_json(ruta: Path = RUTA_JSON) -> list[dict]:
     return articulos
 
 
+def descargar_desde_api() -> Path:
+    """Corre descargar_articulos (Discourse) y devuelve la ruta del JSON generado.
+    Aborta sin tocar la base si la descarga termina con errores."""
+    import subprocess
+    from baco.server.discourse.descargar_articulos import SALIDA
+
+    print("\n" + "=" * 75)
+    print(" PASO 0: DESCARGA DE ARTÍCULOS DESDE LA API DE DISCOURSE")
+    print("=" * 75)
+    res = subprocess.run(
+        [sys.executable, "-m", "baco.server.discourse.descargar_articulos"],
+        cwd=PROJECT_ROOT,
+    )
+    if res.returncode != 0:
+        print("[-] La descarga terminó con errores. Abortando sin modificar la base.")
+        sys.exit(1)
+    return SALIDA
+
+
 def sincronizar_articulos(conn, articulos: list[dict]):
     print("\n" + "=" * 75)
     print(" PASO 2: INGESTA Y SINCRONIZACIÓN DE ARTÍCULOS DESDE JSON")
@@ -206,6 +225,7 @@ def main():
     )
     parser.add_argument("--solo-schema", action="store_true", help="Aplica únicamente el DDL y tablas sin cargar datos.")
     parser.add_argument("--cargar-json", action="store_true", help="Ingesta y sincroniza los artículos desde articulos.json.")
+    parser.add_argument("--desde-api", action="store_true", help="Descarga los artículos desde la API de Discourse antes de cargarlos (implica --cargar-json).")
     parser.add_argument("--con-embeddings", action="store_true", help="Calcula los embeddings vectoriales ONNX INT8.")
     parser.add_argument("--todo-embeddings", action="store_true", help="Fuerza el recálculo al 100% de embeddings (incluso los ya calculados).")
     parser.add_argument("--batch-size", type=int, default=64, help="Tamaño de lote para cálculo de embeddings (default 64).")
@@ -218,8 +238,13 @@ def main():
         print("[-] Para ejecutar --reset debe incluir también la bandera --forzar.")
         sys.exit(1)
 
-    cargar = not args.solo_schema and (args.cargar_json or args.reset)
-    articulos = cargar_y_validar_json() if cargar else None
+    if args.desde_api and args.solo_schema:
+        print("[-] --desde-api no se puede combinar con --solo-schema.")
+        sys.exit(1)
+
+    cargar = not args.solo_schema and (args.cargar_json or args.reset or args.desde_api)
+    ruta_json = descargar_desde_api() if args.desde_api else RUTA_JSON
+    articulos = cargar_y_validar_json(ruta_json) if cargar else None
 
     with get_conn(autocommit=False) as conn:
         try:
