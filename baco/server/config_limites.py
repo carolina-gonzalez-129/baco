@@ -1,9 +1,22 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Carga el .env de la raíz del proyecto antes de leer límites configurables
+# (este módulo puede importarse antes que los que ya llaman a load_dotenv).
+for _p in Path(__file__).resolve().parents:
+    if (_p / ".env").exists():
+        load_dotenv(_p / ".env")
+        break
+
 TITULO_MIN = 15
 TITULO_MAX = 255
 TEXTO_MIN = 20
 # Quizas estaria bueno mas adelante que a la cota de texto max skills lo obtenga viendo los p 90, 95, y 99
 #haciendo un join de la tabla de cant_caracteres con la tabla de artículos para usar la columna texto_sin_headers
-TEXTO_MAX = 6687
+# Cota máxima de texto para usar skills. Configurable con BACO_TEXTO_MAX en el .env.
+TEXTO_MAX = int(os.getenv("BACO_TEXTO_MAX", "6687"))
 TAGS_MIN = 2
 TAGS_MAX = 5
 TAGS_PLANTILLAS_PERMITIDAS = ("instructivo", "soluciones")
