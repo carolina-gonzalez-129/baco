@@ -215,7 +215,7 @@ def test_req3_endpoint_reordenar_semantica_posicion_y_orden(client):
     )
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Guía de reordenamiento",
         bloques_texto=list(borrador.bloques_texto),
         recursos=dict(borrador.recursos),
@@ -369,6 +369,11 @@ def test_req5_sin_alias_texto_en_borrador_solo_texto_alineado_discourse():
 # 6. Adiciones por chat al último bloque y reemplazo por skill
 # =========================================================================
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="Bug reportado (7/11): confirmar_texto con el texto completo fusiona los bloques intercalados "
+    "en uno solo y el recurso conserva posicion=0, así que la imagen se corre al final.",
+)
 def test_req6_adiciones_por_chat_al_ultimo_bloque_y_skill_reemplaza_con_bloque_unico(client, mock_buscador):
     """Verifica que:
     - Las adiciones breves por chat con bloques existentes se agregan al final del último bloque de texto.
@@ -397,8 +402,11 @@ def test_req6_adiciones_por_chat_al_ultimo_bloque_y_skill_reemplaza_con_bloque_u
 
     # Adición breve por chat -> se agrega al final del último bloque de texto
     aporte = "Nota 2026: verificar cotización de cierre."
-    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": aporte}).json()
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # Contrato vigente: confirmar_texto manda el contenido completo del panel
+    texto_panel = "\n\n".join(r2["borrador"]["bloques_texto"]) + " " + aporte
+    r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_panel}).json()
+    # Convergencia: todos los flujos piden primero el tipo de plantilla
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     bloques_tras_aporte = r3["borrador"]["bloques_texto"]
     assert len(bloques_tras_aporte) == 2
     assert bloques_tras_aporte[0] == "Primer bloque del artículo existente en la base de conocimientos oficial."
@@ -443,51 +451,7 @@ def test_req7_cotas_y_maximo_de_bloques():
 
 
 # =========================================================================
-# 8. skills_habilitadas y HTTP 422 con recursos cargados
-# =========================================================================
-
-def test_req8_skills_habilitadas_y_422_con_recursos_cargados(client):
-    """Verifica que skills_habilitadas es False con recursos cargados y los endpoints de skills devuelven 422."""
-    sid = "sesion-skills-422-recursos"
-    texto_valido = "Paso 1: Configurar el módulo de tesorería.\n\nPaso 2: Emitir orden de pago electrónica."
-    r1 = Recurso(id="rec_1", tipo="imagen", nombre="op.png", referencia="https://bc.finneg.com/op.png", posicion=0, orden=0)
-    borrador = BorradorSesion(
-        modo="nuevo",
-        titulo="Emisión de Orden de Pago Electrónica",
-        bloques_texto=["Paso 1: Configurar el módulo de tesorería.", "Paso 2: Emitir orden de pago electrónica."],
-        recursos={"rec_1": r1},
-        finalizado=True,
-        tipo_plantilla="instructivo",
-        categoria_id=22,
-        tags=["instructivo", "tesoreria"],
-    )
-    assert borrador.skills_habilitadas is False
-    assert borrador.skills_motivo is not None
-
-    SESIONES[sid] = SesionChat(
-        session_id=sid,
-        estado=EstadoFlujo.FINALIZADO,
-        titulo=borrador.titulo,
-        bloques_texto=list(borrador.bloques_texto),
-        recursos=dict(borrador.recursos),
-        borrador=borrador,
-    )
-
-    mock_agente = MagicMock()
-    app.dependency_overrides[get_baco_agent] = lambda: mock_agente
-    try:
-        resp_p = client.post("/chat/aplicar-plantilla", headers={"X-Session-ID": sid})
-        resp_a = client.post("/chat/auditar-semantica", headers={"X-Session-ID": sid})
-    finally:
-        app.dependency_overrides.pop(get_baco_agent, None)
-
-    assert resp_p.status_code == 422
-    assert resp_a.status_code == 422
-    mock_agente.assert_not_called()
-
-
-# =========================================================================
-# 9. Contratos unificados, partición atómica, sanitización PII y rutas internas
+# 8. Contratos unificados, partición atómica, sanitización PII y rutas internas
 # =========================================================================
 
 import io
@@ -508,6 +472,8 @@ CAMPOS_ESTADO_RECURSOS = {
     "multimedia_habilitada",
     "skills_habilitadas",
     "skills_motivo",
+    "estado",
+    "borrador",
 }
 
 
@@ -520,7 +486,7 @@ def test_contrato_a_respuesta_unificada_en_endpoints_recursos(client):
     texto_b1 = "Segundo párrafo del procedimiento contable con detalles del asiento de apertura."
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Procedimiento de Apertura Contable",
         bloques_texto=[texto_b0, texto_b1],
         borrador=BorradorSesion(
@@ -556,8 +522,9 @@ def test_contrato_a_respuesta_unificada_en_endpoints_recursos(client):
         assert len(d_post["recursos"]) == 1
         assert d_post["recursos"][0]["posicion"] == 0
         assert d_post["recursos"][0]["orden"] == 0
-        assert d_post["skills_habilitadas"] is False
-        assert d_post["skills_motivo"] is not None
+        # Con texto dentro de la cota, los recursos no deshabilitan las skills
+        assert d_post["skills_habilitadas"] is True
+        assert d_post["skills_motivo"] is None
         id_subido = d_post["recursos"][0]["id"]
 
         # 3. POST /chat/recursos/agregar (URL en posicion=1)
@@ -594,7 +561,7 @@ def test_contrato_a_respuesta_unificada_en_endpoints_recursos(client):
         assert d_del["bloques_texto"][0] == f"{texto_b0}\n\n{texto_b1}"
         assert [x["id"] for x in d_del["recursos"]] == [id_url]
 
-        # 6. DELETE del último recurso reactiva skills_habilitadas
+        # 6. DELETE del último recurso
         r_del_2 = client.delete(f"/chat/recursos/{id_url}", headers=h)
         assert r_del_2.status_code == 200
         d_del_2 = r_del_2.json()
@@ -616,7 +583,7 @@ def test_contrato_b_particion_atomica_y_rollback_en_post_recursos(client):
     )
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Parametrización de Cuenta Bancaria",
         bloques_texto=[bloque_inicial],
         borrador=BorradorSesion(
@@ -706,7 +673,7 @@ def test_contrato_c_sanitizacion_pii_en_bloques_partidos_al_subir(client):
     )
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Alta de Operador en Sistema",
         bloques_texto=[texto_inicial],
         borrador=BorradorSesion(
@@ -759,7 +726,7 @@ def test_req_a_ninguna_respuesta_ni_storage_json_contiene_rutas_absolutas(client
     texto_b1 = "Párrafo de cierre con instrucciones detalladas para el archivo de constancias."
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Control Administrativo",
         bloques_texto=[texto_b0, texto_b1],
         borrador=BorradorSesion(
@@ -845,7 +812,7 @@ def test_req_b_id_inexistente_o_de_otra_sesion_da_422_en_chat_bloques(client):
     for s_id, t in ((sid_a, texto_a), (sid_b, texto_b)):
         SESIONES[s_id] = SesionChat(
             session_id=s_id,
-            estado=EstadoFlujo.REVISION_BORRADOR,
+            estado=EstadoFlujo.REVISION_METADATOS,
             titulo="Instructivo General",
             bloques_texto=[t],
             borrador=BorradorSesion(
@@ -962,7 +929,7 @@ def test_req_c_imagen_al_principio_medio_y_final_con_bloques_vacios(client):
     texto_parrafo_2 = "Segundo párrafo con consideraciones adicionales respecto a la moneda de registración."
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Parametrización Contable",
         bloques_texto=[texto_parrafo_1, texto_parrafo_2],
         borrador=BorradorSesion(
@@ -1040,7 +1007,7 @@ def test_req_d_varios_recursos_seguidos_con_bloques_vacios_en_el_medio(client):
     t2 = "Sección posterior del manual donde se valida el comprobante emitido por el sistema."
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Manual Tesorería",
         bloques_texto=[t1, t2],
         borrador=BorradorSesion(

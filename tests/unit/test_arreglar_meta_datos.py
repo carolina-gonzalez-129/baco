@@ -88,7 +88,9 @@ async def test_heredados_se_precargan_sin_banner_y_piden_enviar_datos(mock_busca
     assert sesion.borrador.tags == ["instructivo", "ventas"]
     assert sesion.borrador.categoria_id == 5
     assert resp.aviso_metadatos_heredados is None
-    assert resp.opciones == ["enviar_datos", "volver"]
+    assert resp.opciones == []
+    assert resp.navegacion == ["volver"]
+    assert resp.accion_panel.accion == "enviar_datos"
     assert "Enviar datos" in resp.mensaje
 
 
@@ -99,7 +101,7 @@ async def test_heredados_precargados_se_confirman_con_enviar_datos(mock_buscador
     resp = await manejar_turno(
         ChatOrquestadorRequest(session_id="meta-enviar", accion="enviar_datos"), mock_buscador
     )
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
 
 
 @pytest.mark.anyio
@@ -110,13 +112,15 @@ async def test_carga_por_chat_completa_pide_enviar_datos(mock_buscador):
 
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
     assert "facturacion" in sesion.borrador.tags
-    assert resp.opciones == ["enviar_datos", "volver"]
+    assert resp.opciones == []
+    assert resp.navegacion == ["volver"]
+    assert resp.accion_panel.accion == "enviar_datos"
     assert "Enviar datos" in resp.mensaje
 
     resp2 = await manejar_turno(
         ChatOrquestadorRequest(session_id="meta-chat", accion="enviar_datos"), mock_buscador
     )
-    assert resp2.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp2.estado == EstadoFlujo.REVISION_METADATOS
 
 
 @pytest.mark.anyio
@@ -126,7 +130,9 @@ async def test_carga_por_chat_incompleta_sigue_pidiendo_lo_que_falta(mock_buscad
     resp = await manejar_turno(req, mock_buscador)
 
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert resp.opciones == ["volver"]
+    assert resp.opciones == []
+    assert resp.navegacion == ["volver"]
+    assert resp.accion_panel.accion == "enviar_datos"
     assert "enviar_datos" not in sesion.borrador.tags
 
 
@@ -138,4 +144,4 @@ async def test_carga_desde_panel_avanza_directo(mock_buscador):
     )
     resp = await manejar_turno(req, mock_buscador)
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS

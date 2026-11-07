@@ -16,8 +16,9 @@ register_exception_handlers(app)
 
 app.include_router(api_router)
 app.mount("/", mcp_http_app)
+
 #########MODIFICAR EL LIFESPAN PARA Q EL MCP SERVER TENGA SU PROPIO LIFESPAN
-######## LA VERSIÓN MOCK PODRIA TENER UNA PRECARGA DE ARTÍCULOS EN CACHE
+######## LA VERSIÓN MOCK DEL MCP PODRIA TENER UNA PRECARGA DE ARTÍCULOS EN UN SEED QUIZAS
 #########POR LO DEL POOL DE CONEXIONES A LA DB
 
 

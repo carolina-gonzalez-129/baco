@@ -187,6 +187,7 @@ def test_front_editar_cambiar_a_preview_modificar_y_volver_editor_texto_intacto(
       preview._on_input({
         target: {
           closest: () => ({
+            dataset: {},
             getAttribute: () => '0',
             childNodes: [{ nodeType: 3, nodeValue: 'Texto modificado en la vista previa directamente por el usuario.' }]
           })
@@ -308,6 +309,9 @@ def test_front_modificar_preview_y_tocar_enriquecer_sincroniza_cambios():
       session_id: 's_enriq_preview_test',
       estado: 'DECISION_TEXTO',
       opciones: ['enriquecer', 'continuar', 'volver'],
+      // Contrato: 'enriquecer' viaja con el texto del panel (guardan_campos) si 'texto' es editable.
+      editables: ['texto'],
+      guardan_campos: ['enriquecer', 'continuar'],
       borrador: {
         modo: 'nuevo',
         titulo: 'Guía de Apertura',
@@ -320,7 +324,8 @@ def test_front_modificar_preview_y_tocar_enriquecer_sincroniza_cambios():
     // Simular que el usuario editó a mano en la vista previa
     const b0 = nodoDummy('div');
     b0.className = 'preview-bloque-editable';
-    b0.dataset = { 'data-bloque-idx': '0', bloqueIdx: '0' };
+    // dirty: solo se relee de la vista previa lo que la persona editó (evento input).
+    b0.dataset = { 'data-bloque-idx': '0', bloqueIdx: '0', dirty: '1' };
     b0.childNodes = [{ nodeType: 3, nodeValue: 'Texto modificado a mano en la vista previa antes de enriquecer' }];
     preview.children = [b0];
 
@@ -348,7 +353,7 @@ def test_coincidencia_por_titulo_editor_vacio_y_vista_previa_original(client, mo
     - Al elegir enriquecer:
       - borrador.texto_editor queda vacío ("") porque el usuario solo ingresó título.
       - borrador.bloques_texto y texto_limpio contienen el artículo original completo.
-      - skills_habilitadas es False.
+      - skills_habilitadas es True (texto corto: solo depende del largo).
     """
     mock_buscador.evaluar_titulo.return_value = {
         "mensaje": "Coincidencia de título encontrada",
@@ -369,9 +374,9 @@ def test_coincidencia_por_titulo_editor_vacio_y_vista_previa_original(client, mo
     assert borrador["texto_editor"] == ""
     # Vista previa contiene el artículo original de la base
     assert "Guía original del artículo existente" in borrador["texto_limpio"]
-    # Skills deshabilitadas para enriquecimiento
-    assert r2["skills_habilitadas"] is False
-    assert borrador["skills_habilitadas"] is False
+    # Skills habilitadas: solo dependen del largo del texto (TEXTO_MAX), no del modo
+    assert r2["skills_habilitadas"] is True
+    assert borrador["skills_habilitadas"] is True
 
 
 def test_coincidencia_por_texto_editor_conserva_aporte_y_vista_previa_original(client, mock_buscador):
@@ -379,7 +384,7 @@ def test_coincidencia_por_texto_editor_conserva_aporte_y_vista_previa_original(c
     - Al elegir enriquecer:
       - borrador.texto_editor contiene ÚNICAMENTE el aporte escrito por el usuario.
       - borrador.bloques_texto y texto_limpio contienen ÚNICAMENTE el artículo original (sin fusionar automáticamente).
-      - skills_habilitadas es False.
+      - skills_habilitadas es True (texto corto: solo depende del largo).
     """
     mock_buscador.evaluar_titulo.return_value = None
     mock_buscador.evaluar_texto.return_value = {
@@ -408,9 +413,9 @@ def test_coincidencia_por_texto_editor_conserva_aporte_y_vista_previa_original(c
     # La Vista previa contiene ÚNICAMENTE el artículo base sin fusión automática
     assert borrador["texto_limpio"].strip() == TEXTO_ARTICULO_BASE.strip()
     assert mi_aporte not in borrador["texto_limpio"]
-    # Skills deshabilitadas
-    assert r3["skills_habilitadas"] is False
-    assert borrador["skills_habilitadas"] is False
+    # Skills habilitadas: solo dependen del largo del texto (TEXTO_MAX), no del modo
+    assert r3["skills_habilitadas"] is True
+    assert borrador["skills_habilitadas"] is True
 
 
 # ==============================================================================
@@ -445,5 +450,5 @@ def test_recarga_y_reconexion_sesion_preserva_ambos_estados_separados(client, mo
     # Campo separado de la vista previa (artículo original, sin fusionar automáticamente)
     assert borrador["texto_limpio"].strip() == TEXTO_ARTICULO_BASE.strip()
     assert aporte not in borrador["texto_limpio"]
-    # Skills deshabilitadas
-    assert borrador["skills_habilitadas"] is False
+    # Skills habilitadas: solo dependen del largo del texto (TEXTO_MAX), no del modo
+    assert borrador["skills_habilitadas"] is True

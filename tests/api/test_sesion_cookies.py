@@ -113,7 +113,8 @@ def test_prioridad_header_gana_sobre_body_y_body_se_ignora(client):
 
     assert resp.status_code == 200
     assert resp.json()["session_id"] == sid_header
-    assert resp.json()["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # Todos los flujos convergen en el paso de plantilla tras confirmar el texto
+    assert resp.json()["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
 
 
 def test_body_session_id_se_ignora_completamente_creando_sesion_nueva(client):
@@ -147,7 +148,7 @@ def test_estado_rechazado_borra_la_cookie(client):
     sid = "sesion-a-rechazar"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Artículo Rechazable",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
@@ -156,6 +157,8 @@ def test_estado_rechazado_borra_la_cookie(client):
             texto=TEXTO_VALIDO,
             tipo_plantilla="instructivo",
         ),
+        # Las opciones solo valen si se ofrecieron en el turno anterior
+        ultimas_opciones=["auditar", "rechazar"],
     )
 
     client.cookies.set("baco_session", sid)
@@ -175,7 +178,8 @@ def test_estado_conformidad_mantiene_cookie_y_permite_get_borrador(client):
     from baco.server.schemas.validacion import ResumenValidacionSchema, ValidarFormatoResponse
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        # Finalizar se ofrece en EDICION_FINAL (FINALIZADO es terminal)
+        estado=EstadoFlujo.EDICION_FINAL,
         titulo="Artículo para Conformidad",
         texto=TEXTO_VALIDO,
         borrador=BorradorSesion(
@@ -183,6 +187,8 @@ def test_estado_conformidad_mantiene_cookie_y_permite_get_borrador(client):
             titulo="Artículo para Conformidad",
             texto=TEXTO_VALIDO,
             tipo_plantilla="instructivo",
+            categoria_id=5,
+            tags=["instructivo", "ventas"],
         ),
         validacion=ValidarFormatoResponse(
             valido=True,
@@ -190,6 +196,7 @@ def test_estado_conformidad_mantiene_cookie_y_permite_get_borrador(client):
             findings=[],
             resumen=ResumenValidacionSchema(longitud_texto=len(TEXTO_VALIDO), tags_count=2),
         ),
+        ultimas_opciones=["finalizar"],
     )
 
     client.cookies.set("baco_session", sid)

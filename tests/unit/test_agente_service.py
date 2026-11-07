@@ -132,16 +132,21 @@ def test_borrador_texto_no_es_asignable_y_coincide_siempre_con_componer_texto_pu
     assert "https://bc.finneg.com/uploads/diagrama.png" in borrador.texto_alineado_discourse
 
 
-def test_escapar_delimitadores_xml_usa_constante_buffer():
-    """Ítem 5: Verifica que _escapar_delimitadores_xml utilice la constante con nombre
-    BUFFER_CARACTERES_PROMPT_XML para limitar el tamaño del prompt XML."""
-    from baco.server.config_limites import BUFFER_CARACTERES_PROMPT_XML, TEXTO_MAX
-    from baco.server.services.agente_service import _escapar_delimitadores_xml
+def test_escapar_delimitadores_xml_no_recorta_y_el_largo_se_valida_antes():
+    """_escapar_delimitadores_xml ya no recorta (mandaba al LLM texto truncado sin avisar):
+    el largo máximo se rechaza antes, en _obtener_texto_limpio_estricto (422)."""
+    from fastapi import HTTPException
+    from baco.server.config_limites import TEXTO_MAX
+    from baco.server.services.agente_service import (
+        _escapar_delimitadores_xml,
+        _obtener_texto_limpio_estricto,
+    )
 
-    assert isinstance(BUFFER_CARACTERES_PROMPT_XML, int)
-    assert BUFFER_CARACTERES_PROMPT_XML == 500
+    texto_muy_largo = "A" * (TEXTO_MAX + 800)
+    assert _escapar_delimitadores_xml(texto_muy_largo) == texto_muy_largo
 
-    texto_muy_largo = "A" * (TEXTO_MAX + BUFFER_CARACTERES_PROMPT_XML + 300)
-    resultado = _escapar_delimitadores_xml(texto_muy_largo)
-    assert len(resultado) == TEXTO_MAX + BUFFER_CARACTERES_PROMPT_XML
+    borrador = BorradorSesion(modo="nuevo", titulo="Título", texto_limpio=texto_muy_largo)
+    with pytest.raises(HTTPException) as exc:
+        _obtener_texto_limpio_estricto(borrador)
+    assert exc.value.status_code == 422
 

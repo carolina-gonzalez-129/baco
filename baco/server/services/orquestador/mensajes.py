@@ -470,11 +470,5 @@ def msg_plantilla_obligatoria(actual: str) -> str:
         "El **tipo de plantilla** es obligatorio, así que no lo quité"
         + (f": sigue siendo **{actual}**" if actual else "")
         + ". El resto de los cambios quedó guardado.\n\n"
-        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel o escribiéndolo acá."
-    )
-
-
-def msg_plantilla_sin_cambio(actual: str) -> str:
-    return (
-        f"El tipo de plantilla ya es **{actual}**, no hay nada que cambiar."
+        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel."
     )

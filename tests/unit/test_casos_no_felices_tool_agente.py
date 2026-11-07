@@ -23,7 +23,7 @@ def test_tool_buscador_con_texto_none_solicita_texto_sin_romper():
 
     assert resultado["encontrado"] is False
     assert resultado["requiere_texto"] is True
-    assert "Indicá el texto para verificar el contenido" in resultado["mensaje"]
+    assert "indicá el texto para verificar el contenido" in resultado["mensaje"].lower()
 
 
 def test_tool_buscador_con_resultado_vacio_retorna_ofrecer_publicar():
@@ -47,7 +47,7 @@ def test_tool_buscador_con_resultado_vacio_retorna_ofrecer_publicar():
 
     assert resultado["encontrado"] is False
     assert resultado["requiere_texto"] is False
-    assert "No se encontraron duplicados, ofrecer publicar!" in resultado["mensaje"]
+    assert resultado["mensaje"] == "No se encontraron coincidencias de ningun tipo"
 
 
 def test_tool_buscador_con_texto_compuesto_solo_de_espacios_requiere_texto():

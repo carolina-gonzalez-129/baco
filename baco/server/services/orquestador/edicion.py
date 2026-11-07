@@ -278,13 +278,6 @@ def procesar_edicion_texto(
 
     aviso_plantilla = revalidar_estructura_plantilla(sesion, txt_verif, titulo_para_sanit)
 
-    # El texto editado pasa a ser el nuevo texto original previo a las skills
-    if sesion.borrador is not None:
-        sesion.borrador.texto_editor = txt_nuevo_limpio
-        sesion.borrador.texto_base_limpio = txt_nuevo_limpio
-        sesion.borrador.texto_original = txt_nuevo_limpio
-    sesion.texto_editor = txt_nuevo_limpio
-    sesion.texto_original = txt_nuevo_limpio
 
     return (
         bloques_nuevos,

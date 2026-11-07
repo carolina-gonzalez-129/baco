@@ -28,7 +28,7 @@ def limpiar_sesiones():
 
 
 def _crear_sesion(
-    estado=EstadoFlujo.REVISION_BORRADOR,
+    estado=EstadoFlujo.REVISION_METADATOS,
     plantilla="instructivo",
     tags=None,
     modo="nuevo",
@@ -43,7 +43,6 @@ def _crear_sesion(
         categoria_nombre="Ventas",
         tipo_plantilla=plantilla,
         tags=list(tags),
-        revision_intermedia=False,
     )
     sesion = SesionChat(
         session_id="test-plantilla-fija",

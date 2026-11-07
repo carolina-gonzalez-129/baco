@@ -27,23 +27,32 @@ def test_leer_articulos_json_filtra_items_sin_id(tmp_path):
     assert [art["id"] for art in resultado] == [1, 2]
 
 
-def test_sincronizar_articulos_omite_archivo_inexistente(tmp_path):
-    with patch.object(reconstruir_db, "RUTA_JSON", tmp_path / "no-existe.json"):
-        assert reconstruir_db.sincronizar_articulos(MagicMock()) == 0
+def test_cargar_y_validar_json_aborta_si_el_archivo_no_existe(tmp_path):
+    # La validación del JSON ocurre antes de tocar la base: si falta, aborta con exit 1.
+    with pytest.raises(SystemExit) as exc:
+        reconstruir_db.cargar_y_validar_json(tmp_path / "no-existe.json")
+    assert exc.value.code == 1
 
 
-def test_sincronizar_articulos_ingesta_correctamente(tmp_path):
-    cargar_file = tmp_path / "articulos.json"
-    cargar_file.write_text('[{"id": 1, "title": "Uno"}]', encoding="utf-8")
+def test_cargar_y_validar_json_aborta_si_no_hay_articulos_validos(tmp_path):
+    archivo = tmp_path / "articulos.json"
+    archivo.write_text('[{"title": "Sin id"}]', encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        reconstruir_db.cargar_y_validar_json(archivo)
+    assert exc.value.code == 1
+
+
+def test_sincronizar_articulos_ingesta_sin_commit():
+    # El commit lo hace main junto con el DDL; sincronizar_articulos solo hace el upsert.
+    articulos = [{"id": 1, "title": "Uno"}]
     conn = _conn(MagicMock())
-    resumen = MagicMock()
 
-    with patch.object(reconstruir_db, "RUTA_JSON", cargar_file), \
-         patch.object(reconstruir_db, "upsert_articulos", return_value=resumen):
-        total = reconstruir_db.sincronizar_articulos(conn, forzar_actualizacion=True)
+    with patch.object(reconstruir_db, "upsert_articulos", return_value=MagicMock()) as upsert:
+        total = reconstruir_db.sincronizar_articulos(conn, articulos)
 
     assert total == 1
-    conn.commit.assert_called()
+    upsert.assert_called_once_with(conn, articulos)
+    conn.commit.assert_not_called()
 
 
 

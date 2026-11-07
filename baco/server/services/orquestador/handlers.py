@@ -1585,7 +1585,6 @@ async def gestionar_cambio_plantilla_pendiente(
         OPCIONES_EDICION_FINAL,
         msg_confirmar_cambio_plantilla,
         msg_plantilla_obligatoria,
-        msg_plantilla_sin_cambio,
     )
 
     b = sesion.borrador
@@ -1656,14 +1655,6 @@ async def gestionar_cambio_plantilla_pendiente(
             return resp, req
         if len(plantillas_en_tags) == 1:
             tipo_req = next(iter(plantillas_en_tags))
-    if tipo_req is None and req.tags is None and opcion in ("instructivo", "soluciones"):
-        # Tipo escrito en el chat: mismo camino que desde el panel (queda pendiente de confirmar).
-        tipo_req = opcion
-        if not plantilla_difiere(tipo_req, plantilla_act):
-            sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
-            return construir_respuesta(
-                sesion, msg_plantilla_sin_cambio(tipo_req), OPCIONES_EDICION_FINAL
-            ), req
     if tipo_req is None:
         return None, req
 

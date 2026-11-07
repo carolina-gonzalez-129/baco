@@ -50,10 +50,18 @@ def client(mock_buscador):
     app.dependency_overrides.clear()
 
 
+def _avanzar_hasta_metadatos(client, sid, tipo="instructivo"):
+    """Troncal actual: ESPERANDO_PLANTILLA -> REVISION_TIPO -> (continuar) -> ESPERANDO_METADATOS."""
+    r = client.post("/chat", json={"session_id": sid, "accion": tipo}).json()
+    assert r["estado"] == EstadoFlujo.REVISION_TIPO
+    return client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
+
+
 def test_decision_titulo_enriquecer_trae_imagenes_y_valida_bloqueante(client, mock_buscador):
     """En DECISION_TITULO, 'enriquecer' consulta GET en vivo con imágenes.
 
-    Si no tiene categoría o tiene hallazgo bloqueante, no se puede aprobar.
+    Tras confirmar el texto converge en ESPERANDO_PLANTILLA y, al pasar el tipo,
+    los metadatos del original se cargan en el panel (ESPERANDO_METADATOS) para revisarlos.
     """
     mock_buscador.evaluar_titulo.return_value = {
         "mensaje": "Coincidencia de título encontrada",
@@ -76,14 +84,16 @@ def test_decision_titulo_enriquecer_trae_imagenes_y_valida_bloqueante(client, mo
     assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r2["borrador"]["texto_alineado_discourse"]
     assert r2["borrador"]["articulo_original_id"] == 2414
 
-    # 3. Envía el texto para validar
+    # 3. Confirma el texto: todos los flujos convergen en el paso de plantilla
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r2["borrador"]["texto_alineado_discourse"]}).json()
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
-    # Con metadatos heredados pendientes, las opciones iniciales son aceptar/rechazar/volver
-    assert r3["opciones"] == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar_metadatos"}).json()
-    assert "continuar" in r4["opciones"] or "continuar_revision" in r4["opciones"]
+
+    # 4. Tras el tipo, los metadatos heredados quedan cargados en el panel para revisarlos
+    r4 = _avanzar_hasta_metadatos(client, sid)
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r4["borrador"]["categoria_id"] == 12
+    assert r4["borrador"]["tags"] == ["instructivo", "contabilidad"]
 
 
 def test_decision_titulo_actualizar_adopta_nuevo_titulo(client, mock_buscador):
@@ -134,12 +144,16 @@ def test_decision_texto_enriquecer_trae_imagenes_y_termina_duplicados(client, mo
     assert r3["borrador"]["articulo_original_id"] == 555
     assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
 
+    # 4. Confirmar no vuelve a buscar duplicados: pasa al paso de plantilla
+    mock_buscador.evaluar_texto.reset_mock()
     r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
-    assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Con metadatos heredados pendientes, las opciones iniciales son aceptar/rechazar/volver
-    assert r3_conf["opciones"] == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
-    r4_meta = client.post("/chat", json={"session_id": sid, "accion": "aceptar_metadatos"}).json()
-    assert "continuar" in r4_meta["opciones"] or "continuar_revision" in r4_meta["opciones"]
+    assert r3_conf["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    mock_buscador.evaluar_texto.assert_not_called()
+
+    r4 = _avanzar_hasta_metadatos(client, sid, "soluciones")
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r4["borrador"]["categoria_id"] == 20
+    assert r4["borrador"]["tags"] == ["soluciones", "finanzas"]
 
 
 def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, mock_buscador):
@@ -165,46 +179,16 @@ def test_enriquecido_sin_plantilla_se_detiene_en_esperando_plantilla(client, moc
         r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
     assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    assert r3["borrador"]["tipo_plantilla"] is None
     r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
 
-    # Primero pide confirmación de metadatos heredados
-    assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r3_conf["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r3_conf["opciones"]
-
-    # Al aceptar, como no tenía tag de plantilla ('instructivo' ni 'soluciones'),
-    # se detiene en ESPERANDO_PLANTILLA
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
-    assert r4["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
-    assert "instructivo" in r4["opciones"]
-    assert "soluciones" in r4["opciones"]
-
-
-def test_decision_texto_actualizar_adopta_nuevo_titulo(client, mock_buscador):
-    """En DECISION_TEXTO, 'actualizar' adopta el nuevo título ingresado por el usuario."""
-    mock_buscador.evaluar_titulo.return_value = None
-    mock_buscador.evaluar_texto.return_value = {
-        "mensaje": "Coincidencia semántica",
-        "link": "https://bc.finneg.com/t/777",
-        "coincidencias": [(777, "Artículo Base Antiguo", "https://bc.finneg.com/t/777")],
-    }
-
-    nuevo_titulo = "Mi Nuevo Título para el Módulo 2026"
-    r1 = client.post("/chat", json={"mensaje": nuevo_titulo}).json()
-    sid = r1["session_id"]
-
-    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": "Aporte complementario para la actualización."})
-
-    with patch("baco.server.services.discourse_media.consultar_articulo_bc_publico") as mock_bc:
-        mock_bc.return_value = (TEXTO_CON_IMAGEN, 15, ["instructivo", "contabilidad"])
-        r3 = client.post("/chat", json={"session_id": sid, "accion": "actualizar"}).json()
-
-    assert r3["borrador"]["titulo"] == nuevo_titulo
-    assert "https://bc.finneg.com/uploads/default/original/2X/a/error.png" in r3["borrador"]["texto_alineado_discourse"]
+    assert r3_conf["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert "instructivo" in r3_conf["opciones"]
+    assert "soluciones" in r3_conf["opciones"]
 
 
 def test_articulo_enriquecido_con_menos_de_2_tags_se_detiene_en_metadatos(client, mock_buscador):
-    """Si el artículo recuperado tiene solo 1 tag, se detiene en ESPERANDO_METADATOS."""
+    """Si el artículo recuperado tiene solo 1 tag (el de plantilla), se detiene en ESPERANDO_METADATOS."""
     mock_buscador.evaluar_titulo.return_value = None
     mock_buscador.evaluar_texto.return_value = {
         "mensaje": "Coincidencia semántica",
@@ -222,18 +206,11 @@ def test_articulo_enriquecido_con_menos_de_2_tags_se_detiene_en_metadatos(client
 
     assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
     r3_conf = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r3["borrador"]["texto_alineado_discourse"]}).json()
+    assert r3_conf["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
 
-    # Primero pide confirmación de metadatos heredados
-    assert r3_conf["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r3_conf["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r3_conf["opciones"]
-
-    # Al aceptar pasa a REVISION_BORRADOR; como tiene 1 tag y requiere mínimo 2,
-    # 'continuar_revision' se detiene en ESPERANDO_METADATOS
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
+    # Hereda la categoría pero no hay etiqueta temática: pide completarla en ESPERANDO_METADATOS
+    r4 = _avanzar_hasta_metadatos(client, sid)
     assert r4["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "volver" in r4["opciones"]
-
+    assert r4["borrador"]["categoria_id"] == 12
+    assert r4["borrador"]["tags"] == ["instructivo"]
+    assert "volver" in r4["navegacion"]

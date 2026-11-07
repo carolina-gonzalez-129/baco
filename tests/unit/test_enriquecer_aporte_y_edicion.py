@@ -79,9 +79,9 @@ def test_decision_texto_enriquecer_transiciona_a_esperando_texto_y_conserva_apor
     # 3. Elige 'enriquecer' -> debe ir a ESPERANDO_TEXTO, no saltar a REVISION_BORRADOR
     r3 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
     assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    assert "confirmar_texto" in r3["opciones"]
+    assert r3["accion_panel"]["accion"] == "confirmar_texto"
     assert "descartar" in r3["opciones"]
-    assert "volver" in r3["opciones"]
+    assert "volver" in r3["navegacion"]
 
     # El editor contiene el aporte del usuario, y la vista previa contiene únicamente el base original
     assert r3["borrador"]["texto_editor"] == aporte_usuario
@@ -93,62 +93,9 @@ def test_decision_texto_enriquecer_transiciona_a_esperando_texto_y_conserva_apor
     nuevo_texto = txt_vista_previa + "\n\n" + aporte_usuario + "\n\n3. Revisar el CAE generado en la solapa de auditoría."
     r4 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": nuevo_texto}).json()
 
-    # Recién ahora avanza a REVISION_BORRADOR con metadatos heredados
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r4["aviso_metadatos_heredados"] is not None
-    assert "aceptar" in r4["opciones"]
+    # Recién ahora avanza al paso de plantilla (los heredados se revisan en metadatos)
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert "Revisar el CAE generado" in r4["texto_limpio"]
-
-
-def test_edicion_en_revision_con_metadatos_pendientes(client, mock_buscador):
-    """En REVISION_BORRADOR, editar texto aplica cambios sin desbloquear conformidad prematuramente."""
-    mock_buscador.evaluar_titulo.return_value = None
-    mock_buscador.evaluar_texto.return_value = {
-        "mensaje": "Coincidencia",
-        "link": "https://bc.finneg.com/t/999",
-        "coincidencias": [(999, "Emisión de Comprobantes Electrónicos", "https://bc.finneg.com/t/999")],
-    }
-
-    r1 = client.post("/chat", json={"mensaje": "Título Test Edición"}).json()
-    sid = r1["session_id"]
-    client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": "Texto inicial de prueba para enriquecimiento."})
-    r_enriq = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
-    assert r_enriq["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-
-    # Confirma texto para llegar a revisión
-    r_rev = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r_enriq["texto_limpio"]}).json()
-    assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_rev["aviso_metadatos_heredados"] is not None
-
-    # Intento de conformidad bloqueado
-    r_conf_bloq = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
-    assert r_conf_bloq["estado"] == EstadoFlujo.REVISION_BORRADOR
-
-    # Edición mientras los metadatos siguen pendientes
-    texto_editado = r_rev["texto_limpio"] + "\n\nObservación corregida en revisión."
-    r_edit = client.post("/chat", json={"session_id": sid, "accion": "editar", "texto": texto_editado}).json()
-    assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "Observación corregida en revisión." in r_edit["texto_limpio"]
-    # Los metadatos heredados siguen pendientes
-    assert r_edit["aviso_metadatos_heredados"] is not None
-
-    # Conformidad sigue bloqueada hasta aceptar/rechazar
-    r_conf2 = client.post("/chat", json={"session_id": sid, "accion": "conforme"}).json()
-    assert r_conf2["estado"] == EstadoFlujo.REVISION_BORRADOR
-
-    # Aceptar metadatos heredados
-    r_acep = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
-    assert r_acep["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_acep["aviso_metadatos_heredados"] is None
-
-    # Nuevo flujo: 'continuar_revision' cierra la revisión intermedia (metadatos heredados completos -> revisión final)
-    r_cont = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
-    assert r_cont["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "finalizar" in r_cont["opciones"]
-
-    # Ahora sí permite finalizar
-    r_fin = client.post("/chat", json={"session_id": sid, "accion": "finalizar"}).json()
-    assert r_fin["estado"] == EstadoFlujo.FINALIZADO
 
 
 def test_volver_en_esperando_texto_restaura_decision_texto(client, mock_buscador):
@@ -226,7 +173,7 @@ def test_enriquecer_respeta_borrados_y_no_reinyecta_base(client, mock_buscador):
         "3. Redacción totalmente nueva reemplazando el paso 2 eliminado por el usuario."
     )
     r4 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_editado}).json()
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r4["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     tl = r4["texto_limpio"]
 
     # El paso 2 eliminado no debe aparecer
@@ -237,36 +184,8 @@ def test_enriquecer_respeta_borrados_y_no_reinyecta_base(client, mock_buscador):
     assert tl.count("Guía oficial para la emisión de comprobantes") == 1
 
 
-def test_actualizar_respeta_reescritura_completa(client, mock_buscador):
-    """En actualizar, el texto confirmado por el usuario en el editor es el nuevo texto exacto."""
-    mock_buscador.evaluar_titulo.return_value = None
-    mock_buscador.evaluar_texto.return_value = {
-        "mensaje": "Coincidencia de contenido detectada",
-        "link": "https://bc.finneg.com/t/999",
-        "coincidencias": [(999, "Emisión de Comprobantes Electrónicos", "https://bc.finneg.com/t/999")],
-    }
-
-    r1 = client.post("/chat", json={"mensaje": "Facturación y Comprobantes AFIP"}).json()
-    sid = r1["session_id"]
-    r2 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": "Aporte que se actualizará."}).json()
-    r3 = client.post("/chat", json={"session_id": sid, "accion": "actualizar"}).json()
-    assert r3["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-
-    texto_completamente_nuevo = (
-        "Nueva versión completa del proceso de facturación electrónica sin relación con el texto previo.\n\n"
-        "Paso único: Ingresar al portal unificado de facturación y autorizar el comprobante."
-    )
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_completamente_nuevo}).json()
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
-    tl = r4["texto_limpio"]
-
-    assert "Guía oficial para la emisión de comprobantes" not in tl
-    assert "Nueva versión completa del proceso de facturación" in tl
-    assert "Paso único: Ingresar al portal unificado" in tl
-
-
 def test_edicion_en_revision_borra_parrafo_sin_resurreccion(client, mock_buscador):
-    """En REVISION_BORRADOR, al editar borrando un párrafo, este no resurge."""
+    """En revisión (REVISION_TIPO), al guardar borrando un párrafo, este no resurge."""
     mock_buscador.evaluar_titulo.return_value = None
     mock_buscador.evaluar_texto.return_value = {
         "mensaje": "Coincidencia",
@@ -279,16 +198,18 @@ def test_edicion_en_revision_borra_parrafo_sin_resurreccion(client, mock_buscado
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": "Aporte inicial a conservar."})
     r_enriq = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
     r_rev = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": r_enriq["texto_limpio"]}).json()
-    assert r_rev["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_rev["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    r_tipo = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
+    assert r_tipo["estado"] == EstadoFlujo.REVISION_TIPO
 
-    # El usuario edita desde revisión borrando el paso 1
+    # El usuario edita desde revisión borrando el paso 1 ("Guardar cambios": solo campos, sin acción)
     texto_sin_paso_1 = (
         "Guía oficial para la emisión de comprobantes electrónicos en Finneg.\n\n"
         "2. Seleccionar el tipo de comprobante y pulsar Generar.\n\n"
         "Aporte inicial a conservar."
     )
-    r_edit = client.post("/chat", json={"session_id": sid, "accion": "editar", "texto": texto_sin_paso_1}).json()
-    assert r_edit["estado"] == EstadoFlujo.REVISION_BORRADOR
+    r_edit = client.post("/chat", json={"session_id": sid, "texto": texto_sin_paso_1}).json()
+    assert r_edit["estado"] == EstadoFlujo.REVISION_TIPO
     tl = r_edit["texto_limpio"]
 
     assert "1. Ingresar al módulo de Facturación" not in tl

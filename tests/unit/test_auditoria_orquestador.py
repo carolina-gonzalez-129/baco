@@ -80,7 +80,7 @@ def test_caso_1_marcador_canonico_unico_ids_monotonicos_y_url_repetida(client):
     sid = "ses-monotonico"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Título de prueba válido",
         texto_limpio=texto_limpio,
         recursos=recursos,

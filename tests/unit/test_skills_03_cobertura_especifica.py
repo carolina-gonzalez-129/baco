@@ -72,7 +72,7 @@ def _crear_sesion(sid: str, es_intermedia: bool = True) -> SesionChat:
     sesion, _, _ = gestor_sesiones.obtener_o_crear(sid)
     sesion.session_id = sid
     gestor_sesiones.sesiones[sid] = sesion
-    sesion.estado = EstadoFlujo.REVISION_BORRADOR
+    sesion.estado = EstadoFlujo.REVISION_TIPO if es_intermedia else EstadoFlujo.REVISION_METADATOS
     sesion.titulo = "Título de prueba para orquestador 03"
     sesion.borrador = BorradorSesion(
         modo="nuevo",
@@ -82,7 +82,6 @@ def _crear_sesion(sid: str, es_intermedia: bool = True) -> SesionChat:
         categoria_id=20 if not es_intermedia else None,
         categoria_nombre="Ventas" if not es_intermedia else None,
         tags=["instructivo", "ventas"] if not es_intermedia else ["instructivo"],
-        revision_intermedia=es_intermedia,
     )
     sesion.bloques_texto = [TEXTO_BASE_TEST]
     sesion.texto_limpio = TEXTO_BASE_TEST
@@ -91,6 +90,7 @@ def _crear_sesion(sid: str, es_intermedia: bool = True) -> SesionChat:
         sesion.categoria_id = 20
         sesion.categoria_nombre = "Ventas"
         sesion.tags = ["instructivo", "ventas"]
+    sesion.ultimas_opciones = ["aplicar_plantilla", "continuar"] if es_intermedia else ["auditar", "continuar"]
     validar_borrador(sesion)
     return sesion
 
@@ -134,9 +134,9 @@ async def test_respuesta_incluye_campos_separados_en_ambos_niveles():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_reaplicar_skill_ofrece_unicamente_continuar_y_volver():
-    """Al reaplicar la skill (es_reaplicacion=True), las opciones deben seguir siendo
-    únicamente Continuar y Volver, y el texto_original debe mantenerse preservado.
+async def test_reaplicar_skill_ofrece_unicamente_continuar():
+    """Al reaplicar la skill (es_reaplicacion=True), la única opción es Continuar
+    (sin Volver después de una skill) y el texto_original se preserva.
     """
     sesion = _crear_sesion("test-reaplicar-opciones", es_intermedia=False)
     buscador = MagicMock(spec=BuscadorDuplicados)
@@ -149,8 +149,8 @@ async def test_reaplicar_skill_ofrece_unicamente_continuar_y_volver():
     resp = await ejecutar_skill(sesion, req, "auditor", es_reaplicacion=True)
 
     labels = [b.label for b in resp.botones]
-    assert labels == ["Continuar", "Volver"]
-    assert resp.opciones == ["continuar", "volver"]
+    assert labels == ["Continuar"]
+    assert resp.opciones == ["continuar"]
     assert resp.texto_original == TEXTO_BASE_TEST
     assert resp.texto_limpio == TEXTO_AUDITOR_LIMPIO
 
@@ -244,7 +244,7 @@ async def test_error_en_skill_plantillas_restaura_bloques_y_no_deja_skill_pendie
     resp = await manejar_turno(req, buscador)
 
     # Mensaje de error para el usuario
-    assert "No pudimos aplicar la plantilla en este momento" in resp.mensaje
+    assert "No pudimos aplicar la **plantilla** en este momento" in resp.mensaje
     # Se restauró el texto original
     assert resp.borrador.bloques_texto == [TEXTO_BASE_TEST]
     assert resp.borrador.resultado_skill_pendiente is False
@@ -263,7 +263,7 @@ async def test_error_en_auditor_excepcion_restaura_bloques_y_no_deja_skill_pendi
     req._baco_agent = mock_agente_fallido
     resp = await manejar_turno(req, buscador)
 
-    assert "No pudimos auditar el artículo en este momento" in resp.mensaje
+    assert "No pudimos **auditar** el artículo en este momento" in resp.mensaje
     assert resp.borrador.bloques_texto == [TEXTO_BASE_TEST]
     assert resp.borrador.resultado_skill_pendiente is False
 
@@ -281,6 +281,6 @@ async def test_skill_sin_salida_o_vacia_maneja_error():
     req._baco_agent = mock_agente_vacio
     resp = await manejar_turno(req, buscador)
 
-    assert "No pudimos aplicar la plantilla en este momento" in resp.mensaje
+    assert "No pudimos aplicar la **plantilla** en este momento" in resp.mensaje
     assert resp.borrador.bloques_texto == [TEXTO_BASE_TEST]
     assert resp.borrador.resultado_skill_pendiente is False

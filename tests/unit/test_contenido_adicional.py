@@ -327,7 +327,7 @@ def test_eliminar_o_reordenar_invalida_conformidad():
 
     # 1. Al agregar con finalizado activo, se invalida
     assert sesion.borrador.finalizado is False
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
 
     # Restablecemos finalizado simulado
     sesion.estado = EstadoFlujo.FINALIZADO
@@ -336,7 +336,7 @@ def test_eliminar_o_reordenar_invalida_conformidad():
     # 2. Al reordenar, se invalida
     gestor_sesiones.reordenar_contenido_adicional(sid, [it2.id, it1.id])
     assert sesion.borrador.finalizado is False
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
 
     # Restablecemos finalizado simulado
     sesion.estado = EstadoFlujo.FINALIZADO
@@ -345,7 +345,7 @@ def test_eliminar_o_reordenar_invalida_conformidad():
     # 3. Al eliminar, se invalida
     gestor_sesiones.eliminar_item_contenido_adicional(sid, it1.id)
     assert sesion.borrador.finalizado is False
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
 
 
 def test_endpoints_api_eliminar_y_reordenar(client):
@@ -474,11 +474,13 @@ async def test_descartar_enriquecimiento_en_esperando_texto_vacia_contenido_adic
     )
     gestor_sesiones.agregar_contenido_adicional(sid, "Nota previa")
     assert len(sesion.contenido_adicional) == 1
+    sesion.ultimas_opciones = ["descartar"]  # contrato: solo se aceptan opciones ofrecidas
 
     req = ChatOrquestadorRequest(session_id=sid, accion="descartar")
     resp = await manejar_turno(req, mock_buscador)
 
-    assert sesion.borrador is None
+    # "Es un tema distinto": no queda rastro del artículo descartado (ni su contenido adicional)
+    assert sesion.borrador is None or sesion.borrador.articulo_original_id is None
     assert sesion.contenido_adicional == []
 
 
@@ -490,7 +492,7 @@ async def test_confirmar_rechazo_vacia_contenido_adicional(mock_buscador):
 
     sesion, _, _ = gestor_sesiones.obtener_o_crear(None)
     sid = sesion.session_id
-    sesion.estado = EstadoFlujo.REVISION_BORRADOR
+    sesion.estado = EstadoFlujo.REVISION_METADATOS
     sesion.borrador = BorradorSesion(
         modo="enriquecimiento",
         articulo_original_id=777,
@@ -500,6 +502,9 @@ async def test_confirmar_rechazo_vacia_contenido_adicional(mock_buscador):
     )
     gestor_sesiones.agregar_contenido_adicional(sid, "Nota descartable")
     assert len(sesion.contenido_adicional) == 1
+    # confirmar_rechazo solo vale tras "rechazar" (pide confirmación antes de descartar)
+    sesion.confirmando_rechazo = True
+    sesion.ultimas_opciones = ["confirmar_rechazo", "cancelar_rechazo"]
 
     req = ChatOrquestadorRequest(session_id=sid, accion="confirmar_rechazo")
     resp = await manejar_turno(req, mock_buscador)
@@ -535,7 +540,7 @@ def test_modificar_item_contenido_adicional_actualiza_y_invalida_conformidad():
 
     # El finalizado debe invalidarse
     assert sesion.borrador.finalizado is False
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
 
     # El texto limpio no debe ser modificado
     assert sesion.borrador.texto_limpio == "Texto base limpio"
