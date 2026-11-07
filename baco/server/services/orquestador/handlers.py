@@ -549,6 +549,13 @@ async def handle_esperando_texto(
         return retroceder(sesion)
 
     if opcion in ("descartar", "continuar"):
+        # Contrato (guardan_campos): "Es un tema distinto" viaja con el texto del Editor. Si no cambió
+        # respecto de lo guardado, sigue el camino del texto propio (sin pedirlo ni buscar de nuevo).
+        editor_guardado = (
+            (sesion.borrador.texto_editor if sesion.borrador else None) or sesion.texto_editor or ""
+        ).strip()
+        if req.texto is not None and req.texto.strip() == editor_guardado:
+            req = req.model_copy(update={"texto": None})
         texto_propio = resetear_enriquecimiento_descartado(sesion, agregar_a_descartados=True, texto_extra=req.texto)
         _limpiar_restos_articulo_descartado(sesion)
 
@@ -1043,8 +1050,20 @@ async def handle_decision_texto(
         for c in sesion.coincidencias:
             if c.id and c.id not in sesion.articulos_descartados_ids:
                 sesion.articulos_descartados_ids.append(c.id)
+        coincidencias_previas = list(sesion.coincidencias)
         sesion.coincidencias = []
         _crear_borrador_nuevo_desde_sesion(sesion)
+        # Contrato (guardan_campos): "Continuar con mi texto" viaja con el texto del panel.
+        # Se guarda como cualquier edición (sin nueva búsqueda de duplicados).
+        if req.texto is not None:
+            from baco.server.services.orquestador.edicion import aplicar_edicion_campos
+            res_txt = aplicar_edicion_campos(
+                sesion, req.model_copy(update={"titulo": None, "texto_editor": None})
+            )
+            if not res_txt.ok:
+                sesion.borrador = None
+                sesion.coincidencias = coincidencias_previas
+                return construir_respuesta(sesion, res_txt.error or "", OPCIONES_ENRIQUECER_CONTINUAR)
         return continuar(sesion, prefijo=PREFIJO_CONTINUAR_PROPIO)
 
     if opcion == "volver":
@@ -1488,11 +1507,18 @@ async def _handle_revision_comun(
         if opcion == "continuar":
             return continuar_desde_revision(sesion)
 
-        if opcion not in ("editar", opcion_skill, "rechazar", "confirmar_rechazo"):
+        # El coordinador ya guardó los campos antes del handler: sus cambios son los que valen.
+        res_previo = getattr(req, "_res_edicion", None)
+        cambios = list(res_edicion.cambios or []) or list(getattr(res_previo, "cambios", None) or [])
+        descartes = list(res_edicion.descartes or []) or list(getattr(res_previo, "descartes", None) or [])
+        # "Seguir editando" viaja con los campos (contrato: guardan_campos): si cambió algo, se revalida.
+        if opcion == "editar" and not (cambios or descartes):
+            return construir_respuesta(sesion, MSG_PEDIR_EDICION, sesion.ultimas_opciones)
+        if opcion not in (opcion_skill, "rechazar", "confirmar_rechazo"):
             # R9: se confirma lo guardado y solo se recuerdan los botones del paso.
             prefijo = (
-                msg_cambios_guardados(res_edicion.cambios, list(res_edicion.descartes or []))
-                if (res_edicion.cambios or res_edicion.descartes)
+                msg_cambios_guardados(cambios, descartes)
+                if (cambios or descartes)
                 else "Guardé tus cambios."
             )
             msg, ops = validar_borrador(sesion, prefijo, reingreso=True)

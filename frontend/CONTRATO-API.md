@@ -63,7 +63,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 - **403 Forbidden:** Subida de recursos deshabilitada por configuración (`PERMITIR_SUBIDA_RECURSOS = False`) o acción restringida a ciertos modos (ver Contenido Adicional).
 - **404 Not Found:** Sesión expirada/inexistente o recurso no encontrado.
 - **409 Conflict:** Incoherencia de estado en la FSM (ej. intentar listar recursos antes de superar duplicados, o pedir borrador finalizado cuando el estado no es `FINALIZADO`).
-- **422 Unprocessable Entity:** Falla de validación de esquema Pydantic (devuelve lista de objetos `{loc, msg, type}`, sin el campo `input`) o precondición de negocio no cumplida (ej. invocar skill con artículo que supera límite de caracteres o faltan categorías/etiquetas). Excesos de tamaño/cantidad detectados por el esquema de `POST /chat/bloques` también responden 422.
+- **422 Unprocessable Entity:** Falla de validación de esquema Pydantic (devuelve lista de objetos `{loc, msg, type}`, sin el campo `input`) o precondición de negocio no cumplida (ej. invocar skill con artículo que supera límite de caracteres o faltan categorías/etiquetas). Excesos de cantidad detectados por el esquema de `POST /chat/bloques` también responden 422; el texto que supera `TEXTO_MAX` responde 400.
 
 > El backend **no** usa `413 Payload Too Large`: los excesos de tamaño responden `400` o `422` según dónde se detecten.
 
@@ -143,6 +143,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 | `navegacion` | `list[str]` | `volver` o `ver_articulo_final`; el front decide cómo mostrarlas (no necesariamente como botón del chat). |
 | `navegacion_etiquetas` | `dict[str, str]` | Texto visible de cada acción de `navegacion`, calculado por el back según el destino (p. ej. `{"volver": "Cambiar el título"}`). Si falta, el front usa `Volver`. |
 | `editables` | `list[str]` | Campos del panel que el back acepta ahora. |
+| `guardan_campos` | `list[str]` | Acciones del turno (opciones, navegación o panel) que viajan con los `editables`: el back guarda lo editado antes de ejecutarlas. Ver 2.4. |
 | `frenar_finalizar` | `bool` | El guardado previo a Finalizar dejó un aviso: no encadenar `finalizar`. |
 | `multimedia_habilitada` | `bool` | Mini panel multimedia operativo (superado `buscar_duplicados`). |
 | `accion_panel` | `AccionPanel?` | Botón principal del panel: `{accion, label, campos}` o `null`. Ver 2.3. |
@@ -177,6 +178,27 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 
 El largo del borrador puede cambiar entre turnos por los endpoints de recursos: si `borrador.skills_habilitadas` pasa a `false`, el front lo prioriza sobre `skills`.
 
+#### 2.4. `guardan_campos`: qué acciones guardan lo editado
+
+Fuente única: `contrato.ACCIONES_QUE_GUARDAN`. La respuesta trae la intersección con lo disponible en el turno. Regla para el front:
+
+- Acción en `guardan_campos` → viaja como `accion` + los campos de `editables` (solo si hay cambios sin guardar). Desde el chat, con cambios, el front pide confirmar ([Guardar y continuar] [Cancelar]).
+- Cualquier otra acción → viaja sola; con cambios sin guardar, el front avisa que se descartan ([Descartar y seguir] [Cancelar]).
+
+| Estado | Acciones que guardan |
+| :--- | :--- |
+| `DECISION_TITULO` | `enriquecer`, `actualizar`, `descartar` (`texto`) |
+| `DECISION_TEXTO` | `enriquecer`, `continuar` (`texto`; sin nueva búsqueda de duplicados) |
+| `ESPERANDO_TEXTO` | `confirmar_texto`, `descartar` (enriquecimiento: `texto` = Editor, el texto propio) |
+| `ESPERANDO_METADATOS` | `enviar_datos` |
+| `REVISION_TIPO` | `continuar`, `aplicar_plantilla`, `editar`, `cancelar_rechazo`, `reaplicar` |
+| `REVISION_METADATOS` | `continuar`, `auditar`, `editar`, `cancelar_rechazo`, `reaplicar` |
+| `EDICION_FINAL` | `finalizar`, `aplicar_plantilla`, `auditar`, `reaplicar` |
+
+`volver` no guarda en ningún estado (aviso de descarte). `reaplicar` figura solo con un resultado de skill pendiente; el front la muestra en el panel. `editar` ("Seguir editando") con cambios los guarda y revalida; sin cambios, pide editar.
+
+**Texto del Editor y de la Vista previa:** sin skill aplicada hay un solo texto (el back iguala `texto_editor` a `texto`). Se separan solo con un resultado de skill pendiente (Editor = entrada para `reaplicar`; avanza la Vista previa) y en `ESPERANDO_TEXTO` de enriquecimiento (Editor = texto propio; Vista previa = artículo base). Al avanzar, el Editor se reemplaza por la Vista previa.
+
 ---
 
 ### 3. Matriz por estado
@@ -202,6 +224,7 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 - En `ESPERANDO_METADATOS` las opciones de categoría no son ids fijos: el front envía el nombre tal cual lo recibió.
 - `ver_articulo_final` reemite el mensaje de artículo finalizado; no muta nada.
 - Al pasar a `RECHAZADO` el servidor destruye la cookie de sesión.
+- `descartar` en `DECISION_TITULO` con texto de al menos `TEXTO_MIN` caracteres salta `ESPERANDO_TEXTO` y sigue por el tronco (`ESPERANDO_PLANTILLA`), previa búsqueda de duplicados por texto; con menos, pide el texto.
 
 ---
 
@@ -225,7 +248,7 @@ El largo del borrador puede cambiar entre turnos por los endpoints de recursos: 
 | `POST /chat/bloques` | no terminales | `FINALIZADO` o `RECHAZADO` → 409. |
 | `GET /chat/borrador` | `FINALIZADO` | Exige `borrador.finalizado == true`. |
 
-`RECHAZADO` destruye la cookie, pero la sesión sigue en memoria hasta el TTL: un cliente que reenvíe el `session_id` recibe 409 en `POST /chat/bloques`, recursos y contenido adicional.
+`RECHAZADO` destruye la cookie, pero la sesión sigue en memoria hasta el TTL: un cliente que reenvíe el `session_id` recibe 409 en `POST /chat/bloques`, recursos y contenido adicional. El cliente web descarta el `session_id` al recibir `RECHAZADO`, así que ahí recibe 400 (falta identificar la sesión).
 
 ---
 

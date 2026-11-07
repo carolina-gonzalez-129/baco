@@ -50,6 +50,24 @@ ACCIONES_PANEL_POR_ESTADO = {
     EstadoFlujo.EDICION_FINAL: frozenset({"reaplicar"}),
 }
 
+# Acciones que viajan con los campos editables del panel: el back guarda lo editado antes de
+# ejecutarlas (en los estados de edición lo hace coordinador.py con aplicar_edicion_campos;
+# en los de duplicados, cada handler lee req.texto). Las demás no guardan: el front avisa
+# que se descartan los cambios sin guardar. Se declara en la respuesta como `guardan_campos`.
+ACCIONES_QUE_GUARDAN = {
+    EstadoFlujo.DECISION_TITULO: frozenset({"enriquecer", "actualizar", "descartar"}),
+    EstadoFlujo.DECISION_TEXTO: frozenset({"enriquecer", "continuar"}),
+    EstadoFlujo.ESPERANDO_TEXTO: frozenset({"confirmar_texto", "descartar"}),
+    EstadoFlujo.ESPERANDO_METADATOS: frozenset({"enviar_datos"}),
+    EstadoFlujo.REVISION_TIPO: frozenset(
+        {"continuar", "aplicar_plantilla", "editar", "cancelar_rechazo", "reaplicar"}
+    ),
+    EstadoFlujo.REVISION_METADATOS: frozenset(
+        {"continuar", "auditar", "editar", "cancelar_rechazo", "reaplicar"}
+    ),
+    EstadoFlujo.EDICION_FINAL: frozenset({"finalizar", "aplicar_plantilla", "auditar", "reaplicar"}),
+}
+
 CAMPOS_CONTENIDO = ["titulo", "texto", "texto_editor"]
 CAMPOS_FILTRADOS = ("tipo_plantilla", "categoria_id", "tags")
 _ETIQUETAS_CAMPO = {
@@ -235,6 +253,29 @@ def filtrar_campos_no_editables(
             descartes.append((_ETIQUETAS_CAMPO[campo], _motivo_descarte(sesion, campo)))
         setattr(req, campo, None)
     return descartes
+
+
+def guardan_campos(sesion, opciones: List[str], navegacion_: List[str]) -> List[str]:
+    """Acciones disponibles en el turno que viajan con los campos del panel.
+    "reaplicar" solo figura si hay un resultado de skill pendiente (el Editor es su entrada).
+    """
+    declaradas = ACCIONES_QUE_GUARDAN.get(sesion.estado, frozenset())
+    if not declaradas:
+        return []
+    disponibles = [o for o in list(opciones) + list(navegacion_) if isinstance(o, str)]
+    par = _ACCION_PANEL.get(sesion.estado)
+    if par and par[0] != "guardar":
+        disponibles.append(par[0])
+    b = sesion.borrador
+    if (
+        "reaplicar" in declaradas
+        and b is not None
+        and getattr(b, "resultado_skill_pendiente", False)
+        and getattr(b, "skill_pendiente", None)
+        and not getattr(sesion, "confirmando_rechazo", False)
+    ):
+        disponibles.append("reaplicar")
+    return [o for o in dict.fromkeys(disponibles) if o in declaradas]
 
 
 def accion_panel(sesion) -> Optional[dict]:

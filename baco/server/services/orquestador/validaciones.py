@@ -960,6 +960,7 @@ def construir_respuesta(
         accion_panel,
         campos_editables,
         estado_skills,
+        guardan_campos,
         separar_opciones,
     )
 
@@ -981,6 +982,7 @@ def construir_respuesta(
         editables=campos_editables(sesion),
         navegacion=navegacion_final,
         navegacion_etiquetas=navegacion_etiquetas,
+        guardan_campos=guardan_campos(sesion, opciones_finales, navegacion_final),
         accion_panel=accion_panel(sesion),
         skills=estado_skills(sesion, skills_hab, skills_mot),
         tags_acumulados=obtener_tags_acumulados(sesion),

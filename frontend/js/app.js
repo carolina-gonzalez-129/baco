@@ -2150,13 +2150,17 @@
   /* ---------------- navegación del panel ---------------- */
   /* Con un cambio de plantilla sin confirmar, guardar otros campos lo descartaría en el back. */
   const MSG_PLANTILLA_PENDIENTE = 'Confirmá o cancelá el cambio de plantilla para guardar';
-  /* Acciones del chat que, con cambios sin guardar, piden confirmar y viajan con los campos. */
-  const ACCIONES_CON_GUARDADO = ['continuar', 'auditar', 'aplicar_plantilla', 'finalizar'];
   /* Botón de skill del chat -> nombre en s.skills (lo declara el back). */
   const SKILL_POR_ACCION = { aplicar_plantilla: 'plantilla', auditar: 'auditor' };
   const IDS_NAVEGACION = ['volver', 'ver_articulo_final'];
-  /* Acciones que NO viajan con los campos: con cambios sin guardar, se avisa que se descartan. */
-  const ACCIONES_SIN_GUARDADO = ['editar', 'cancelar_rechazo', 'volver', 'descartar', 'rechazar_metadatos'];
+  /* Sin aviso de descarte: globales, o acciones que descartan todo con su propia confirmación. */
+  const ACCIONES_SIN_AVISO = ['reiniciar', 'ayuda', 'ver_articulo_final', 'rechazar', 'confirmar_rechazo'];
+
+  /* Contrato: el back declara en `guardan_campos` qué acciones viajan con los campos del panel
+     (las guarda antes de ejecutarlas). Con cualquier otra, lo no guardado se descarta. */
+  function guardaCampos(s, op) {
+    return (s.guardan_campos || []).includes(op);
+  }
 
   /* ¿El borrador tiene recursos que subió la persona? (volver/descartar en ESPERANDO_TEXTO los pierden). */
   function tieneRecursosSubidos(b) {
@@ -2167,26 +2171,28 @@
     return lista.some((r) => r && r.origen === 'subido');
   }
 
-  /* Guardián de descarte: independiente de la acción principal del panel y de que exista borrador. */
+  /* ¿El panel tiene algo que el back todavía no guardó? Sin borrador (duplicados) se compara el texto. */
+  function hayCambiosPendientes(s) {
+    if (s.borrador) return hayCambios(s);
+    return textoPanelSinBorrador(s) !== (s.texto_servidor || '').trim();
+  }
+
+  /* Texto del panel en los estados sin borrador (búsqueda de duplicados). */
+  function textoPanelSinBorrador(s) {
+    return ((s.form && typeof s.form.texto === 'string' ? s.form.texto : '').trim() ||
+            componerTextoDesdeBloques().trim());
+  }
+
+  /* Guardián de descarte: solo para acciones que el back NO declara en guardan_campos. */
   function hayCambiosSinGuardar(s, op) {
-    // "Continuar con mi texto" en artículos similares: el back sigue con el texto ya buscado, no con el del panel.
-    if (s.flujo === 'DECISION_TEXTO' && op === 'continuar') {
-      sincronizarTextoConStore();
-      const sAct = store.get();
-      return (sAct.form.texto || '').trim() !== (sAct.texto_servidor || '').trim();
-    }
-    if (!ACCIONES_SIN_GUARDADO.includes(op)) return false;
-    // "Es un tema distinto" en DECISION_TITULO viaja con el texto del panel: no se pierde.
-    if (op === 'descartar' && s.flujo === 'DECISION_TITULO') return false;
+    if (ACCIONES_SIN_AVISO.includes(op)) return false;
+    // volver/descartar en ESPERANDO_TEXTO (enriquecimiento) pierden la multimedia subida.
+    if ((op === 'volver' || op === 'descartar') && s.flujo === 'ESPERANDO_TEXTO' &&
+        tieneRecursosSubidos(s.borrador)) return true;
+    if (guardaCampos(s, op) || !(s.editables || []).length) return false;
     sincronizarTextoDesdePreview();
     sincronizarTextoConStore();
-    const sAct = store.get();
-    if (sAct.borrador) {
-      if (hayCambios(sAct)) return true;
-      return sAct.flujo === 'ESPERANDO_TEXTO' && (op === 'volver' || op === 'descartar') &&
-        tieneRecursosSubidos(sAct.borrador);
-    }
-    return (sAct.form.texto || '').trim() !== (sAct.texto_servidor || '').trim();
+    return hayCambiosPendientes(store.get());
   }
 
   /* "Empezar de nuevo" borra todo: se confirma si ya hay algo cargado. */
@@ -2196,21 +2202,34 @@
   }
 
   function pintarOpciones(s) {
-    /* Las opciones del back van solo en el chat; el panel muestra Guardar (principal) y Volver. */
+    /* Las opciones del back van solo en el chat; el panel muestra Guardar (principal), Volver y Reaplicar. */
     const barra = $('#opcionesBarra');
     if (barra) barra.innerHTML = '';
     const nav = $('#navPanel');
     if (!nav) return;
     nav.innerHTML = '';
     const hayVolver = (s.navegacion || []).includes('volver');
-    nav.hidden = !hayVolver;
-    if (!hayVolver) return;
-    const etiqueta = (s.navegacion_etiquetas || {}).volver || 'Volver';
-    const b = el('button', 'btn-volver', '← ' + etiqueta);
-    b.type = 'button';
-    b.disabled = Boolean(s.enviando);
-    b.onclick = () => accionar('volver', etiqueta);
-    nav.appendChild(b);
+    const hayReaplicar = guardaCampos(s, 'reaplicar');
+    nav.hidden = !hayVolver && !hayReaplicar;
+    if (hayVolver) {
+      const etiqueta = (s.navegacion_etiquetas || {}).volver || 'Volver';
+      const b = el('button', 'btn-volver', '← ' + etiqueta);
+      b.type = 'button';
+      b.disabled = Boolean(s.enviando);
+      b.onclick = () => accionar('volver', etiqueta);
+      nav.appendChild(b);
+    }
+    if (hayReaplicar) {
+      // Resultado de skill pendiente: el Editor es la entrada; reaplicar corre la skill sobre él.
+      const esAuditor = ((s.borrador && s.borrador.skill_pendiente) || '').toLowerCase() === 'auditor';
+      const etiqueta = esAuditor ? 'Volver a auditar con el Editor' : 'Reaplicar la plantilla con el Editor';
+      const b = el('button', 'btn-volver', '↻ ' + etiqueta);
+      b.type = 'button';
+      b.title = 'Corre la skill de nuevo sobre el texto del Editor; el resultado reemplaza la Vista previa.';
+      b.disabled = Boolean(s.enviando) || Boolean(s.plantilla_pendiente);
+      b.onclick = () => accionar('reaplicar', etiqueta);
+      nav.appendChild(b);
+    }
   }
 
   /* =========================================================
@@ -2239,11 +2258,6 @@
       return confirmarTexto();
     }
 
-    if (op === 'editar') {
-      sincronizarTextoDesdePreview();
-      sincronizarTextoConStore();
-      return enviarTurno({ accion: 'editar' }, label);
-    }
     if (op === 'reiniciar') {
       store.reiniciarLocal();
       if (api.olvidarSesion) api.olvidarSesion();
@@ -2257,30 +2271,42 @@
       renderBloques();
       return enviarTurno({ accion: 'reiniciar' });
     }
-    if (op === 'enriquecer' || op === 'actualizar' || (op === 'descartar' && s.flujo === 'DECISION_TITULO')) {
-      sincronizarTextoDesdePreview();
-      sincronizarTextoConStore();
-      const sAct = store.get();
-      const payload = { accion: op };
-      const txt = (sAct.form && typeof sAct.form.texto === 'string' ? sAct.form.texto : '').trim() ||
-                  componerTextoDesdeBloques().trim();
-      if (txt) {
-        payload.texto = txt;
-      }
-      return enviarTurno(payload, label);
-    }
-    if (ACCIONES_CON_GUARDADO.includes(op) && esAccionPanel(s, 'guardar') && s.borrador) {
-      sincronizarTextoDesdePreview();
-      sincronizarTextoConStore();
-      const sAct = store.get();
-      if (hayCambios(sAct)) {
-        if (sAct.plantilla_pendiente) { toast(MSG_PLANTILLA_PENDIENTE); return; }
-        if (tagsInsuficientes(sAct)) { toast(msgTagsInsuficientes()); return; }
-        return pedirConfirmacionGuardado(op, label);
-      }
-      return enviarTurno({ accion: op }, label);
+    if (guardaCampos(s, op)) {
+      return enviarConCampos(op, label);
     }
     enviarTurno({ accion: op }, label);
+  }
+
+  /* Acción declarada en guardan_campos: viaja con los campos editables del panel en un solo turno.
+     Desde el chat, con cambios sin guardar, se pide confirmar ([Guardar y continuar] [Cancelar]);
+     "reaplicar" es del panel (como Guardar) y no pregunta. */
+  function enviarConCampos(op, label) {
+    sincronizarTextoDesdePreview();
+    sincronizarTextoConStore();
+    const sAct = store.get();
+    if (!hayCambiosPendientes(sAct)) return enviarTurno({ accion: op }, label);
+    if (sAct.borrador && esAccionPanel(sAct, 'guardar')) {
+      if (sAct.plantilla_pendiente) { toast(MSG_PLANTILLA_PENDIENTE); return; }
+      if (tagsInsuficientes(sAct)) { toast(msgTagsInsuficientes()); return; }
+      if (op !== 'reaplicar') return pedirConfirmacionGuardado(op, label);
+    }
+    return enviarTurno(Object.assign(camposDeclarados(sAct), { accion: op }), label);
+  }
+
+  /* Campos del panel que el back acepta en el estado (`editables`), listos para viajar con la acción. */
+  function camposDeclarados(s) {
+    const ed = s.editables || [];
+    const c = s.borrador ? camposFormulario(s) : { texto: textoPanelSinBorrador(s) || undefined };
+    // ESPERANDO_TEXTO en enriquecimiento: el texto propio es el del Editor (la Vista previa es el artículo base).
+    if (s.flujo === 'ESPERANDO_TEXTO' && separaPaneles(s.borrador, s.flujo)) {
+      c.texto = componerTextoDesdeBloques().trim();
+      c.texto_editor = undefined;
+    }
+    const out = {};
+    Object.keys(c).forEach((k) => {
+      if (c[k] !== undefined && ed.includes(k)) out[k] = c[k];
+    });
+    return out;
   }
 
   BACO.accionar = accionar;
@@ -2314,7 +2340,7 @@
       if (sAct.enviando) return;
       sincronizarTextoDesdePreview();
       sincronizarTextoConStore();
-      const payload = Object.assign(camposFormulario(store.get()), { accion: op });
+      const payload = Object.assign(camposDeclarados(store.get()), { accion: op });
       return enviarTurno(payload, 'Guardar cambios y ' + String(label || op).toLowerCase());
     };
     bNo.onclick = cerrar;
