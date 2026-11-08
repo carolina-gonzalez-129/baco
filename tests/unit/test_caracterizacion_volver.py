@@ -17,6 +17,7 @@ from baco.server.schemas.chat_orquestado import (
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador import manejar_turno
 from baco.server.services.orquestador.mensajes import (
+    MSG_ENRIQUECIMIENTO_DESCARTADO,
     MSG_VOLVER_ENRIQUECER_O_DESCARTAR,
     MSG_VOLVER_PLANTILLA,
     MSG_VOLVER_TEXTO,
@@ -169,7 +170,7 @@ async def test_volver_en_esperando_texto_linea_486_modo_nuevo(mock_buscador):
 async def test_volver_en_esperando_texto_linea_486_modo_enriquecimiento_sin_semantico(mock_buscador):
     """
     Caracterización handlers.py L486 (Modo enriquecimiento, coincidencia no semántica):
-    Vuelve a DECISION_TITULO con MSG_VOLVER_ENRIQUECER_O_DESCARTAR y opciones OPCIONES_ENRIQUECER_DESCARTAR.
+    Vuelve a DECISION_TITULO avisando el descarte (MSG_ENRIQUECIMIENTO_DESCARTADO) y opciones OPCIONES_ENRIQUECER_DESCARTAR.
     Conserva el borrador existente intacto.
     """
     sid = "test-volver-l486-enriq"
@@ -215,7 +216,7 @@ async def test_volver_en_esperando_texto_linea_486_modo_enriquecimiento_sin_sema
     resp = await manejar_turno(req, mock_buscador)
 
     assert resp.estado == EstadoFlujo.DECISION_TITULO
-    assert resp.mensaje == MSG_VOLVER_ENRIQUECER_O_DESCARTAR
+    assert resp.mensaje == MSG_ENRIQUECIMIENTO_DESCARTADO + MSG_VOLVER_ENRIQUECER_O_DESCARTAR
     assert resp.opciones == OPCIONES_ENRIQUECER_DESCARTAR
 
     assert sesion.estado == EstadoFlujo.DECISION_TITULO

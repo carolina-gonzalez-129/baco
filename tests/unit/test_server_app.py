@@ -87,54 +87,6 @@ def test_endpoint_revalidar_post_skill_sin_credencial_retorna_401():
 
 
 # ==============================================================================
-# 2. Tests del Servidor MCP (mcp_server.py)
-# ==============================================================================
-
-def test_mcp_server_expone_tools_esperadas():
-    from baco.server.app.mcp_server import mcp
-    tools = asyncio.run(mcp.list_tools())
-    nombres_tools = sorted([t.name for t in tools])
-    assert nombres_tools == ["buscar_duplicados", "validar_formato"]
-
-
-def test_mcp_server_validar_formato_tool():
-    from baco.server.app.mcp_server import validar_formato
-
-    texto_valido = (
-        "Para dar de alta un punto de venta en Finnegans ERP es necesario ingresar al módulo de Ventas, "
-        "asociar el certificado AFIP correspondiente y configurar los parámetros fiscales requeridos "
-        "para la emisión electrónica de comprobantes de acuerdo a la normativa vigente."
-    )
-    res = validar_formato(
-        titulo="Configuración de Punto de Venta AFIP",
-        texto=texto_valido,
-        tags=["instructivo", "ventas"],
-        categoria_id=5
-    )
-    assert res.valido is True
-    assert res.status == "Listo"
-    assert res.titulo_sanitizado == "Configuración de Punto de Venta AFIP"
-
-
-def test_mcp_server_buscar_duplicados_tool():
-    from baco.server.app.mcp_server import buscar_duplicados
-
-    with patch("baco.server.app.mcp_server.get_ro_conn") as mock_conn:
-        mock_cur = MagicMock()
-        mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value = mock_cur
-        with patch("baco.server.app.mcp_server.BuscadorDuplicados") as mock_buscador_cls:
-            instancia = mock_buscador_cls.return_value
-            instancia.evaluar_coincidencias.return_value = {
-                "encontrado": False,
-                "mensaje": "Sin duplicados",
-                "coincidencias": []
-            }
-            res = asyncio.run(buscar_duplicados(titulo="Nuevo Título Inédito"))
-            assert res.hay_duplicados is False
-            assert res.decision_sugerida == "crear_nuevo"
-
-
-# ==============================================================================
 # 3. Tests de OpenAPI y Rutas (main.py)
 # ==============================================================================
 

@@ -1,10 +1,14 @@
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from baco.server.db import generar_embeddings as generar
 from baco.server.db import reconstruir_db
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _conn(cur):
@@ -135,3 +139,22 @@ def test_schema_completo_sql_valida_embeddings_meta():
     assert str(DIM_TITULO) in sql_content
     assert MODEL_TEXTO_NAME in sql_content
     assert str(DIM_TEXTO) in sql_content
+
+
+def test_equivalencia_schema_completo_con_duplicados_schema_y_sin_password_hardcodeada():
+    """schema_completo.sql debe incluir íntegramente duplicados_schema.sql y no tener contraseñas fijas."""
+    ruta_completo = PROJECT_ROOT / "baco" / "server" / "db" / "schema_completo.sql"
+    ruta_duplicados = PROJECT_ROOT / "baco" / "server" / "db" / "duplicados_schema.sql"
+
+    sql_completo = ruta_completo.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+    sql_duplicados = ruta_duplicados.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+
+    assert sql_duplicados in sql_completo, (
+        "El bloque del schema duplicados en schema_completo.sql no coincide exactamente con duplicados_schema.sql"
+    )
+    assert "current_setting('baco.ro_password'" in sql_completo
+    assert not re.search(
+        r"CREATE\s+ROLE\s+baco_readonly\s+WITH\s+LOGIN\s+PASSWORD\s+'[^']+'",
+        sql_completo,
+        re.IGNORECASE,
+    ), "No debe haber contraseña literal hardcodeada para baco_readonly en schema_completo.sql"

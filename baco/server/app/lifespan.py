@@ -1,16 +1,6 @@
-import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-
-
-def _get_mcp_http_app():
-    main_mod = sys.modules.get("baco.server.app.main")
-    if main_mod and hasattr(main_mod, "mcp_http_app"):
-        return main_mod.mcp_http_app
-    from baco.server.app.mcp_server import mcp_http_app
-    return mcp_http_app
-
 
 
 @asynccontextmanager
@@ -35,7 +25,6 @@ async def lifespan(app: FastAPI):
         embedding_titulo("Calentamiento inicial de grafos y kernels ONNX para titulo")
         embedding_texto("Instructivo de calentamiento de grafos ONNX para texto y calculo de embeddings")
 
-        async with _get_mcp_http_app().lifespan(app):
-            yield
+        yield
     finally:
         pool.close()

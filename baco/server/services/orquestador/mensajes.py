@@ -77,6 +77,11 @@ MSG_VOLVER_PLANTILLA = (
 MSG_VOLVER_METADATOS = (
     "Volvemos al paso anterior. Podes corregir **la categoría y los tags tematicos** para clasificar tu artículo:"
 )
+# Volver desde ESPERANDO_TEXTO en enriquecer descarta el borrador cargado (decisión 7/11).
+MSG_ENRIQUECIMIENTO_DESCARTADO = (
+    "Descarté el artículo que había cargado y los cambios que le hiciste. "
+    "Si volvés a elegir **Enriquecer**, se carga de nuevo el original.\n\n"
+)
 MSG_VOLVER_ENRIQUECER_O_DESCARTAR = (
     "Volvemos al paso anterior. ¿Deseás **enriquecer** el artículo encontrado o **descartarlo**?"
 )

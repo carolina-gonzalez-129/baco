@@ -298,15 +298,10 @@ def test_e_no_persistencia_en_db(client, mock_buscador):
     assert mock_buscador.con.commit.call_count == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Bug conocido (tanda de Volver, ON-06/07/08): Volver desde ESPERANDO_TEXTO en enriquecer "
-    "destruye el borrador, así que al enriquecer de nuevo no quedan recursos.",
-)
-def test_f_resurreccion_volver_y_enriquecer_de_nuevo_conserva_eliminacion(client, mock_buscador):
-    """Test F: Resurrección:
-    eliminar recurso -> Volver a decisión -> Enriquecer de nuevo -> el recurso sigue eliminado.
-    No se sobreescribe el borrador ni se restaura el recurso original de la base.
+def test_f_volver_descarta_y_enriquecer_de_nuevo_recarga_el_original(client, mock_buscador):
+    """Test F: eliminar recurso -> Volver a decisión -> Enriquecer de nuevo.
+    Volver descarta el borrador cargado (decisión 7/11): al enriquecer de nuevo se recarga
+    el original completo, con el recurso que se había eliminado.
     """
     mock_buscador.evaluar_titulo.return_value = {
         "mensaje": "Coincidencia de título",
@@ -336,14 +331,14 @@ def test_f_resurreccion_volver_y_enriquecer_de_nuevo_conserva_eliminacion(client
     # 4. El usuario toca "Volver" hacia la decisión de título
     r_volver = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
     assert r_volver["estado"] == EstadoFlujo.DECISION_TITULO
+    assert r_volver["borrador"] is None
 
-    # 5. El usuario decide nuevamente tocar "Enriquecer"
-    # IMPORTANTE: No debe llamar a cargar_datos_articulo() ni restaurar el recurso eliminado
-    r_enriquecer_nuevo = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
+    # 5. El usuario decide nuevamente tocar "Enriquecer": se vuelve a traer el original
+    with patch("baco.server.services.discourse_media.consultar_articulo_bc_publico") as mock_bc:
+        mock_bc.return_value = (TEXTO_ORIGINAL_CON_DOS_IMAGENES, 3, ["instructivo", "finanzas"])
+        r_enriquecer_nuevo = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
     assert r_enriquecer_nuevo["estado"] == EstadoFlujo.ESPERANDO_TEXTO
+    mock_bc.assert_called_once()
 
-    # 6. Comprobar que el recurso eliminado SIGUE eliminado y solo queda el segundo
-    recs_finales = r_enriquecer_nuevo["borrador"]["multimedia"]
-    assert len(recs_finales) == 1
-    assert recs_finales[0]["id"] == id_conservado
-    assert id_eliminado not in [r["id"] for r in recs_finales]
+    # 6. El original vuelve completo, con los dos recursos
+    assert len(r_enriquecer_nuevo["borrador"]["multimedia"]) == 2

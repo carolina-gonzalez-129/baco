@@ -360,8 +360,3 @@ Endpoints para gestionar ítems de contenido adicional independientes del cuerpo
 - `400 Bad Request` si no hay borrador.
 - `403 Forbidden` si el borrador no está en modo `enriquecimiento` o `actualizar` y no tiene artículo base (`articulo_original_id` es `null`), es decir, en modo `nuevo`.
 
----
-
-## Otras rutas de la aplicación
-
-- **Servidor MCP:** la app FastAPI monta un servidor MCP HTTP en `/mcp` (`baco/server/app/main.py`, `baco/server/app/mcp_server.py`, `stateless_http=True`). No forma parte de la API REST que consume el front.

@@ -161,20 +161,18 @@ def test_panel_multimedia_operativo_en_todas_las_ramas(client, mock_buscador, ra
     assert "https://youtu.be/abc" in b.texto_alineado_discourse and URL_IMG not in b.texto_alineado_discourse
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Bug conocido (tanda de Volver, ON-06/07/08): Volver desde ESPERANDO_TEXTO en enriquecer "
-    "destruye el borrador, así que GET /chat/recursos da 400 en vez de 409.",
-)
 def test_panel_no_disponible_mientras_se_decide_la_deduplicacion(client, mock_buscador):
-    """Al volver a DECISION_TITULO desde enriquecer, el borrador sigue en memoria pero el panel se cierra."""
+    """Al volver a DECISION_TITULO desde enriquecer se descarta el borrador cargado y el panel se cierra."""
     sid, resp = _rama_enriquecer(client, mock_buscador)
     assert resp["multimedia_habilitada"] is True
 
     r = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
     assert r["estado"] == EstadoFlujo.DECISION_TITULO
     assert r["multimedia_habilitada"] is False
-    assert client.get("/chat/recursos", headers={"X-Session-ID": sid}).status_code == 409
+    assert r["borrador"] is None
+    assert "Descarté el artículo que había cargado" in r["mensaje"]
+    # Sin borrador no hay recursos que consultar
+    assert client.get("/chat/recursos", headers={"X-Session-ID": sid}).status_code == 400
 
 
 def test_panel_no_depende_del_modo(client, mock_buscador):
