@@ -46,7 +46,8 @@ def test_estados_edicion_libre_constante():
     assert ESTADOS_EDICION_LIBRE == {
         EstadoFlujo.ESPERANDO_PLANTILLA,
         EstadoFlujo.ESPERANDO_METADATOS,
-        EstadoFlujo.REVISION_BORRADOR,
+        EstadoFlujo.REVISION_TIPO,
+        EstadoFlujo.REVISION_METADATOS,
     }
 
 
@@ -57,21 +58,28 @@ def _crear_sesion_en_estado(estado: EstadoFlujo, session_id: str = "test-edicion
         titulo=TITULO_VALIDO,
         texto_limpio=TEXTO_VALIDO,
         bloques_texto=[TEXTO_VALIDO],
-        ultimas_opciones=["instructivo", "soluciones", "volver"] if estado == EstadoFlujo.ESPERANDO_PLANTILLA else ["volver"],
+        ultimas_opciones=["instructivo", "soluciones"] if estado == EstadoFlujo.ESPERANDO_PLANTILLA else [],
+        # "volver" viaja en navegación (solo en los pasos de carga).
+        ultima_navegacion=(
+            ["volver"]
+            if estado in (EstadoFlujo.ESPERANDO_PLANTILLA, EstadoFlujo.ESPERANDO_METADATOS)
+            else []
+        ),
     )
     sesion.borrador = BorradorSesion(
         modo="nuevo",
         titulo=TITULO_VALIDO,
         texto_limpio=TEXTO_VALIDO,
         bloques_texto=[TEXTO_VALIDO],
-        tipo_plantilla="instructivo" if estado in (EstadoFlujo.ESPERANDO_METADATOS, EstadoFlujo.REVISION_BORRADOR) else None,
+        tipo_plantilla="instructivo" if estado in (EstadoFlujo.ESPERANDO_METADATOS, EstadoFlujo.REVISION_METADATOS) else None,
     )
     SESIONES[session_id] = sesion
     return sesion
 
 
 @pytest.mark.anyio
-async def test_edicion_silenciosa_en_esperando_plantilla():
+async def test_titulo_en_esperando_plantilla_se_descarta_con_aviso():
+    # ESPERANDO_PLANTILLA no tiene campos editables: el título se descarta con aviso.
     sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
@@ -83,16 +91,13 @@ async def test_edicion_silenciosa_en_esperando_plantilla():
 
     resp = await manejar_turno(req, buscador)
 
-    # Estado no cambia
     assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
-    # Mismas opciones
-    assert resp.opciones == ["instructivo", "soluciones", "volver"]
-    # Sin mensaje nuevo en el chat (silencioso)
-    assert resp.mensaje == ""
-    # Título actualizado
-    assert resp.titulo == nuevo_titulo
-    assert sesion.titulo == nuevo_titulo
-    assert sesion.borrador.titulo == nuevo_titulo
+    assert resp.opciones == ["instructivo", "soluciones"]
+    assert resp.navegacion == ["volver"]
+    assert "No apliqué" in resp.mensaje
+    assert "**Título**" in resp.mensaje
+    assert sesion.titulo == TITULO_VALIDO
+    assert sesion.borrador.titulo == TITULO_VALIDO
 
     # Búsqueda de duplicados NUNCA se relanza
     buscador.evaluar_titulo.assert_not_called()
@@ -102,7 +107,6 @@ async def test_edicion_silenciosa_en_esperando_plantilla():
 @pytest.mark.anyio
 async def test_edicion_silenciosa_en_esperando_metadatos():
     sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS)
-    sesion.ultimas_opciones = ["volver"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     nuevo_texto = (
@@ -117,8 +121,10 @@ async def test_edicion_silenciosa_en_esperando_metadatos():
     resp = await manejar_turno(req, buscador)
 
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert resp.opciones == ["volver"]
-    assert resp.mensaje == ""
+    assert resp.opciones == []
+    assert resp.navegacion == ["volver"]
+    assert resp.mensaje.startswith("Guardé tus cambios")
+    assert "**Texto**" in resp.mensaje
     assert resp.texto_limpio == nuevo_texto
     assert sesion.borrador.texto_limpio == nuevo_texto
 
@@ -127,9 +133,9 @@ async def test_edicion_silenciosa_en_esperando_metadatos():
 
 
 @pytest.mark.anyio
-async def test_edicion_silenciosa_en_revision_borrador():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
-    sesion.ultimas_opciones = ["finalizar", "editar", "rechazar"]
+async def test_edicion_en_revision_metadatos_guarda_y_avisa():
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     nuevo_texto = (
@@ -143,16 +149,16 @@ async def test_edicion_silenciosa_en_revision_borrador():
 
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert resp.opciones == ["finalizar", "editar", "rechazar"]
-    assert resp.mensaje == ""
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
+    assert resp.opciones == ["auditar", "continuar"]
+    assert resp.mensaje.startswith("Guardé tus cambios")
     assert resp.texto_limpio == nuevo_texto
     assert sesion.borrador.texto_limpio == nuevo_texto
 
 
 @pytest.mark.anyio
 async def test_error_validacion_titulo_corto_no_cambia_estado():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     req = ChatOrquestadorRequest(
@@ -162,8 +168,9 @@ async def test_error_validacion_titulo_corto_no_cambia_estado():
 
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
-    assert resp.opciones == ["instructivo", "soluciones", "volver"]
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert resp.opciones == []
+    assert resp.navegacion == ["volver"]
     assert f"{TITULO_MIN} caracteres" in resp.mensaje
     # Título original no se corrompe
     assert sesion.borrador.titulo == TITULO_VALIDO
@@ -172,7 +179,6 @@ async def test_error_validacion_titulo_corto_no_cambia_estado():
 @pytest.mark.anyio
 async def test_error_validacion_texto_corto_no_cambia_estado():
     sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS)
-    sesion.ultimas_opciones = ["volver"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     req = ChatOrquestadorRequest(
@@ -183,14 +189,15 @@ async def test_error_validacion_texto_corto_no_cambia_estado():
     resp = await manejar_turno(req, buscador)
 
     assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
-    assert resp.opciones == ["volver"]
+    assert resp.opciones == []
+    assert resp.navegacion == ["volver"]
     assert f"{TEXTO_MIN} caracteres" in resp.mensaje
     assert sesion.borrador.texto_limpio == TEXTO_VALIDO
 
 
 @pytest.mark.anyio
 async def test_error_marcadores_prohibidos_en_texto():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     req = ChatOrquestadorRequest(
@@ -200,14 +207,15 @@ async def test_error_marcadores_prohibidos_en_texto():
 
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
-    assert resp.opciones == ["instructivo", "soluciones", "volver"]
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert resp.opciones == []
     assert "marcadores no válidos" in resp.mensaje
+    assert sesion.borrador.texto_limpio == TEXTO_VALIDO
 
 
 @pytest.mark.anyio
 async def test_solo_se_valida_el_campo_editado():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # Si el texto de la sesión tuviese algún detalle o fuese ignorado, solo validamos el título editado
@@ -218,14 +226,16 @@ async def test_solo_se_valida_el_campo_editado():
     )
 
     resp = await manejar_turno(req, buscador)
-    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
     assert resp.titulo == nuevo_titulo
-    assert resp.mensaje == ""
+    assert resp.mensaje.startswith("Guardé tus cambios")
+    assert "**Título**" in resp.mensaje
+    assert "**Texto**" not in resp.mensaje
 
 
 @pytest.mark.anyio
 async def test_recalculo_skills_habilitadas():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
     sesion.ultimas_opciones = ["volver"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
@@ -246,9 +256,9 @@ async def test_recalculo_skills_habilitadas():
 
 @pytest.mark.anyio
 async def test_aviso_estructura_plantilla_con_marcador_indicar():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
     sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.ultimas_opciones = ["finalizar", "volver"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     texto_con_indicar = TEXTO_VALIDO + " [Indicar configuración faltante]"
@@ -258,10 +268,10 @@ async def test_aviso_estructura_plantilla_con_marcador_indicar():
     )
 
     resp = await manejar_turno(req, buscador)
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert resp.opciones == ["finalizar", "volver"]
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
+    assert resp.opciones == ["auditar", "continuar"]
     # Se muestra como aviso en el chat
-    assert "Aviso sobre la estructura de la plantilla" in resp.mensaje
+    assert "estructura de la plantilla" in resp.mensaje
     assert "[Indicar...]" in resp.mensaje
     # Pero el texto quedó actualizado
     assert sesion.borrador.texto_limpio == texto_con_indicar
@@ -290,7 +300,7 @@ async def test_etapas_duplicados_no_usan_edicion_libre():
 
 @pytest.mark.anyio
 async def test_edicion_simultanea_titulo_y_texto():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     nuevo_tit = "Nuevo Título Válido para el Flujo"
@@ -303,15 +313,17 @@ async def test_edicion_simultanea_titulo_y_texto():
     )
 
     resp = await manejar_turno(req, buscador)
-    assert resp.estado == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
     assert resp.titulo == nuevo_tit
     assert resp.texto_limpio == nuevo_txt
-    assert resp.mensaje == ""
+    assert resp.mensaje.startswith("Guardé tus cambios")
+    assert "**Título**" in resp.mensaje and "**Texto**" in resp.mensaje
 
 
 @pytest.mark.anyio
-async def test_edicion_con_opcion_sigue_flujo_normal():
-    # En ESPERANDO_PLANTILLA, el usuario edita el título Y selecciona la plantilla "instructivo"
+async def test_eleccion_de_plantilla_descarta_titulo_editado_y_avanza():
+    # En ESPERANDO_PLANTILLA no hay campos editables: elegir "instructivo" avanza y el título
+    # editado no se aplica (el front avisa de los cambios sin guardar).
     sesion = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
@@ -323,18 +335,16 @@ async def test_edicion_con_opcion_sigue_flujo_normal():
     )
 
     resp = await manejar_turno(req, buscador)
-    # Título se actualizó
-    assert sesion.borrador.titulo == nuevo_tit
-    # Y el flujo avanzó con la plantilla elegida
+    assert sesion.borrador.titulo != nuevo_tit
     assert sesion.borrador.tipo_plantilla == "instructivo"
-    assert resp.estado in (EstadoFlujo.REVISION_BORRADOR, EstadoFlujo.ESPERANDO_METADATOS)
+    assert resp.estado == EstadoFlujo.REVISION_TIPO
 
 
 
 @pytest.mark.anyio
 async def test_reenvio_mismo_texto_previo_sin_validacion_ni_mensaje():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
-    sesion.ultimas_opciones = ["continuar", "editar", "volver"]
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # Reenviar el mismo texto devuelto por el back en el turno previo
@@ -351,10 +361,10 @@ async def test_reenvio_mismo_texto_previo_sin_validacion_ni_mensaje():
         resp = await manejar_turno(req, buscador)
         assert spy_aplicar.call_count == 1
 
-    # Sin mensaje y con el mismo estado y opciones
-    assert resp.mensaje == ""
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert resp.opciones == ["continuar", "editar", "volver"]
+    # Sin cambios: no valida, mismo estado y opciones
+    assert resp.mensaje == "No había cambios para guardar."
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
+    assert resp.opciones == ["auditar", "continuar"]
 
     # También con saltos de línea Windows CRLF
     req_crlf = ChatOrquestadorRequest(
@@ -367,15 +377,16 @@ async def test_reenvio_mismo_texto_previo_sin_validacion_ni_mensaje():
     ) as spy_aplicar:
         resp_crlf = await manejar_turno(req_crlf, buscador)
         assert spy_aplicar.call_count == 1
-    assert resp_crlf.mensaje == ""
+    assert resp_crlf.mensaje == "No había cambios para guardar."
 
 
 @pytest.mark.anyio
 async def test_edicion_texto_con_opcion_continuar_procesa_una_sola_vez():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
-    sesion.borrador.revision_intermedia = True
-    sesion.borrador.categoria_id = None
-    sesion.borrador.tags = ["instructivo"]
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
+    sesion.borrador.categoria_id = 20
+    sesion.borrador.categoria_nombre = "Ventas"
+    sesion.borrador.tags = ["instructivo", "ventas"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     nuevo_texto = (
@@ -388,24 +399,27 @@ async def test_edicion_texto_con_opcion_continuar_procesa_una_sola_vez():
         accion="continuar",
     )
 
-    with patch("baco.server.services.orquestador.handlers.procesar_edicion_texto") as mock_proc_handler:
+    with patch(
+        "baco.server.services.orquestador.edicion.procesar_edicion_texto",
+        wraps=procesar_edicion_texto,
+    ) as spy_proc:
         resp = await manejar_turno(req, buscador)
-        # _aplicar_mutaciones_borrador NO debe volver a procesar el texto (0 llamadas desde el handler)
-        mock_proc_handler.assert_not_called()
+        # El texto se procesa una sola vez (en el coordinador, antes de la opción)
+        assert spy_proc.call_count == 1
 
-    # El texto fue aplicado correctamente
     assert sesion.borrador.texto_limpio == nuevo_texto
-    # Y la opción continuar se ejecutó: avanzó a ESPERANDO_METADATOS
-    assert resp.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
 
 
 @pytest.mark.anyio
-async def test_editar_texto_con_resultado_skill_visible_descarta_skill_y_actualiza_vista_previa():
+async def test_editar_vista_previa_con_resultado_skill_visible_conserva_editor_y_skill():
+    # Contrato (3/11): con resultado de skill visible, `texto` es la Vista previa. Editarla no pisa
+    # el texto fuente del Editor ni descarta el resultado pendiente.
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_TIPO)
     sesion.borrador.tipo_plantilla = "instructivo"
-    sesion.ultimas_opciones = ["aplicar_plantilla", "continuar_revision", "volver"]
+    sesion.ultimas_opciones = ["aplicar_plantilla", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # 1. Aplicar la plantilla inicialmente
@@ -416,8 +430,10 @@ async def test_editar_texto_con_resultado_skill_visible_descarta_skill_y_actuali
     sesion.borrador.skill_pendiente = "plantilla"
     assert "Paso 1" in resultado_plantilla
     assert "Paso 1" in sesion.borrador.texto_limpio
+    texto_fuente = sesion.borrador.texto_editor
+    assert texto_fuente == TEXTO_VALIDO
 
-    # 2. La persona edita el texto del Editor con un resultado de skill visible
+    # 2. La persona edita la Vista previa con el resultado de skill visible
     texto_editado_usuario = (
         "Texto personalizado por el usuario después de aplicar la plantilla con detalles "
         "operativos específicos de la empresa para la configuración."
@@ -428,31 +444,29 @@ async def test_editar_texto_con_resultado_skill_visible_descarta_skill_y_actuali
     )
     resp_edicion = await manejar_turno(req_edicion, buscador)
 
-    # El texto editado pasa a ser el nuevo original (texto_editor y texto_base_limpio)
-    assert sesion.borrador.texto_editor == texto_editado_usuario
-    assert sesion.borrador.texto_base_limpio == texto_editado_usuario
-    assert sesion.texto_editor == texto_editado_usuario
-
-    # La Vista previa muestra el texto editado (se descarta el resultado de la skill)
+    # La Vista previa muestra lo editado
     assert resp_edicion.texto_limpio == texto_editado_usuario
     assert sesion.borrador.texto_limpio == texto_editado_usuario
     assert sesion.borrador.bloques_texto == [texto_editado_usuario]
-    assert "Paso 1" not in resp_edicion.texto_limpio
 
-    # Se limpian resultado_skill_pendiente, resultado_skill_desactualizado y skill_pendiente
-    assert sesion.borrador.resultado_skill_pendiente is False
-    assert sesion.borrador.resultado_skill_desactualizado is False
-    assert sesion.borrador.skill_pendiente is None
+    # El Editor conserva el texto fuente (entrada si se reaplica la skill)
+    assert sesion.borrador.texto_editor == texto_fuente
+    assert sesion.borrador.texto_original == texto_fuente
+    assert sesion.texto_editor == texto_fuente
 
-    # No se reaplica nada ni se ofrece "reaplicar" ni aviso de desactualizada
-    assert resp_edicion.mensaje == ""
-    assert "reaplicar" not in resp_edicion.opciones
-    assert resp_edicion.opciones == ["aplicar_plantilla", "continuar_revision", "volver"]
+    # El resultado de la skill sigue pendiente de adoptar
+    assert sesion.borrador.resultado_skill_pendiente is True
+    assert sesion.borrador.skill_pendiente == "plantilla"
+
+    assert resp_edicion.estado == EstadoFlujo.REVISION_TIPO
+    assert resp_edicion.mensaje.startswith("Guardé tus cambios")
+    assert "**Texto de la Vista previa**" in resp_edicion.mensaje
+    assert resp_edicion.opciones == ["aplicar_plantilla", "continuar"]
 
 
 @pytest.mark.anyio
 async def test_editar_sin_resultado_pendiente_sin_aviso():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
     sesion.borrador.resultado_skill_pendiente = False
     sesion.borrador.skill_pendiente = None
     buscador = MagicMock(spec=BuscadorDuplicados)
@@ -467,15 +481,16 @@ async def test_editar_sin_resultado_pendiente_sin_aviso():
     )
     resp = await manejar_turno(req, buscador)
 
-    # Sin aviso de skill desactualizada
-    assert resp.mensaje == ""
+    # Sin aviso de skill desactualizada: solo el detalle de lo guardado
+    assert resp.mensaje.startswith("Guardé tus cambios")
+    assert "Vista previa" not in resp.mensaje
     assert "reaplicar" not in resp.opciones
     assert sesion.borrador.resultado_skill_desactualizado is False
 
 
 @pytest.mark.anyio
 async def test_reaplicar_sin_skill_pendiente_no_hace_nada():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS)
     sesion.ultimas_opciones = ["finalizar", "editar", "rechazar"]
     texto_original = sesion.borrador.texto_limpio
     bloques_originales = list(sesion.borrador.bloques_texto)
@@ -491,8 +506,8 @@ async def test_reaplicar_sin_skill_pendiente_no_hace_nada():
     )
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
+    assert sesion.estado == EstadoFlujo.REVISION_METADATOS
     assert sesion.borrador.texto_limpio == texto_original
     assert sesion.borrador.bloques_texto == bloques_originales
     assert resp.opciones == ["finalizar", "editar", "rechazar"]
@@ -503,8 +518,8 @@ async def test_reaplicar_sin_skill_pendiente_no_hace_nada():
 
     resp2 = await manejar_turno(req, buscador)
 
-    assert resp2.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp2.estado == EstadoFlujo.REVISION_METADATOS
+    assert sesion.estado == EstadoFlujo.REVISION_METADATOS
     assert sesion.borrador.texto_limpio == texto_original
     assert sesion.borrador.bloques_texto == bloques_originales
     assert resp2.opciones == ["finalizar", "editar", "rechazar"]
@@ -517,7 +532,7 @@ def test_aplicar_plantilla_sin_edicion_previa_resultado_identico():
     from baco.server.app.middleware import API_KEY
 
     sid = "test-plantilla-sin-edicion"
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id=sid)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_TIPO, session_id=sid)
     sesion.borrador.tipo_plantilla = "instructivo"
     sesion.borrador.texto_editor = None  # Sin edición previa
 
@@ -551,7 +566,7 @@ def test_auditar_semantica_sin_edicion_previa_resultado_identico():
     from baco.server.app.middleware import API_KEY
 
     sid = "test-auditor-sin-edicion"
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id=sid)
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id=sid)
     sesion.borrador.categoria_id = 1
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.borrador.texto_editor = ""  # Vacío / sin edición previa
@@ -581,9 +596,10 @@ def test_auditar_semantica_sin_edicion_previa_resultado_identico():
 
 
 @pytest.mark.anyio
-async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_sin_error():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-ignorar-meta")
-    sesion.borrador.revision_intermedia = False
+async def test_punto_1_descarta_plantilla_categoria_y_tags_fuera_de_paso_natural_sin_error():
+    # En REVISION_TIPO con la plantilla ya aplicada no se editan tipo, categoría ni etiquetas.
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_TIPO, session_id="test-ignorar-meta")
+    sesion.borrador.skill_aplicada = "plantilla"
     sesion.borrador.tipo_plantilla = "instructivo"
     sesion.tipo_plantilla = "instructivo"
     sesion.borrador.categoria_id = 20
@@ -592,11 +608,11 @@ async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_s
     sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
-    sesion.ultimas_opciones = ["auditar", "continuar"]
+    sesion.ultimas_opciones = ["aplicar_plantilla", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # Enviar tipo_plantilla inválido, categoria_id inexistente y tags vacíos fuera de su paso natural:
-    # deben ignorarse sin error (ni ValueError ni 500) y sin mutar el borrador.
+    # se descartan con aviso, sin error (ni ValueError ni 500) y sin mutar el borrador.
     req = ChatOrquestadorRequest(
         session_id=sesion.session_id,
         tipo_plantilla="invalida_cualquiera",
@@ -605,8 +621,10 @@ async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_s
     )
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert resp.mensaje == ""
+    assert resp.estado == EstadoFlujo.REVISION_TIPO
+    assert resp.mensaje.startswith("No apliqué")
+    for campo in ("**Tipo de plantilla**", "**Categoría**", "**Etiquetas**"):
+        assert campo in resp.mensaje
     assert sesion.borrador.tipo_plantilla == "instructivo"
     assert sesion.borrador.categoria_id == 20
     assert sesion.borrador.tags == ["instructivo", "ventas"]
@@ -614,7 +632,7 @@ async def test_punto_1_ignora_plantilla_categoria_y_tags_fuera_de_paso_natural_s
 
 @pytest.mark.anyio
 async def test_punto_3_anonimizacion_pii_y_validacion_solo_campo_modificado():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-pii-edicion")
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id="test-pii-edicion")
     sesion.ultimas_opciones = ["auditar", "continuar"]
     buscador = MagicMock(spec=BuscadorDuplicados)
 
@@ -624,7 +642,7 @@ async def test_punto_3_anonimizacion_pii_y_validacion_solo_campo_modificado():
         titulo="Configurar alertas para usuario@empresa.com en Ventas",
     )
     resp_tit = await manejar_turno(req_tit, buscador)
-    assert resp_tit.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp_tit.estado == EstadoFlujo.REVISION_METADATOS
     assert "usuario@empresa.com" not in (sesion.borrador.titulo or "")
     assert sesion.borrador.texto_limpio == TEXTO_VALIDO
 
@@ -638,42 +656,17 @@ async def test_punto_3_anonimizacion_pii_y_validacion_solo_campo_modificado():
         ),
     )
     resp_txt = await manejar_turno(req_txt, buscador)
-    assert resp_txt.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp_txt.estado == EstadoFlujo.REVISION_METADATOS
     assert "cliente@dominio.com" not in (sesion.borrador.texto_limpio or "")
     assert sesion.borrador.titulo == titulo_prev
 
 
 @pytest.mark.anyio
-async def test_esperando_plantilla_y_metadatos_con_edicion_titulo_texto_y_error():
+async def test_esperando_metadatos_con_edicion_de_texto_y_error():
+    # (ESPERANDO_PLANTILLA no tiene editables: ver test_eleccion_de_plantilla_descarta_titulo_editado_y_avanza)
     buscador = MagicMock(spec=BuscadorDuplicados)
 
-    # 1. En ESPERANDO_PLANTILLA: trae tipo_plantilla Y título válido que difiere -> aplica título y avanza
-    sesion_p = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA, session_id="test-p-combo-ok")
-    nuevo_tit = "Título editado al elegir plantilla en paso natural"
-    req_p_ok = ChatOrquestadorRequest(
-        session_id=sesion_p.session_id,
-        tipo_plantilla="instructivo",
-        titulo=nuevo_tit,
-    )
-    resp_p_ok = await manejar_turno(req_p_ok, buscador)
-    assert sesion_p.borrador.titulo == nuevo_tit
-    assert sesion_p.borrador.tipo_plantilla == "instructivo"
-    assert resp_p_ok.estado == EstadoFlujo.REVISION_BORRADOR
-
-    # 2. En ESPERANDO_PLANTILLA: trae tipo_plantilla Y título inválido (corto) -> error sin avanzar
-    sesion_p_err = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_PLANTILLA, session_id="test-p-combo-err")
-    req_p_err = ChatOrquestadorRequest(
-        session_id=sesion_p_err.session_id,
-        tipo_plantilla="instructivo",
-        titulo="Corto",
-    )
-    resp_p_err = await manejar_turno(req_p_err, buscador)
-    assert resp_p_err.estado == EstadoFlujo.ESPERANDO_PLANTILLA
-    assert sesion_p_err.borrador.tipo_plantilla is None
-    assert sesion_p_err.borrador.titulo == TITULO_VALIDO
-    assert f"{TITULO_MIN} caracteres" in resp_p_err.mensaje
-
-    # 3. En ESPERANDO_METADATOS: trae tags + categoria_id Y texto válido que difiere -> aplica texto y avanza
+    # 1. En ESPERANDO_METADATOS: trae tags + categoria_id Y texto válido que difiere -> aplica texto y avanza
     sesion_m = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-m-combo-ok")
     sesion_m.borrador.tags = ["instructivo"]
     nuevo_txt = (
@@ -690,9 +683,9 @@ async def test_esperando_plantilla_y_metadatos_con_edicion_titulo_texto_y_error(
     assert sesion_m.borrador.texto_limpio == nuevo_txt
     assert sesion_m.borrador.categoria_id == 20
     assert "ventas" in sesion_m.borrador.tags
-    assert resp_m_ok.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp_m_ok.estado == EstadoFlujo.REVISION_METADATOS
 
-    # 4. En ESPERANDO_METADATOS: trae tags + categoria_id Y texto inválido (corto) -> error sin avanzar
+    # 2. En ESPERANDO_METADATOS: trae tags + categoria_id Y texto inválido (corto) -> error sin avanzar
     sesion_m_err = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-m-combo-err")
     sesion_m_err.borrador.tags = ["instructivo"]
     req_m_err = ChatOrquestadorRequest(
@@ -710,8 +703,7 @@ async def test_esperando_plantilla_y_metadatos_con_edicion_titulo_texto_y_error(
 
 @pytest.mark.anyio
 async def test_continuar_con_edicion_ejecuta_aplicar_edicion_campos_una_sola_vez():
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-single-call")
-    sesion.borrador.revision_intermedia = False
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id="test-single-call")
     sesion.borrador.categoria_id = 20
     sesion.borrador.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
@@ -740,8 +732,7 @@ async def test_continuar_persiste_tags_editados_antes_de_avanzar():
     buscador = MagicMock(spec=BuscadorDuplicados)
 
     # 1. En revisión final (revision_intermedia=False) con accion="continuar"
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-final")
-    sesion.borrador.revision_intermedia = False
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id="test-continuar-tags-final")
     sesion.borrador.tipo_plantilla = "instructivo"
     sesion.tipo_plantilla = "instructivo"
     sesion.borrador.categoria_id = 20
@@ -764,9 +755,8 @@ async def test_continuar_persiste_tags_editados_antes_de_avanzar():
     assert sesion.tags == ["instructivo", "facturacion", "afip"]
     assert resp.tags_acumulados == ["instructivo", "facturacion", "afip"]
 
-    # 2. En revisión intermedia (revision_intermedia=True) con accion="continuar_revision"
-    sesion_int = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-intermedia")
-    sesion_int.borrador.revision_intermedia = True
+    # 2. En ESPERANDO_METADATOS con accion="enviar_datos": persiste las etiquetas y avanza
+    sesion_int = _crear_sesion_en_estado(EstadoFlujo.ESPERANDO_METADATOS, session_id="test-continuar-tags-intermedia")
     sesion_int.borrador.tipo_plantilla = "instructivo"
     sesion_int.tipo_plantilla = "instructivo"
     sesion_int.borrador.categoria_id = 20
@@ -775,18 +765,15 @@ async def test_continuar_persiste_tags_editados_antes_de_avanzar():
     sesion_int.categoria_nombre = "Ventas"
     sesion_int.borrador.tags = ["instructivo"]
     sesion_int.tags = ["instructivo"]
-    sesion_int.ultimas_opciones = ["aplicar_plantilla", "continuar_revision", "volver"]
 
     req_int = ChatOrquestadorRequest(
         session_id=sesion_int.session_id,
         tags=["cobranzas", "recibos"],
-        accion="continuar_revision",
+        accion="enviar_datos",
     )
     resp_int = await manejar_turno(req_int, buscador)
 
-    # Al tener ya categoria_id=20 y ahora >= 2 tags persistidos antes de avanzar, pasa directo a revisión final
-    assert resp_int.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion_int.borrador.revision_intermedia is False
+    assert resp_int.estado == EstadoFlujo.REVISION_METADATOS
     assert sesion_int.borrador.tags == ["instructivo", "cobranzas", "recibos"]
     assert sesion_int.tags == ["instructivo", "cobranzas", "recibos"]
 
@@ -797,22 +784,23 @@ async def test_continuar_valida_tags_solo_si_cambiaron():
 
     buscador = MagicMock(spec=BuscadorDuplicados)
 
-    # Caso A: En revisión intermedia los tags guardados son ["instructivo"] (< TAGS_MIN).
-    # Si el request reenvía los mismos tags sin cambios y aprieta "Continuar", NO se validan y avanza a ESPERANDO_METADATOS.
+    # Caso A: En ESPERANDO_METADATOS con categoría y etiquetas ya cargadas, si el request reenvía
+    # las mismas etiquetas y aprieta "Enviar datos", NO se validan y avanza a REVISION_METADATOS.
     sesion_sin_cambio = _crear_sesion_en_estado(
-        EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-sin-cambio"
+        EstadoFlujo.ESPERANDO_METADATOS, session_id="test-continuar-tags-sin-cambio"
     )
-    sesion_sin_cambio.borrador.revision_intermedia = True
     sesion_sin_cambio.borrador.tipo_plantilla = "instructivo"
     sesion_sin_cambio.tipo_plantilla = "instructivo"
-    sesion_sin_cambio.borrador.tags = ["instructivo"]
-    sesion_sin_cambio.tags = ["instructivo"]
-    sesion_sin_cambio.ultimas_opciones = ["aplicar_plantilla", "continuar_revision", "volver"]
+    sesion_sin_cambio.borrador.categoria_id = 20
+    sesion_sin_cambio.borrador.categoria_nombre = "Ventas"
+    sesion_sin_cambio.borrador.tags = ["instructivo", "ventas"]
+    sesion_sin_cambio.tags = ["instructivo", "ventas"]
 
     req_sin_cambio = ChatOrquestadorRequest(
         session_id=sesion_sin_cambio.session_id,
-        tags=["instructivo"],
-        accion="continuar_revision",
+        tags=["instructivo", "ventas"],
+        categoria_id=20,
+        accion="enviar_datos",
     )
     with patch(
         "baco.server.services.orquestador.edicion.procesar_edicion_tags",
@@ -821,13 +809,12 @@ async def test_continuar_valida_tags_solo_si_cambiaron():
         resp_sin_cambio = await manejar_turno(req_sin_cambio, buscador)
         assert spy_proc_tags.call_count == 0
 
-    assert resp_sin_cambio.estado == EstadoFlujo.ESPERANDO_METADATOS
+    assert resp_sin_cambio.estado == EstadoFlujo.REVISION_METADATOS
 
     # Caso B: Si los tags sí cambiaron pero quedan con menos de TAGS_MIN, se validan, falla y no avanza ni pisa la sesión.
     sesion_invalido = _crear_sesion_en_estado(
-        EstadoFlujo.REVISION_BORRADOR, session_id="test-continuar-tags-invalido"
+        EstadoFlujo.REVISION_METADATOS, session_id="test-continuar-tags-invalido"
     )
-    sesion_invalido.borrador.revision_intermedia = False
     sesion_invalido.borrador.tipo_plantilla = "instructivo"
     sesion_invalido.tipo_plantilla = "instructivo"
     sesion_invalido.borrador.categoria_id = 20
@@ -850,7 +837,7 @@ async def test_continuar_valida_tags_solo_si_cambiaron():
         resp_invalido = await manejar_turno(req_invalido, buscador)
         assert spy_proc_tags_inv.call_count == 1
 
-    assert resp_invalido.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp_invalido.estado == EstadoFlujo.REVISION_METADATOS
     assert "Se requieren al menos" in resp_invalido.mensaje
     assert sesion_invalido.borrador.tags == ["instructivo", "ventas"]
     assert sesion_invalido.tags == ["instructivo", "ventas"]
@@ -869,8 +856,7 @@ async def test_validacion_post_duplicados_compara_cinco_campos_sin_cambios_en_si
     from baco.server.services.orquestador.validaciones import validar_borrador
 
     buscador = MagicMock(spec=BuscadorDuplicados)
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-cinco-campos-silencio")
-    sesion.borrador.revision_intermedia = False
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id="test-cinco-campos-silencio")
     sesion.borrador.tipo_plantilla = "instructivo"
     sesion.tipo_plantilla = "instructivo"
     sesion.borrador.categoria_id = 20
@@ -879,6 +865,7 @@ async def test_validacion_post_duplicados_compara_cinco_campos_sin_cambios_en_si
     sesion.categoria_nombre = "Ventas"
     sesion.borrador.tags = ["instructivo", "ventas"]
     sesion.tags = ["instructivo", "ventas"]
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     validar_borrador(sesion)
 
     req = ChatOrquestadorRequest(
@@ -920,8 +907,7 @@ async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_
     )
 
     buscador = MagicMock(spec=BuscadorDuplicados)
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-solo-campo-modificado")
-    sesion.borrador.revision_intermedia = False
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id="test-solo-campo-modificado")
     sesion.borrador.tipo_plantilla = "instructivo"
     sesion.tipo_plantilla = "instructivo"
     sesion.borrador.categoria_id = 20
@@ -954,11 +940,11 @@ async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_
         assert spy_cat.call_count == 1
         assert spy_tags.call_count == 0
 
-    assert resp_cat.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp_cat.estado == EstadoFlujo.REVISION_METADATOS
     assert "categoría" in resp_cat.mensaje.lower()
     assert sesion.borrador.categoria_id == 20
 
-    # 2. Solo cambia tipo_plantilla a un valor inválido
+    # 2. Solo cambia tipo_plantilla: en REVISION_METADATOS no es editable, se descarta con aviso
     req_plant_inv = ChatOrquestadorRequest(
         session_id=sesion.session_id,
         titulo=sesion.borrador.titulo,
@@ -966,29 +952,29 @@ async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_
         categoria_id=20,
         tags=["instructivo", "ventas"],
         tipo_plantilla="plantilla_inexistente",
-        accion="continuar",
     )
     resp_plant_inv = await manejar_turno(req_plant_inv, buscador)
-    assert resp_plant_inv.estado == EstadoFlujo.REVISION_BORRADOR
-    assert "tipo de plantilla" in resp_plant_inv.mensaje.lower()
+    assert resp_plant_inv.estado == EstadoFlujo.REVISION_METADATOS
+    assert "No apliqué" in resp_plant_inv.mensaje
+    assert "**Tipo de plantilla**" in resp_plant_inv.mensaje
     assert sesion.borrador.tipo_plantilla == "instructivo"
 
-    # 3. Solo cambia tipo_plantilla a un valor válido ("consulta") y categoria_id a una válida (21 - Compras)
+    # 3. Solo cambia categoria_id a una válida (21 - Contabilidad) y continúa
     req_cambio_valido = ChatOrquestadorRequest(
         session_id=sesion.session_id,
         titulo=sesion.borrador.titulo,
         texto=sesion.borrador.texto_limpio,
         categoria_id=21,
         tags=["instructivo", "ventas"],
-        tipo_plantilla="soluciones",
+        tipo_plantilla="instructivo",
         accion="continuar",
     )
     resp_ok = await manejar_turno(req_cambio_valido, buscador)
     assert resp_ok.estado == EstadoFlujo.EDICION_FINAL
-    assert sesion.borrador.tipo_plantilla == "soluciones"
+    assert sesion.borrador.tipo_plantilla == "instructivo"
     assert sesion.borrador.categoria_id == 21
     assert sesion.borrador.categoria_nombre == "Contabilidad"
-    assert "soluciones" in sesion.borrador.tags
+    assert "instructivo" in sesion.borrador.tags
     assert "ventas" in sesion.borrador.tags
 
 
@@ -1016,7 +1002,7 @@ async def test_esperando_metadatos_compara_cinco_campos_y_solo_pide_accion_en_mo
         mensaje="Ventas",
     )
     resp = await manejar_turno(req_cat_msg, buscador)
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
     assert sesion.borrador.categoria_id == 20
     assert sesion.borrador.categoria_nombre == "Ventas"
     assert sesion.borrador.tags == ["instructivo", "ventas"]
@@ -1086,8 +1072,7 @@ async def test_anonimizacion_pii_se_mantiene_siempre_en_titulo_texto_y_tags_post
     """La anonimización de PII se mantiene siempre en las validaciones posteriores a duplicados
     para título, texto y tags."""
     buscador = MagicMock(spec=BuscadorDuplicados)
-    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_BORRADOR, session_id="test-pii-post-duplicados")
-    sesion.borrador.revision_intermedia = False
+    sesion = _crear_sesion_en_estado(EstadoFlujo.REVISION_METADATOS, session_id="test-pii-post-duplicados")
     sesion.borrador.tipo_plantilla = "instructivo"
     sesion.tipo_plantilla = "instructivo"
     sesion.borrador.categoria_id = 20
@@ -1110,7 +1095,7 @@ async def test_anonimizacion_pii_se_mantiene_siempre_en_titulo_texto_y_tags_post
         tipo_plantilla="instructivo",
     )
     resp = await manejar_turno(req, buscador)
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
     assert "cliente@empresa.com" not in sesion.borrador.titulo
     assert "juan.perez@gmail.com" not in sesion.borrador.texto_limpio
     assert all("maria.gomez@gmail.com" not in t for t in sesion.borrador.tags)

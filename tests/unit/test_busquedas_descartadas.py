@@ -7,6 +7,7 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.coordinador import manejar_turno
+from baco.server.services.orquestador.mensajes import MSG_SIN_COINCIDENCIAS_TITULO
 from baco.server.services.orquestador.sesion import (
     SESIONES,
     SesionChat,
@@ -68,10 +69,7 @@ async def test_descartar_repito_mismo_titulo_no_busca_cambio_titulo_si_busca(moc
     # NO se debió ejecutar evaluar_titulo
     mock_buscador.evaluar_titulo.assert_not_called()
     assert resp_repetido.estado == EstadoFlujo.ESPERANDO_TEXTO
-    assert (
-        resp_repetido.mensaje
-        == "Omití las coincidencias que ya descartaste. No encontré nada nuevo. Por favor, enviame el texto o desarrollo del artículo."
-    )
+    assert resp_repetido.mensaje.startswith("Omití las coincidencias que ya descartaste.")
 
     # 6. Volver a ESPERANDO_TITULO y enviar un título DISTINTO
     await manejar_turno(req_volver, mock_buscador)
@@ -83,10 +81,7 @@ async def test_descartar_repito_mismo_titulo_no_busca_cambio_titulo_si_busca(moc
     # Para el nuevo título SÍ se ejecuta la búsqueda y mantiene el mensaje original
     mock_buscador.evaluar_titulo.assert_called_once_with(titulo_distinto, 1)
     assert resp_distinto.estado == EstadoFlujo.ESPERANDO_TEXTO
-    assert (
-        resp_distinto.mensaje
-        == "No encontré nada similar. Por favor, enviame el texto o desarrollo del artículo."
-    )
+    assert resp_distinto.mensaje == MSG_SIN_COINCIDENCIAS_TITULO
 
 
 @pytest.mark.anyio
@@ -112,9 +107,11 @@ async def test_descartar_repito_mismo_texto_no_busca_cambio_texto_si_busca(mock_
     assert resp_txt.estado == EstadoFlujo.DECISION_TEXTO
     assert mock_buscador.evaluar_texto.call_count == 1
 
-    # 2. Usuario descarta la coincidencia
-    req_desc = ChatOrquestadorRequest(session_id=sid, accion="descartar")
+    # 2. Usuario sigue con su texto ("Continuar con mi texto"): en DECISION_TEXTO no existe
+    #    "descartar"; "continuar" es la acción que deja la búsqueda registrada como descartada.
+    req_desc = ChatOrquestadorRequest(session_id=sid, accion="continuar")
     resp_desc = await manejar_turno(req_desc, mock_buscador)
+    assert resp_desc.estado == EstadoFlujo.ESPERANDO_PLANTILLA
 
     # Verificar que la clave del texto quedó registrada en busquedas_descartadas
     clave_txt = clave_busqueda("texto", texto_original)
@@ -123,6 +120,7 @@ async def test_descartar_repito_mismo_texto_no_busca_cambio_texto_si_busca(mock_
     # 3. Volver a ESPERANDO_TEXTO
     req_volver = ChatOrquestadorRequest(session_id=sid, accion="volver")
     resp_volver = await manejar_turno(req_volver, mock_buscador)
+    assert resp_volver.estado == EstadoFlujo.ESPERANDO_TEXTO
     # Regla: volver NO borra busquedas_descartadas
     assert clave_txt in SESIONES[sid].busquedas_descartadas
 

@@ -9,6 +9,7 @@ from baco.server.schemas.chat_orquestado import EstadoFlujo
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.mensajes import (
     MSG_CATEGORIA_TAGS_COMPLETOS,
+    MSG_OPCION_NO_DISPONIBLE,
     MSG_PLANTILLA_VALIDADA,
 )
 
@@ -79,189 +80,114 @@ def client(mock_buscador):
     app.dependency_overrides.clear()
 
 
+def _botones(r):
+    return [(b["label"], b["accion"]) for b in r.get("botones") or []]
+
+
 def test_estado_plantilla_validada_texto_y_botones(client, mock_buscador):
+    """REVISION_TIPO (plantilla elegida):
+    - Mensaje MSG_PLANTILLA_VALIDADA + aviso del tipo; botones Aplicar plantilla | Continuar, sin Volver.
+    - Sin agente: error amable, sin tocar Editor ni Vista previa.
+    - Con agente: el resultado queda en la Vista previa, el original en el Editor; solo queda Continuar.
+    - Continuar pasa a ESPERANDO_METADATOS sin Volver (el tipo queda fijo tras aplicar la skill).
     """
-    1) Estado 'plantilla validada':
-       - Mensaje exacto: '¡Perfecto! Si querés, podés aplicar la plantilla para estandarizar el contenido, o podés **Continuar** si ya la tiene.'
-       - Botones exactos en orden: Aplicar plantilla | Continuar | Volver
-       - Sin 'Seguir editando' ni 'Descartar borrador'.
-       - 'Continuar' y 'Volver' conservan su comportamiento actual.
-       - Si no hay agente, 'aplicar_plantilla' retorna mensaje amable de error sin modificar Editor ni Vista previa.
-       - Con agente mockeado, primera aplicación sin skill previa:
-         * Ejecuta la skill y preserva el original en texto_editor y texto_base_limpio.
-         * El resultado queda en bloques_texto.
-         * Estado permanece REVISION_BORRADOR.
-         * Botones posteriores exactos: Continuar | Volver.
-    """
-    # 1. Iniciar sesión y enviar título
     r1 = client.post("/chat", json={"mensaje": "Cómo Configurar Facturación en Ventas"}).json()
     sid = r1["session_id"]
     assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
 
-    # 2. Confirmar texto
     r2 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO}).json()
     assert r2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
 
-    # 3. Elegir plantilla -> pasa a Estado 'plantilla validada' (REVISION_BORRADOR con revision_intermedia=True)
     r3 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["estado"] == EstadoFlujo.REVISION_TIPO
+    assert r3["mensaje"].startswith(MSG_PLANTILLA_VALIDADA)
+    assert "Se va a aplicar la plantilla **Instructivo**" in r3["mensaje"]
+    assert _botones(r3) == [("Aplicar plantilla", "aplicar_plantilla"), ("Continuar", "continuar")]
+    assert r3["navegacion"] == []
 
-    # Verificación del mensaje exacto
-    mensaje_esperado = "Podés Aplicar plantilla para darle el formato estándar, o tocar Continuar si ya lo tiene."
-    assert r3["mensaje"] == mensaje_esperado
-    assert r3["mensaje"] == MSG_PLANTILLA_VALIDADA
-
-    # Verificación de la lista exacta de botones y su orden
-    labels_botones = [b["label"] for b in r3.get("botones", [])]
-    assert labels_botones == ["Aplicar plantilla", "Continuar", "Volver"]
-
-    acciones_botones = [b["accion"] for b in r3.get("botones", [])]
-    assert acciones_botones == ["aplicar_plantilla", "continuar_revision", "volver"]
-
-    # Verificar que NO están "Seguir editando" ni "Descartar borrador"
-    assert "Seguir editando" not in labels_botones
-    assert "Descartar borrador" not in labels_botones
-    assert "editar" not in acciones_botones
-    assert "rechazar" not in acciones_botones
-
-    # 4. Caso de error sin agente: no modifica Editor ni Vista previa y retorna mensaje amable
+    # Sin agente: mensaje amable, Vista previa y flags intactos
     with patch("baco.server.app.dependencies.get_baco_agent", return_value=None):
         r_err = client.post("/chat", json={"session_id": sid, "accion": "aplicar_plantilla"}).json()
-        assert r_err["estado"] == EstadoFlujo.REVISION_BORRADOR
-        assert "No pudimos aplicar la plantilla en este momento" in r_err["mensaje"]
-        assert [b["label"] for b in r_err.get("botones", [])] == ["Aplicar plantilla", "Continuar", "Volver"]
-        # Vista previa y flags permanecen intactos
-        assert r_err["borrador"]["bloques_texto"] == [TEXTO_VALIDO]
-        assert r_err["borrador"]["resultado_skill_pendiente"] is False
+    assert r_err["estado"] == EstadoFlujo.REVISION_TIPO
+    assert "No pudimos **aplicar la plantilla** en este momento" in r_err["mensaje"]
+    assert _botones(r_err) == [("Aplicar plantilla", "aplicar_plantilla"), ("Continuar", "continuar")]
+    assert r_err["borrador"]["bloques_texto"] == [TEXTO_VALIDO]
+    assert r_err["borrador"]["resultado_skill_pendiente"] is False
 
-    # 5. Primera aplicación con agente mockeado (sin skill previa)
+    # Con agente: resultado en Vista previa, original en el Editor
     mock_baco = MagicMock(return_value=RESULTADO_PLANTILLA_MOCK)
     with patch("baco.server.app.dependencies.get_baco_agent", return_value=mock_baco):
         r_skill = client.post("/chat", json={"session_id": sid, "accion": "aplicar_plantilla"}).json()
-
-    assert r_skill["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_skill["mensaje"] == "Listo, apliqué la plantilla. Revisá el resultado y tocá **Continuar**."
-
-    # Botones posteriores exactos: Continuar | Volver
-    assert [b["label"] for b in r_skill.get("botones", [])] == ["Continuar", "Volver"]
-    assert [b["accion"] for b in r_skill.get("botones", [])] == ["continuar_revision", "volver"]
-
-    # Original preservado en texto_editor y texto_base_limpio
+    assert r_skill["estado"] == EstadoFlujo.REVISION_TIPO
+    assert "Apliqué la plantilla **Instructivo**" in r_skill["mensaje"]
+    assert _botones(r_skill) == [("Continuar", "continuar")]
     assert r_skill["borrador"]["texto_editor"] == TEXTO_VALIDO
     assert r_skill["borrador"]["texto_base_limpio"] == TEXTO_VALIDO
-
-    # Resultado en bloques_texto
     assert "Finnegans" in r_skill["borrador"]["bloques_texto"][0]
     assert r_skill["borrador"]["resultado_skill_pendiente"] is True
     assert r_skill["borrador"]["skill_pendiente"] == "plantilla"
 
-    # 6. "Continuar" avanza a ESPERANDO_METADATOS
-    r_cont = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
+    # Continuar avanza a metadatos; con la plantilla aplicada no se ofrece Volver
+    r_cont = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
     assert r_cont["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-
-    # 7. "Volver" desde ESPERANDO_METADATOS regresa a revisión intermedia
-    r_volver1 = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
-    assert r_volver1["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert [b["label"] for b in r_volver1.get("botones", [])] == ["Aplicar plantilla", "Continuar", "Volver"]
-
-    # "Volver" desde revisión intermedia regresa a ESPERANDO_PLANTILLA
-    r_volver2 = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
-    assert r_volver2["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
+    assert r_cont["navegacion"] == []
+    r_volver = client.post("/chat", json={"session_id": sid, "accion": "volver"}).json()
+    assert r_volver["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r_volver["mensaje"] == MSG_OPCION_NO_DISPONIBLE
 
 
 def test_estado_categoria_y_tags_completos_texto_y_botones(client, mock_buscador):
+    """REVISION_METADATOS (categoría y tags completos):
+    - Mensaje MSG_CATEGORIA_TAGS_COMPLETOS; botones Auditar | Continuar.
+    - Sin agente: error amable, sin tocar Editor ni Vista previa.
+    - Con agente: resultado en la Vista previa, original en el Editor; solo queda Continuar.
+    - Continuar lleva a EDICION_FINAL y Finalizar registra el borrador.
     """
-    2) Estado 'categoría y tags temáticos completos':
-       - Mensaje exacto: MSG_CATEGORIA_TAGS_COMPLETOS (Auditar / Continuar / editar en el panel y Guardar cambios).
-       - Botones exactos en orden: Auditar | Continuar (sin Volver: los cambios se hacen en el panel)
-       - Sin 'Finalizar' ni 'Seguir editando'.
-       - 'Continuar' ejecuta lo que antes ejecutaba Finalizar (finaliza el borrador).
-       - Si no hay agente, 'auditar' retorna mensaje amable sin modificar Editor ni Vista previa.
-       - Con agente mockeado, primera aplicación de auditar:
-         * Ejecuta la skill y preserva original en texto_editor y texto_base_limpio.
-         * El resultado queda en bloques_texto.
-         * Estado permanece REVISION_BORRADOR.
-         * Botones posteriores exactos: Continuar | Volver.
-    """
-    # 1. Iniciar sesión, enviar título, confirmar texto y elegir plantilla
     r1 = client.post("/chat", json={"mensaje": "Cómo Configurar Facturación en Ventas"}).json()
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
+    client.post("/chat", json={"session_id": sid, "accion": "continuar"})
 
-    # 2. Completar categoría y tags temáticos -> pasa a Estado 'categoría y tags temáticos completos'
     r_meta = client.post(
         "/chat",
-        json={"session_id": sid, "mensaje": "Ventas", "categoria_id": 5, "tags": ["instructivo", "ventas"]},
+        json={"session_id": sid, "accion": "enviar_datos", "categoria_id": 5, "tags": ["instructivo", "ventas"]},
     ).json()
-    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_meta["estado"] == EstadoFlujo.REVISION_METADATOS
+    assert r_meta["mensaje"] == MSG_CATEGORIA_TAGS_COMPLETOS
+    assert _botones(r_meta) == [("Auditar", "auditar"), ("Continuar", "continuar")]
 
-    # Verificación del mensaje exacto
-    mensaje_esperado = MSG_CATEGORIA_TAGS_COMPLETOS
-    assert r_meta["mensaje"] == mensaje_esperado
-    assert "Volver" not in r_meta["mensaje"]
-    assert "El borrador superó las validaciones." not in r_meta["mensaje"]
-
-    # Verificación de la lista exacta de botones y su orden
-    labels_botones = [b["label"] for b in r_meta.get("botones", [])]
-    assert labels_botones == ["Auditar", "Continuar"]
-
-    acciones_botones = [b["accion"] for b in r_meta.get("botones", [])]
-    assert acciones_botones == ["auditar", "continuar"]
-
-    # Verificar que NO están "Finalizar" ni "Seguir editando"
-    assert "Finalizar" not in labels_botones
-    assert "Seguir editando" not in labels_botones
-    assert "finalizar" not in acciones_botones
-    assert "editar" not in acciones_botones
-
-    # 3. Caso de error sin agente: no modifica Editor ni Vista previa y retorna mensaje amable
     with patch("baco.server.app.dependencies.get_baco_agent", return_value=None):
         r_err = client.post("/chat", json={"session_id": sid, "accion": "auditar"}).json()
-        assert r_err["estado"] == EstadoFlujo.REVISION_BORRADOR
-        assert "No pudimos auditar el artículo en este momento" in r_err["mensaje"]
-        assert [b["label"] for b in r_err.get("botones", [])] == ["Auditar", "Continuar"]
-        # Vista previa y flags permanecen intactos
-        assert r_err["borrador"]["bloques_texto"] == [TEXTO_VALIDO]
-        assert r_err["borrador"]["resultado_skill_pendiente"] is False
+    assert r_err["estado"] == EstadoFlujo.REVISION_METADATOS
+    assert "No pudimos **auditar el artículo** en este momento" in r_err["mensaje"]
+    assert _botones(r_err) == [("Auditar", "auditar"), ("Continuar", "continuar")]
+    assert r_err["borrador"]["bloques_texto"] == [TEXTO_VALIDO]
+    assert r_err["borrador"]["resultado_skill_pendiente"] is False
 
-    # 4. Primera aplicación de auditar con agente mockeado
     mock_baco = MagicMock(return_value=RESULTADO_AUDITOR_MOCK)
     with patch("baco.server.app.dependencies.get_baco_agent", return_value=mock_baco):
         r_aud = client.post("/chat", json={"session_id": sid, "accion": "auditar"}).json()
-
-    assert r_aud["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r_aud["mensaje"] == "Listo, revisé el texto. Mirá el resultado y tocá **Continuar**."
-
-    # Botones posteriores exactos: Continuar | Volver
-    assert [b["label"] for b in r_aud.get("botones", [])] == ["Continuar", "Volver"]
-    assert [b["accion"] for b in r_aud.get("botones", [])] == ["continuar", "volver"]
-
-    # Original preservado en texto_editor y texto_base_limpio
+    assert r_aud["estado"] == EstadoFlujo.REVISION_METADATOS
+    assert "Revisé el texto" in r_aud["mensaje"]
+    assert _botones(r_aud) == [("Continuar", "continuar")]
     assert r_aud["borrador"]["texto_editor"] == TEXTO_VALIDO
     assert r_aud["borrador"]["texto_base_limpio"] == TEXTO_VALIDO
-
-    # Resultado en bloques_texto
     assert "Pasos de Configuración Editados" in r_aud["borrador"]["bloques_texto"][0]
     assert r_aud["borrador"]["resultado_skill_pendiente"] is True
     assert r_aud["borrador"]["skill_pendiente"] == "auditor"
 
-    # 6. "Continuar" lleva a EDICION_FINAL y luego "Finalizar" finaliza el borrador
     r_ed = client.post("/chat", json={"session_id": sid, "accion": "continuar"}).json()
     assert r_ed["estado"] == EstadoFlujo.EDICION_FINAL
+    assert _botones(r_ed) == [("Finalizar", "finalizar")]
     r_fin = client.post("/chat", json={"session_id": sid, "accion": "finalizar"}).json()
     assert r_fin["estado"] == EstadoFlujo.FINALIZADO
     assert r_fin["borrador"]["finalizado"] is True
 
 
 def test_auditar_sin_categoria_o_tags_tematicos_error_amable(client, mock_buscador):
-    """
-    En auditar, si faltan la categoría o los tags temáticos:
-    - Retorna un mensaje amable informando que faltan metadatos.
-    - No ejecuta la skill ni modifica Editor ni Vista previa.
-    """
-    # 1. Iniciar sesión y llegar a revisión intermedia (donde aún no se ingresaron categoría ni tags temáticos)
+    """Auditar no se ofrece antes de definir categoría y etiquetas (REVISION_TIPO):
+    se rechaza como opción no disponible, sin ejecutar la skill ni tocar Editor ni Vista previa."""
     r1 = client.post("/chat", json={"mensaje": "Cómo Configurar Facturación en Ventas"}).json()
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
@@ -271,12 +197,10 @@ def test_auditar_sin_categoria_o_tags_tematicos_error_amable(client, mock_buscad
     with patch("baco.server.app.dependencies.get_baco_agent", return_value=mock_baco):
         r_aud = client.post("/chat", json={"session_id": sid, "accion": "auditar"}).json()
 
-    assert r_aud["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert "Para auditar el artículo, primero es necesario definir la categoría" in r_aud["mensaje"]
-
-    # La skill no se ejecutó
+    assert r_aud["estado"] == EstadoFlujo.REVISION_TIPO
+    assert r_aud["mensaje"] == MSG_OPCION_NO_DISPONIBLE
     mock_baco.assert_not_called()
-
-    # Editor y Vista previa permanecen intactos
     assert r_aud["borrador"]["bloques_texto"] == [TEXTO_VALIDO]
     assert r_aud["borrador"]["resultado_skill_pendiente"] is False
+
+

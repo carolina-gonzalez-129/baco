@@ -6,28 +6,18 @@ from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorRequest,
     ChatOrquestadorResponse,
 )
-from baco.server.schemas.duplicados import (
-    ArticuloSimilarTool,
-    BuscarDuplicadosToolOutput,
-)
 from baco.server.schemas.validacion import (
     FindingSchema,
     ResumenValidacionSchema,
     ValidarFormatoResponse,
-    HallazgoTool,
-    ValidarFormatoToolOutput,
 )
 
 __all__ = [
     "Tag",
     "ArticuloSchema",
-    "ArticuloSimilarTool",
-    "BuscarDuplicadosToolOutput",
     "FindingSchema",
     "ResumenValidacionSchema",
     "ValidarFormatoResponse",
-    "HallazgoTool",
-    "ValidarFormatoToolOutput",
     "ChatRequest",
     "ChatResponse",
     "EstadoFlujo",

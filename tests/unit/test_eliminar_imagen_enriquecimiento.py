@@ -67,7 +67,7 @@ def test_eliminar_imagen_en_enriquecimiento_persiste_y_no_resucita(client, mock_
     )
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_sin_imagen}).json()
 
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert "diagrama.png" not in r3["borrador"]["texto_alineado_discourse"]
     assert "https://bc.finneg.com/uploads/diagrama.png" not in r3["borrador"]["texto_alineado_discourse"]
     assert len(r3["borrador"]["multimedia"]) == 0
@@ -97,7 +97,7 @@ def test_eliminar_imagen_en_articulo_nuevo(client, mock_buscador):
     r3 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
     # Pasa etiquetas
     r4 = client.post("/chat", json={"session_id": sid, "tags": ["instructivo", "general"], "categoria_id": 1}).json()
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r4["estado"] == EstadoFlujo.REVISION_TIPO
 
     # Editar el texto sin llamar a DELETE conserva ambos recursos (_sincronizar_borrador_con_edicion no borra recursos)
     texto_editado = (
@@ -113,7 +113,7 @@ def test_eliminar_imagen_en_articulo_nuevo(client, mock_buscador):
     assert resp_del.status_code == 200
 
     r5 = client.post("/chat", json={"session_id": sid, "accion": "editar", "texto": texto_editado}).json()
-    assert r5["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r5["estado"] == EstadoFlujo.REVISION_TIPO
     assert "foto1.png" not in r5["borrador"]["texto_alineado_discourse"]
     assert "foto2.png" in r5["borrador"]["texto_alineado_discourse"]
     assert len(r5["borrador"]["multimedia"]) == 1

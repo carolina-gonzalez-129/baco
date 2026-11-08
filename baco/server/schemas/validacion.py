@@ -77,31 +77,3 @@ class ValidarFormatoResponse(BaseModel):
             }
         }
     )
-
-
-class HallazgoTool(BaseModel):
-    """Observación o diagnóstico editorial/estructural devuelto."""
-    severidad: str = Field(..., description="Nivel: 'Bloqueante', 'Requiere ajuste' o 'Sugerencia'")
-    campo: str = Field(..., description="Campo afectado: 'titulo', 'texto' o 'tags'")
-    descripcion: str = Field(..., description="Descripción del problema encontrado")
-    accion: str = Field(..., description="Acción correctiva recomendada")
-
-
-class ValidarFormatoToolOutput(BaseModel):
-    """Diagnóstico editorial y estructural simplificado para consumo en MCP."""
-    valido: bool = Field(..., description="True si no existen observaciones bloqueantes para la publicación.")
-    status: StatusValidacionEnum = Field(..., description="'Listo', 'Listo con ajustes sugeridos' o 'Pendiente'")
-    titulo_sanitizado: Optional[str] = Field(
-        default=None,
-        description="Título sanitizado listo para consumo directo de BACO."
-    )
-    texto_sanitizado: Optional[str] = Field(
-        default=None,
-        description="Cuerpo sanitizado sin datos sensibles listo para que BACO aplique sus skills."
-    )
-    hallazgos: List[HallazgoTool] = Field(
-        default_factory=list,
-        description="Lista de observaciones detectadas (bloqueantes, ajustes de estilo o marcadores pendientes)."
-    )
-    longitud_texto: int = Field(..., description="Cantidad de caracteres evaluados en el cuerpo.")
-    tags_count: int = Field(..., description="Cantidad de etiquetas informadas.")

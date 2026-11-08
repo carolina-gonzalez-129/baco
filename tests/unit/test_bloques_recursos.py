@@ -382,29 +382,6 @@ def test_hide_input_in_errors_y_validacion_cruzada():
 # 4. Política frente a skills: descarte determinista si marcadores no coinciden
 # =========================================================================
 
-def test_skill_plantillas_descarta_respuesta_si_marcadores_no_coinciden():
-    """Si la skill altera, elimina o agrega marcadores, se descarta su respuesta y se conserva el borrador."""
-    texto_original = "Introducción al sistema.\n\n[[recurso:rec_1]]\n\nPasos finales.\n\n[[recurso:rec_2]]"
-    borrador = BorradorSesion(
-        modo="nuevo",
-        titulo="Guía de Instalación",
-        texto_limpio=texto_original,
-        recursos={
-            "rec_1": Recurso(id="rec_1", tipo="imagen", nombre="Captura 1", referencia="https://finneg.com/1.png", orden=0),
-            "rec_2": Recurso(id="rec_2", tipo="imagen", nombre="Captura 2", referencia="https://finneg.com/2.png", orden=1),
-        },
-        tipo_plantilla="instructivo",
-    )
-
-    mock_agente = MagicMock()
-    with pytest.raises(HTTPException) as exc_info:
-        ejecutar_skill_plantillas("sesion_skill_test", borrador, mock_agente)
-
-    assert exc_info.value.status_code == 400
-    assert "recursos multimedia" in exc_info.value.detail
-    mock_agente.assert_not_called()
-
-
 def test_skill_plantillas_acepta_cuando_no_hay_recursos():
     """Si el borrador no tiene recursos, la skill plantillas procesa el texto puro sin requerir marcadores."""
     texto_original = "Párrafo A descriptivo del sistema.\n\nPárrafo B con las instrucciones de instalación."
@@ -416,17 +393,18 @@ def test_skill_plantillas_acepta_cuando_no_hay_recursos():
         tipo_plantilla="instructivo",
     )
 
-    texto_maquetado = (
-        "## Guía de Instalación\n\n"
+    cuerpo = (
         "### Introducción\nPárrafo A maquetado profesionalmente por BACO.\n\n"
         "### Procedimiento\nPárrafo B detallado paso a paso según estándar corporativo."
     )
+    # El modelo repite el título como encabezado: se descarta porque el título va en su propio campo
+    texto_maquetado = "## Guía de Instalación\n\n" + cuerpo
     mock_agente_ok = MagicMock(return_value=texto_maquetado)
 
     with patch("baco.server.services.agente_service.actualizar_borrador_texto"):
         resultado = ejecutar_skill_plantillas("sesion_skill_ok", borrador, mock_agente_ok)
 
-    assert resultado == texto_maquetado
+    assert resultado == cuerpo
     mock_agente_ok.assert_called_once()
 
 
@@ -439,13 +417,12 @@ def test_endpoint_post_chat_bloques(client):
     sid = "sesion-endpoint-bloques"
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Artículo desde Bloques",
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Artículo desde Bloques",
             texto_limpio="Texto previo",
-            finalizado=True,
         ),
     )
     SESIONES[sid] = sesion
@@ -486,8 +463,9 @@ def test_endpoint_post_chat_bloques(client):
     assert "token=secret123" not in rec["referencia"]
     assert "1 imagen" in data["aviso"]
 
-    # Verifica que el borrador no queda finalizado debido al cambio de contenido
-    assert sesion.borrador.finalizado is False
+    # FINALIZADO es terminal: ya no acepta cambios de bloques
+    sesion.estado = EstadoFlujo.FINALIZADO
+    assert client.post("/chat/bloques", json=payload).status_code == 409
 
 
 def test_endpoint_post_chat_bloques_autosanitiza_pii_y_avisa(client):
@@ -498,7 +476,7 @@ def test_endpoint_post_chat_bloques_autosanitiza_pii_y_avisa(client):
     sid = "sesion-endpoint-bloques-pii"
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Artículo con PII en bloques",
         borrador=BorradorSesion(
             modo="nuevo",

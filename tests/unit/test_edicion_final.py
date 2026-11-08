@@ -11,6 +11,7 @@ from baco.server.services.orquestador.coordinador import manejar_turno
 from baco.server.services.orquestador.continuar import continuar_desde_revision
 from baco.server.services.orquestador.mensajes import (
     MSG_EDICION_FINAL,
+    MSG_OPCION_NO_DISPONIBLE,
     OPCIONES_CONFIRMAR_PLANTILLA,
     OPCIONES_EDICION_FINAL,
 )
@@ -25,7 +26,7 @@ TEXTO_VALIDO = (
 def _crear_sesion_revision_final(sid: str = "test-ef-rev") -> SesionChat:
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Configurar Punto de Venta en Ventas",
         texto=TEXTO_VALIDO,
         texto_limpio=TEXTO_VALIDO,
@@ -45,10 +46,11 @@ def _crear_sesion_revision_final(sid: str = "test-ef-rev") -> SesionChat:
             categoria_id=1,
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
-            revision_intermedia=False,
             finalizado=False,
         ),
     )
+    # Regla única de aceptación: solo valen las opciones que el back emitió en el turno anterior.
+    sesion.ultimas_opciones = ["auditar", "continuar"]
     gestor_sesiones._sesiones[sid] = sesion
     return sesion
 
@@ -76,10 +78,10 @@ def _crear_sesion_edicion_final(sid: str = "test-ef-edit") -> SesionChat:
             categoria_id=1,
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
-            revision_intermedia=False,
             finalizado=False,
         ),
     )
+    sesion.ultimas_opciones = list(OPCIONES_EDICION_FINAL)
     gestor_sesiones._sesiones[sid] = sesion
     return sesion
 
@@ -102,17 +104,24 @@ async def test_1_continuar_desde_revision_final_lleva_a_edicion_final():
 
 
 @pytest.mark.anyio
-async def test_2_edicion_final_botones_y_volver_a_revision_final():
-    """2. EDICION_FINAL muestra solo Finalizar y Volver. Volver regresa a revisión final."""
-    sesion = _crear_sesion_edicion_final("test-volver-ef")
+async def test_2_edicion_final_sin_volver():
+    """2. EDICION_FINAL muestra solo Finalizar (los estados de revisión no ofrecen Volver)
+    y una acción `volver` se rechaza sin cambiar de estado."""
+    sesion = _crear_sesion_revision_final("test-volver-ef")
     buscador = MagicMock(spec=BuscadorDuplicados)
 
-    req = ChatOrquestadorRequest(session_id=sesion.session_id, accion="volver")
-    resp = await manejar_turno(req, buscador)
+    resp = await manejar_turno(
+        ChatOrquestadorRequest(session_id=sesion.session_id, accion="continuar"), buscador
+    )
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert resp.opciones == OPCIONES_EDICION_FINAL
+    assert resp.navegacion == []
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.revision_intermedia is False
+    resp = await manejar_turno(
+        ChatOrquestadorRequest(session_id=sesion.session_id, accion="volver"), buscador
+    )
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
 
 
 @pytest.mark.anyio
@@ -138,8 +147,8 @@ async def test_3_eliminar_manejo_finalizar_en_handle_revision_borrador():
     req = ChatOrquestadorRequest(session_id=sesion.session_id, accion="finalizar")
     resp = await manejar_turno(req, buscador)
 
-    assert resp.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert resp.estado == EstadoFlujo.REVISION_METADATOS
+    assert sesion.estado == EstadoFlujo.REVISION_METADATOS
     assert resp.borrador.finalizado is False
 
 
@@ -377,7 +386,11 @@ async def test_bug_confirmar_limpia_estructura_de_plantilla_anterior():
     await _guardar_tags(sesion, buscador, mock_agente, ["soluciones", "ventas"])
     await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
 
-    entrada = mock_agente.call_args[0][0]
+    prompt = mock_agente.call_args[0][0]
+    # Solo el contenido del usuario: el prompt también trae la plantilla de referencia
+    # (soluciones tiene su propia línea **Ruta:**) y las instrucciones nombran la etiqueta.
+    apertura = "<borrador_contenido>\n"
+    entrada = prompt[prompt.rindex(apertura) + len(apertura):prompt.rindex("</borrador_contenido>")]
     for estructura in ("¿Para qué sirve?", "Antes de empezar", "Modo de uso", "**Ruta:**",
                        "[Nombre del maestro o componente]", "Configuraciones iniciales"):
         assert estructura not in entrada
@@ -403,49 +416,20 @@ async def _mensaje(sesion, buscador, agente, texto):
 
 
 @pytest.mark.anyio
-async def test_chat_tipo_plantilla_queda_pendiente_y_confirmar_aplica():
-    sesion = _crear_sesion_edicion_final("test-chat-plantilla-confirmar")
-    buscador = MagicMock(spec=BuscadorDuplicados)
-    mock_agente = MagicMock(return_value="## Consulta\nResultado soluciones")
-
-    resp = await _mensaje(sesion, buscador, mock_agente, "soluciones")
-    assert resp.opciones == OPCIONES_CONFIRMAR_PLANTILLA
-    assert "CUIDADO" in resp.mensaje
-    assert resp.plantilla_pendiente == "soluciones"
-    assert resp.borrador.tipo_plantilla == "instructivo"
-    mock_agente.assert_not_called()
-
-    resp = await _accion(sesion, buscador, mock_agente, "confirmar_plantilla")
-    assert resp.borrador.tipo_plantilla == "soluciones"
-    assert resp.plantilla_pendiente is None
-    mock_agente.assert_called_once()
-
-
-@pytest.mark.anyio
-async def test_chat_tipo_plantilla_cancelar_deja_todo_igual():
-    sesion = _crear_sesion_edicion_final("test-chat-plantilla-cancelar")
+@pytest.mark.parametrize("texto", ["soluciones", "instructivo"])
+async def test_chat_tipo_plantilla_escrito_no_cambia_nada(texto):
+    """En EDICION_FINAL el tipo de plantilla se cambia solo desde el panel (toggle):
+    escribirlo en el chat no lo cambia ni lo deja pendiente."""
+    sesion = _crear_sesion_edicion_final(f"test-chat-plantilla-{texto}")
     bloques_previos = list(sesion.borrador.bloques_texto)
     buscador = MagicMock(spec=BuscadorDuplicados)
     mock_agente = MagicMock(return_value="## No debería usarse")
 
-    await _mensaje(sesion, buscador, mock_agente, "soluciones")
-    resp = await _accion(sesion, buscador, mock_agente, "cancelar_plantilla")
+    resp = await _mensaje(sesion, buscador, mock_agente, texto)
+    assert resp.estado == EstadoFlujo.EDICION_FINAL
+    assert resp.mensaje == MSG_OPCION_NO_DISPONIBLE
     assert resp.borrador.tipo_plantilla == "instructivo"
     assert resp.borrador.bloques_texto == bloques_previos
-    assert resp.plantilla_pendiente is None
-    assert resp.opciones == OPCIONES_EDICION_FINAL
-    mock_agente.assert_not_called()
-
-
-@pytest.mark.anyio
-async def test_chat_mismo_tipo_plantilla_no_cambia_nada():
-    sesion = _crear_sesion_edicion_final("test-chat-plantilla-igual")
-    buscador = MagicMock(spec=BuscadorDuplicados)
-    mock_agente = MagicMock(return_value="## No debería usarse")
-
-    resp = await _mensaje(sesion, buscador, mock_agente, "instructivo")
-    assert resp.opciones == OPCIONES_EDICION_FINAL
-    assert "ya es" in resp.mensaje
     assert resp.plantilla_pendiente is None
     assert sesion.plantilla_pendiente is None
     mock_agente.assert_not_called()

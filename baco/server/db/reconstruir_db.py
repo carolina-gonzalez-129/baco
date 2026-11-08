@@ -9,7 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import json
 import os
-from baco.server.db.config import get_conn
+from baco.server.db.config import get_conn, DB_RO_PASSWORD
 from baco.server.db.ingesta import normalizar_articulo, upsert_articulos
 
 RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
@@ -43,8 +43,8 @@ def aplicar_esquema_ddl(conn, reset: bool = False):
         print("[!] ATENCIÓN: Reiniciando esquema 'public' completo (DROP SCHEMA CASCADE)...")
         with conn.cursor() as cur:
             cur.execute("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;")
-        conn.commit()
-        print("[+] Esquema public reiniciado en blanco.")
+        # Sin commit: el DROP se confirma recién junto con el DDL y la carga (ver main).
+        print("[+] Esquema public reiniciado en blanco (pendiente de commit).")
 
     if not SCHEMA_FILE.exists():
         raise FileNotFoundError(f"No se encontró el archivo de esquema {SCHEMA_FILE}")
@@ -53,32 +53,56 @@ def aplicar_esquema_ddl(conn, reset: bool = False):
     ddl_sql = SCHEMA_FILE.read_text(encoding="utf-8")
 
     with conn.cursor() as cur:
+        if DB_RO_PASSWORD:
+            # schema_completo.sql lo necesita si el rol baco_readonly todavía no existe.
+            cur.execute("SELECT set_config('baco.ro_password', %s, true);", (DB_RO_PASSWORD,))
         cur.execute(ddl_sql)
-    conn.commit()
     print("[+] Extensiones, funciones, tablas, columnas calculadas, triggers e índices HNSW aplicados con éxito.")
 
 
-def sincronizar_articulos(conn, forzar_actualizacion: bool = False):
+def cargar_y_validar_json(ruta: Path = RUTA_JSON) -> list[dict]:
+    """Lee el JSON antes de tocar la base. Aborta si falta, no parsea o queda vacío."""
+    if not ruta.exists():
+        print(f"[-] No se encontró {ruta}. Abortando sin modificar la base.")
+        sys.exit(1)
+    try:
+        articulos = leer_articulos_json(ruta)
+    except Exception as e:
+        print(f"[-] No se pudo leer {ruta.name}: {e}. Abortando sin modificar la base.")
+        sys.exit(1)
+    if not articulos:
+        print(f"[-] {ruta.name} no contiene artículos válidos. Abortando sin modificar la base.")
+        sys.exit(1)
+    print(f"[+] {ruta.name} validado: {len(articulos)} artículos.")
+    return articulos
+
+
+def descargar_desde_api() -> Path:
+    """Corre descargar_articulos (Discourse) y devuelve la ruta del JSON generado.
+    Aborta sin tocar la base si la descarga termina con errores."""
+    import subprocess
+    from baco.server.discourse.descargar_articulos import SALIDA
+
+    print("\n" + "=" * 75)
+    print(" PASO 0: DESCARGA DE ARTÍCULOS DESDE LA API DE DISCOURSE")
+    print("=" * 75)
+    res = subprocess.run(
+        [sys.executable, "-m", "baco.server.discourse.descargar_articulos"],
+        cwd=PROJECT_ROOT,
+    )
+    if res.returncode != 0:
+        print("[-] La descarga terminó con errores. Abortando sin modificar la base.")
+        sys.exit(1)
+    return SALIDA
+
+
+def sincronizar_articulos(conn, articulos: list[dict]):
     print("\n" + "=" * 75)
     print(" PASO 2: INGESTA Y SINCRONIZACIÓN DE ARTÍCULOS DESDE JSON")
     print("=" * 75)
-    if not RUTA_JSON.exists():
-        print(f"[-] Archivo {RUTA_JSON.name} no encontrado en la ruta esperada. Omitiendo ingesta.")
-        return 0
-    print(f"[+] Leyendo artículos desde {RUTA_JSON.name}...")
-    articulos = leer_articulos_json(RUTA_JSON)
-    print(f"[+] Total artículos leídos del archivo: {len(articulos)}")
     print("[+] Ejecutando upsert determinista en PostgreSQL...")
     resumen = upsert_articulos(conn, articulos)
-    conn.commit()
-    print(f"[+] Ingesta completada con éxito: {resumen}")
-
-    if forzar_actualizacion:
-        print("[+] Sincronizando columnas STORED...")
-        with conn.cursor() as cur:
-            cur.execute("UPDATE articulos SET titulo = titulo, texto = texto;")
-        conn.commit()
-
+    print(f"[+] Ingesta completada (pendiente de commit): {resumen}")
     return len(articulos)
 
 
@@ -140,8 +164,8 @@ def recalcular_embeddings(conn, batch_size: int = 64, solo_pendientes: bool = Tr
         with conn.cursor() as cur:
             cur.executemany("""
                 UPDATE articulos
-                SET embedding_titulo = %s,
-                    embedding_texto = %s
+                SET embedding_titulo = COALESCE(%s::vector, embedding_titulo),
+                    embedding_texto = COALESCE(%s::vector, embedding_texto)
                 WHERE id = %s;
             """, params_update)
         conn.commit()
@@ -201,6 +225,7 @@ def main():
     )
     parser.add_argument("--solo-schema", action="store_true", help="Aplica únicamente el DDL y tablas sin cargar datos.")
     parser.add_argument("--cargar-json", action="store_true", help="Ingesta y sincroniza los artículos desde articulos.json.")
+    parser.add_argument("--desde-api", action="store_true", help="Descarga los artículos desde la API de Discourse antes de cargarlos (implica --cargar-json).")
     parser.add_argument("--con-embeddings", action="store_true", help="Calcula los embeddings vectoriales ONNX INT8.")
     parser.add_argument("--todo-embeddings", action="store_true", help="Fuerza el recálculo al 100% de embeddings (incluso los ya calculados).")
     parser.add_argument("--batch-size", type=int, default=64, help="Tamaño de lote para cálculo de embeddings (default 64).")
@@ -213,13 +238,29 @@ def main():
         print("[-] Para ejecutar --reset debe incluir también la bandera --forzar.")
         sys.exit(1)
 
+    if args.desde_api and args.solo_schema:
+        print("[-] --desde-api no se puede combinar con --solo-schema.")
+        sys.exit(1)
+
+    cargar = not args.solo_schema and (args.cargar_json or args.reset or args.desde_api)
+    ruta_json = descargar_desde_api() if args.desde_api else RUTA_JSON
+    articulos = cargar_y_validar_json(ruta_json) if cargar else None
+
     with get_conn(autocommit=False) as conn:
-        aplicar_esquema_ddl(conn, reset=args.reset)
+        try:
+            # DROP (si --reset) + DDL + upsert en una sola transacción:
+            # si algo falla, se revierte todo y la base previa queda intacta.
+            aplicar_esquema_ddl(conn, reset=args.reset)
+            if cargar:
+                sincronizar_articulos(conn, articulos)
+            conn.commit()
+            print("[+] Esquema y carga confirmados (commit).")
+        except Exception:
+            conn.rollback()
+            print("[-] Error en esquema/carga: se revirtió todo, la base previa queda intacta.")
+            raise
 
         if not args.solo_schema:
-            if args.cargar_json or args.reset:
-                sincronizar_articulos(conn, forzar_actualizacion=True)
-
             if args.con_embeddings or args.todo_embeddings:
                 recalcular_embeddings(
                     conn,

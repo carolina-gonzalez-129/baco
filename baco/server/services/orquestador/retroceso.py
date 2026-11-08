@@ -14,6 +14,7 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
 )
 from baco.server.services.orquestador.mensajes import (
+    MSG_ENRIQUECIMIENTO_DESCARTADO,
     MSG_VOLVER_ENRIQUECER_O_DESCARTAR,
     MSG_VOLVER_METADATOS,
     MSG_VOLVER_PLANTILLA,
@@ -209,12 +210,13 @@ def _resp_esperando_texto_enriquecimiento(sesion: SesionChat) -> ChatOrquestador
         )
         return construir_respuesta(
             sesion,
-            msg_coincidencia(mensaje, elegido.titulo if elegido else "", elegido.url if elegido else ""),
+            MSG_ENRIQUECIMIENTO_DESCARTADO
+            + msg_coincidencia(mensaje, elegido.titulo if elegido else "", elegido.url if elegido else ""),
             OPCIONES_ENRIQUECER_CONTINUAR,
         )
     es_serie = elegido and elegido.tipo_coincidencia == "serie"
     ops = OPCIONES_SERIE_DECISION if es_serie else OPCIONES_ENRIQUECER_DESCARTAR
-    return construir_respuesta(sesion, MSG_VOLVER_ENRIQUECER_O_DESCARTAR, ops)
+    return construir_respuesta(sesion, MSG_ENRIQUECIMIENTO_DESCARTADO + MSG_VOLVER_ENRIQUECER_O_DESCARTAR, ops)
 
 
 def _destino_esperando_texto_enriquecimiento(sesion: SesionChat) -> EstadoFlujo:

@@ -79,7 +79,7 @@ def test_enriquecer_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(clien
     r2 = client.post("/chat", json={"session_id": sid, "accion": "enriquecer"}).json()
 
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    assert "confirmar_texto" in r2["opciones"]
+    assert r2["accion_panel"]["accion"] == "confirmar_texto"
     assert r2["borrador"] is not None
     assert r2["borrador"]["texto_limpio"].strip() == TEXTO_EXISTENTE.strip()
     assert r2["borrador"]["modo"] == "enriquecimiento"
@@ -88,13 +88,9 @@ def test_enriquecer_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(clien
     # 3. Usuario agrega o modifica texto y confirma
     texto_modificado = TEXTO_EXISTENTE + "\n\nSe agrega apartado sobre alícuotas especiales 2026."
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_modificado}).json()
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Con metadatos heredados pendientes, las opciones iniciales son aceptar/rechazar/volver
-    assert r3["opciones"] == ["aceptar_metadatos", "rechazar_metadatos", "volver"]
+    # Todos los flujos convergen en el paso de plantilla
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert "alícuotas especiales 2026" in r3["borrador"]["texto_limpio"]
-    # Al resolver metadatos heredados, avanza a revisión
-    r4 = client.post("/chat", json={"session_id": sid, "accion": "aceptar_metadatos"}).json()
-    assert "continuar" in r4["opciones"] or "continuar_revision" in r4["opciones"]
 
 
 def test_actualizar_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(client, mock_buscador):
@@ -121,7 +117,7 @@ def test_actualizar_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(clien
     r2 = client.post("/chat", json={"session_id": sid, "accion": "actualizar"}).json()
 
     assert r2["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    assert "confirmar_texto" in r2["opciones"]
+    assert r2["accion_panel"]["accion"] == "confirmar_texto"
     assert r2["borrador"] is not None
     assert r2["borrador"]["titulo"] == "Novedades Impositivas 2026"
     assert r2["borrador"]["texto_limpio"].strip() == TEXTO_EXISTENTE.strip()
@@ -129,7 +125,7 @@ def test_actualizar_vuelca_texto_en_editor_y_permite_modificar_y_confirmar(clien
     # 3. Usuario agrega o modifica texto y confirma
     texto_modificado = TEXTO_EXISTENTE + "\n\nActualización de resoluciones vigentes para el período 2026."
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_modificado}).json()
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert r3["borrador"]["titulo"] == "Novedades Impositivas 2026"
     assert "resoluciones vigentes para el período 2026" in r3["borrador"]["texto_limpio"]
 
@@ -140,8 +136,8 @@ def test_confirmar_texto_solo_se_exige_al_redactar_articulo_nuevo(client, mock_b
     # 1. Envía título sin coincidencias
     r1 = client.post("/chat", json={"mensaje": "Nuevo Procedimiento de Cierre Mensual"}).json()
     assert r1["estado"] == EstadoFlujo.ESPERANDO_TEXTO
-    # Acá SI se pide confirmar_texto porque la persona está redactando
-    assert "confirmar_texto" in r1["opciones"]
+    # Acá SI se pide confirmar_texto (botón del panel) porque la persona está redactando
+    assert r1["accion_panel"]["accion"] == "confirmar_texto"
 
 
 def test_esperando_texto_acumula_fragmentos_y_confirma(client, mock_buscador):
@@ -212,7 +208,7 @@ def test_enriquecer_autosanitiza_aportes_preservando_texto_api_y_sincroniza_text
         + "\n\nNota agregada por el usuario con CUIL: 20-30405060-9 y correo personal juan.perez@empresa.com."
     )
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": texto_con_sensibles}).json()
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r3["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert r3["aviso_privacidad"] is not None
 
     # El texto de la API sigue intacto, pero el aporte del usuario fue anonimizado en borrador y texto_limpio
@@ -256,12 +252,8 @@ def test_enriquecer_articulo_sin_plantilla_muestra_opciones_plantilla_y_permite_
     mi_propio_texto = "1. Ingresar al módulo de facturación.\n2. Presionar el botón Nuevo comprobante.\n3. Guardar cambios."
     r3 = client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": mi_propio_texto}).json()
 
-    # Primero pide confirmación de metadatos heredados
-    assert r3["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert r3["aviso_metadatos_heredados"] is not None
-
-    # Al aceptar, como no tenía tag de plantilla, avanza a ESPERANDO_PLANTILLA
-    r_acepta = client.post("/chat", json={"session_id": sid, "accion": "aceptar"}).json()
+    # Todos los flujos convergen en ESPERANDO_PLANTILLA (los heredados se revisan en metadatos)
+    r_acepta = r3
     assert r_acepta["estado"] == EstadoFlujo.ESPERANDO_PLANTILLA
     assert "instructivo" in r_acepta["opciones"]
     assert "soluciones" in r_acepta["opciones"]
@@ -272,7 +264,7 @@ def test_enriquecer_articulo_sin_plantilla_muestra_opciones_plantilla_y_permite_
 
     # El usuario elige instructivo
     r4 = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
-    assert r4["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r4["estado"] == EstadoFlujo.REVISION_TIPO
     assert "1. Ingresar al módulo de facturación." in r4["borrador"]["texto_limpio"]
     assert "Paso 1: Ingresar a la sección de configuración impositiva" not in r4["borrador"]["texto_limpio"]
 

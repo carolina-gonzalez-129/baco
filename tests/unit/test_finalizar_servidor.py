@@ -9,6 +9,7 @@ from baco.server.schemas.chat_orquestado import BorradorSesion, EstadoFlujo
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.mensajes import (
     MSG_BORRADOR_FINALIZADO,
+    MSG_OPCION_NO_DISPONIBLE,
     OPCIONES_FINALIZADO,
 )
 from baco.server.services.orquestador.sesion import SESIONES, SesionChat
@@ -61,7 +62,8 @@ def test_finalizar_sin_bloqueantes_lleva_a_finalizado_y_etapa_actual_5(client):
     sid = "test-finalizar-valido"
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.EDICION_FINAL,
+        ultimas_opciones=["finalizar"],
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Configurar Punto de Venta Electrónico",
@@ -70,7 +72,6 @@ def test_finalizar_sin_bloqueantes_lleva_a_finalizado_y_etapa_actual_5(client):
             categoria_id=1,
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
-            revision_intermedia=False,
         ),
     )
     SESIONES[sid] = sesion
@@ -83,7 +84,8 @@ def test_finalizar_sin_bloqueantes_lleva_a_finalizado_y_etapa_actual_5(client):
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "finalizar"}).json()
     assert r["estado"] == EstadoFlujo.FINALIZADO
     assert r["mensaje"] == MSG_BORRADOR_FINALIZADO
-    assert r["opciones"] == OPCIONES_FINALIZADO
+    assert r["opciones"] == []
+    assert r["navegacion"] == OPCIONES_FINALIZADO
     assert r["etapa"]["actual"] == 5
     assert sesion.borrador.finalizado is True
 
@@ -98,7 +100,7 @@ def test_finalizar_no_se_ofrece_con_bloqueantes(client):
     sid = "test-finalizar-bloqueante"
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Texto Corto",
@@ -107,20 +109,19 @@ def test_finalizar_no_se_ofrece_con_bloqueantes(client):
             categoria_id=1,
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
-            revision_intermedia=False,
         ),
     )
     SESIONES[sid] = sesion
 
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={}).json()
-    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r["estado"] == EstadoFlujo.REVISION_METADATOS
     assert "finalizar" not in r["opciones"]
     assert "editar" in r["opciones"]
     assert "rechazar" in r["opciones"]
 
 
-def test_editar_desde_finalizado_vuelve_a_revision_y_finalizado_queda_false(client):
-    """Verifica que si llega editar desde FINALIZADO, vuelve a REVISION_BORRADOR y finalizado=False."""
+def test_editar_desde_finalizado_se_rechaza_y_queda_terminal(client):
+    """FINALIZADO es terminal: 'editar' no está disponible y el borrador sigue finalizado."""
     sid = "test-finalizar-editar"
     sesion = SesionChat(
         session_id=sid,
@@ -134,16 +135,15 @@ def test_editar_desde_finalizado_vuelve_a_revision_y_finalizado_queda_false(clie
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
             finalizado=True,
-            revision_intermedia=False,
         ),
     )
     SESIONES[sid] = sesion
 
     # Enviamos acción "editar"
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "editar"}).json()
-    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.finalizado is False
+    assert r["estado"] == EstadoFlujo.FINALIZADO
+    assert r["mensaje"] == MSG_OPCION_NO_DISPONIBLE
+    assert sesion.borrador.finalizado is True
 
 
 def test_etapa_flujo_finalizado_devuelve_actual_5():
@@ -153,8 +153,8 @@ def test_etapa_flujo_finalizado_devuelve_actual_5():
     assert etapa.nombre == "Conformidad"
 
 
-def test_volver_desde_finalizado_va_a_revision_borrador_sin_retroceder(client):
-    """Punto 1: En FINALIZADO, 'volver' va a REVISION_BORRADOR (finalizado=False) y responde con la revisión normal, sin llamar a retroceder()."""
+def test_volver_desde_finalizado_se_rechaza(client):
+    """FINALIZADO es terminal: no hay Volver."""
     sid = "test-finalizar-volver"
     sesion = SesionChat(
         session_id=sid,
@@ -168,16 +168,14 @@ def test_volver_desde_finalizado_va_a_revision_borrador_sin_retroceder(client):
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
             finalizado=True,
-            revision_intermedia=False,
         ),
     )
     SESIONES[sid] = sesion
 
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "volver"}).json()
-    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.finalizado is False
-    assert "finalizar" in r["opciones"]
+    assert r["estado"] == EstadoFlujo.FINALIZADO
+    assert r["mensaje"] == MSG_OPCION_NO_DISPONIBLE
+    assert sesion.borrador.finalizado is True
 
 
 def test_turno_vacio_en_finalizado_devuelve_msg_borrador_finalizado(client):
@@ -195,7 +193,6 @@ def test_turno_vacio_en_finalizado_devuelve_msg_borrador_finalizado(client):
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
             finalizado=True,
-            revision_intermedia=False,
         ),
     )
     SESIONES[sid] = sesion
@@ -203,12 +200,13 @@ def test_turno_vacio_en_finalizado_devuelve_msg_borrador_finalizado(client):
     r = client.post("/chat", headers={"X-Session-ID": sid}, json={}).json()
     assert r["estado"] == EstadoFlujo.FINALIZADO
     assert r["mensaje"] == MSG_BORRADOR_FINALIZADO
-    assert r["opciones"] == OPCIONES_FINALIZADO
+    assert r["opciones"] == []
+    assert r["navegacion"] == OPCIONES_FINALIZADO
     assert sesion.borrador.finalizado is True
 
 
 def test_desde_finalizado_agregar_item_lleva_a_revision_borrador_con_finalizado_false():
-    """Desde FINALIZADO, agregar un ítem de contenido adicional lleva a REVISION_BORRADOR con finalizado False."""
+    """Defensa interna (REST ya responde 409): agregar un ítem desde FINALIZADO invalida y vuelve a EDICION_FINAL."""
     from baco.server.services.orquestador.sesion import gestor_sesiones
 
     sid = "test-finalizar-agregar-item"
@@ -227,12 +225,12 @@ def test_desde_finalizado_agregar_item_lleva_a_revision_borrador_con_finalizado_
 
     gestor_sesiones.agregar_contenido_adicional(sid, "Nota complementaria agregada")
 
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
     assert sesion.borrador.finalizado is False
 
 
 def test_desde_finalizado_editar_texto_lleva_a_revision_borrador_con_finalizado_false():
-    """Desde FINALIZADO, editar el texto con actualizar_borrador_texto lleva a REVISION_BORRADOR con finalizado False."""
+    """Defensa interna (REST ya responde 409): editar el texto desde FINALIZADO invalida y vuelve a EDICION_FINAL."""
     from baco.server.services.orquestador.sesion import gestor_sesiones
 
     sid = "test-finalizar-editar-texto"
@@ -251,48 +249,11 @@ def test_desde_finalizado_editar_texto_lleva_a_revision_borrador_con_finalizado_
     ok = gestor_sesiones.actualizar_borrador_texto(sid, "Texto nuevo editado que invalida el borrador.")
 
     assert ok is True
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
     assert sesion.borrador.finalizado is False
 
-def test_misma_edicion_sin_cambios_no_invalida_finalizado(client):
-    """Verifica que enviar una edición idéntica (sin cambios) desde FINALIZADO no invalida la finalización."""
-    sid = "test-misma-edicion-sin-cambios"
-    sesion = SesionChat(
-        session_id=sid,
-        estado=EstadoFlujo.FINALIZADO,
-        borrador=BorradorSesion(
-            modo="nuevo",
-            titulo="Configurar Punto de Venta Electrónico",
-            bloques_texto=[TEXTO_VALIDO],
-            tipo_plantilla="instructivo",
-            categoria_id=1,
-            categoria_nombre="General",
-            tags=["instructivo", "ventas"],
-            finalizado=True,
-            revision_intermedia=False,
-        ),
-    )
-    SESIONES[sid] = sesion
-
-    # Enviamos edición con el mismo texto y título
-    r = client.post(
-        "/chat",
-        headers={"X-Session-ID": sid},
-        json={
-            "accion": "editar",
-            "texto": TEXTO_VALIDO,
-            "titulo": "Configurar Punto de Venta Electrónico",
-        },
-    ).json()
-
-    assert r["estado"] == EstadoFlujo.FINALIZADO
-    assert r["mensaje"] == MSG_BORRADOR_FINALIZADO
-    assert sesion.estado == EstadoFlujo.FINALIZADO
-    assert sesion.borrador.finalizado is True
-
-
-def test_edicion_con_cambio_real_invalida_finalizado(client):
-    """Verifica que una edición con cambios reales desde FINALIZADO invalida la finalización y vuelve a REVISION_BORRADOR."""
+def test_edicion_con_cambio_real_desde_finalizado_se_rechaza(client):
+    """FINALIZADO es terminal: una edición por chat, aun con cambios reales, se rechaza."""
     sid = "test-edicion-cambio-real"
     sesion = SesionChat(
         session_id=sid,
@@ -306,7 +267,6 @@ def test_edicion_con_cambio_real_invalida_finalizado(client):
             categoria_nombre="General",
             tags=["instructivo", "ventas"],
             finalizado=True,
-            revision_intermedia=False,
         ),
     )
     SESIONES[sid] = sesion
@@ -322,9 +282,9 @@ def test_edicion_con_cambio_real_invalida_finalizado(client):
         json={"accion": "editar", "texto": nuevo_texto},
     ).json()
 
-    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.finalizado is False
+    assert r["estado"] == EstadoFlujo.FINALIZADO
+    assert sesion.borrador.finalizado is True
+    assert sesion.borrador.bloques_texto == [TEXTO_VALIDO]
 
 
 def test_actualizar_borrador_mismo_texto_no_invalida():
@@ -387,36 +347,7 @@ def test_contenido_adicional_misma_modificacion_no_invalida_y_cambio_real_si():
 
     # 3. Modificar con contenido diferente sí invalida
     gestor_sesiones.modificar_item_contenido_adicional(sid, it.id, "Contenido modificado y diferente")
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
+    assert sesion.estado == EstadoFlujo.EDICION_FINAL
     assert sesion.borrador.finalizado is False
 
 
-
-def test_revision_final_metadatos_anteriores_sin_revisar_continuar_no_finaliza_avisa(client):
-    """Borrador en revisión final con metadatos_anteriores sin revisar + opción 'continuar':
-    no debe finalizar ni recursar, debe responder con el aviso de metadatos heredados."""
-    sid = "test-revision-final-meta-pendiente"
-    sesion = SesionChat(
-        session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
-        borrador=BorradorSesion(
-            modo="enriquecimiento",
-            articulo_original_id=101,
-            titulo="Configurar Punto de Venta Electrónico",
-            bloques_texto=[TEXTO_VALIDO],
-            tipo_plantilla="instructivo",
-            categoria_id=1,
-            categoria_nombre="General",
-            tags=["instructivo", "ventas"],
-            revision_intermedia=False,
-            metadatos_anteriores={"categoria_id": 1, "categoria_nombre": "General", "tags": ["instructivo", "ventas"]},
-            metadatos_heredados_revisados=False,
-        ),
-    )
-    SESIONES[sid] = sesion
-
-    r = client.post("/chat", headers={"X-Session-ID": sid}, json={"accion": "continuar"}).json()
-    assert r["estado"] == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.finalizado is False
-    assert r["aviso_metadatos_heredados"] is not None
-    assert "Debés aceptar o rechazar los metadatos heredados antes de confirmar la finalización" in r["mensaje"]

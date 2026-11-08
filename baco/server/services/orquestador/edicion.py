@@ -9,6 +9,7 @@ import asyncio
 from baco.server.config_limites import (
     TAGS_MIN,
     TAGS_PLANTILLAS_PERMITIDAS,
+    TEXTO_MAX,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,
@@ -277,13 +278,6 @@ def procesar_edicion_texto(
 
     aviso_plantilla = revalidar_estructura_plantilla(sesion, txt_verif, titulo_para_sanit)
 
-    # El texto editado pasa a ser el nuevo texto original previo a las skills
-    if sesion.borrador is not None:
-        sesion.borrador.texto_editor = txt_nuevo_limpio
-        sesion.borrador.texto_base_limpio = txt_nuevo_limpio
-        sesion.borrador.texto_original = txt_nuevo_limpio
-    sesion.texto_editor = txt_nuevo_limpio
-    sesion.texto_original = txt_nuevo_limpio
 
     return (
         bloques_nuevos,
@@ -839,6 +833,13 @@ async def ejecutar_skill(
         ).strip()
 
     texto_origen = texto_efectivo_sin_marcadores(texto_vigente)
+    # Mismo límite que skills_habilitadas en la API REST: antes el texto largo se truncaba en silencio.
+    if len(texto_origen) > TEXTO_MAX:
+        msg_largo = (
+            f"El texto tiene **{len(texto_origen)} caracteres** y supera el límite de **{TEXTO_MAX}** "
+            f"para {'auditar' if es_auditor else 'aplicar la plantilla'}. Acortalo o dividilo y volvé a intentar."
+        )
+        return construir_respuesta(sesion, msg_largo, sesion.ultimas_opciones)
     # El auditor no pisa el original verdadero (solo lo lee plantillas al reaplicar).
     if not es_auditor or not (b.texto_original or sesion.texto_original):
         sesion.texto_original = texto_origen

@@ -170,10 +170,10 @@ def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recur
     with pytest.raises(AttributeError):
         borrador.texto_alineado_discourse = "Intento de sobreescritura directa"
 
-def test_skill_plantillas_rechaza_borrador_con_recursos_o_marcadores():
-    """La aplicación de skills y los recursos son mutuamente excluyentes: corta con HTTPException 400 y no llama al modelo."""
-    from unittest.mock import MagicMock
-    from fastapi import HTTPException
+def test_skill_plantillas_con_recursos_envia_solo_el_texto_al_modelo():
+    """Skills y recursos ya no son excluyentes: la skill corre sobre texto_limpio y los
+    recursos (con sus referencias) no viajan en el prompt."""
+    from unittest.mock import MagicMock, patch
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
     texto_original = "Paso 1: Configurar cuenta.\n\nPaso 2: Verificar saldos."
@@ -186,13 +186,18 @@ def test_skill_plantillas_rechaza_borrador_con_recursos_o_marcadores():
         tipo_plantilla="instructivo",
     )
 
-    mock_baco = MagicMock()
-    import pytest
-    with pytest.raises(HTTPException) as exc:
-        ejecutar_skill_plantillas("ses_step5_test", borrador, mock_baco)
+    respuesta = "### Procedimiento\nPaso 1: configurar la cuenta. Paso 2: verificar los saldos."
+    mock_baco = MagicMock(return_value=respuesta)
+    with patch("baco.server.services.agente_service.actualizar_borrador_texto"), \
+         patch("baco.server.services.agente_service._leer_cache_skill", return_value=None), \
+         patch("baco.server.services.agente_service._guardar_cache_skill"):
+        resultado = ejecutar_skill_plantillas("ses_step5_test", borrador, mock_baco)
 
-    assert exc.value.status_code == 400
-    mock_baco.assert_not_called()
+    assert resultado == respuesta
+    prompt = mock_baco.call_args[0][0]
+    assert "Paso 1: Configurar cuenta." in prompt
+    assert "bc.finneg.com/1.png" not in prompt
+    assert "[[recurso:" not in prompt
 
 
 def test_skill_plantillas_acepta_texto_puro_sin_recursos():

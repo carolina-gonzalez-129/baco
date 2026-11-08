@@ -28,7 +28,7 @@ def mock_buscador():
 @pytest.mark.anyio
 async def test_continuar_con_cambios_avanza_en_una_request(mock_buscador):
     """
-    Arreglo 1: Si llega 'continuar_revision'/'continuar' junto con cambios en el texto
+    Arreglo 1: Si llega 'continuar' en REVISION_TIPO junto con cambios en el texto
     (hubo_cambios), aplica los cambios vía edicion.py y avanza a metadatos en la
     MISMA request sin obligar a dos llamadas.
     """
@@ -39,24 +39,24 @@ async def test_continuar_con_cambios_avanza_en_una_request(mock_buscador):
         bloques_texto=[TEXTO_VALIDO],
         texto_limpio=TEXTO_VALIDO,
         tipo_plantilla="instructivo",
-        revision_intermedia=True,
         tags=["instructivo"],
         categoria_id=None,
     )
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_TIPO,
         titulo=TITULO_VALIDO,
         texto=TEXTO_VALIDO,
         tags=["instructivo"],
         categoria_id=None,
         borrador=borrador,
+        ultimas_opciones=["aplicar_plantilla", "continuar"],
     )
     gestor_sesiones.sesiones[sid] = sesion
 
     req = ChatOrquestadorRequest(
         session_id=sid,
-        accion="continuar_revision",
+        accion="continuar",
         texto=TEXTO_EDITADO_VALIDO,
     )
     resp = await manejar_turno(req, mock_buscador)

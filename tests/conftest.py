@@ -2,6 +2,11 @@ import os
 import pytest
 import psycopg
 
+# Los tests nunca usan la caché de skills (data/cache_skills.json): con caché activa
+# se puentea el mock del agente y las corridas ensucian el repo. Se fuerza antes de
+# load_dotenv() para que un .env con BACO_CACHE_SKILLS=1 no la reactive.
+os.environ["BACO_CACHE_SKILLS"] = "0"
+
 # Asegurar DISCOURSE_URL y credenciales para entorno de tests si no están definidas
 if not os.getenv("DISCOURSE_URL"):
     os.environ["DISCOURSE_URL"] = "https://bc-dev.finneg.com"
@@ -121,3 +126,16 @@ def clean_db(db_conn):
     with db_conn.cursor() as cur:
         cur.execute("TRUNCATE TABLE articulo_tags, articulos, tags, categorias RESTART IDENTITY CASCADE;")
     db_conn.commit()
+
+
+@pytest.fixture(autouse=True)
+def limpiar_sesiones_global():
+    """Aísla cada test: vacía las sesiones en memoria y la caché de catálogos antes y después."""
+    from baco.server.services.orquestador.sesion import SESIONES
+    from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
+
+    SESIONES.clear()
+    limpiar_cache_catalogos()
+    yield
+    SESIONES.clear()
+    limpiar_cache_catalogos()

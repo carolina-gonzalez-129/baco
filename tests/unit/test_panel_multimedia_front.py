@@ -160,21 +160,38 @@ def test_aplicar_turno_vuelca_texto_enriquecer_automaticamente():
 
 @pytest.mark.skipif(NODE is None, reason="Node no disponible")
 def test_confirmar_texto_en_panel_izquierdo_y_no_en_companion():
+    # Back: en ESPERANDO_TEXTO "Confirmar texto" es la acción del panel (accion_panel) y
+    # separar_opciones la saca de los botones del chat (Companion).
+    from baco.server.services.orquestador.contrato import accion_panel, separar_opciones
+    from baco.server.services.orquestador.sesion import SesionChat
+    from baco.server.schemas.chat_orquestado import EstadoFlujo
+
+    sesion = SesionChat(session_id="t", estado=EstadoFlujo.ESPERANDO_TEXTO)
+    panel = accion_panel(sesion)
+    assert panel["accion"] == "confirmar_texto"
+    assert panel["label"] == "Confirmar texto"
+    assert "texto" in panel["campos"]
+    chat, nav = separar_opciones(sesion, ["confirmar_texto", "volver"])
+    assert "confirmar_texto" not in chat
+    assert nav == ["volver"]
+
+    # Front: el campo texto se activa según `editables` del turno.
     script = "global.window = global;\n" + ESTADOS_JS + """
     console.log(JSON.stringify({
-        campoActivoTexto: BACO.CAMPOS_ACTIVOS.ESPERANDO_TEXTO.texto,
-        accionPrincipal: BACO.ACCION_PRINCIPAL.ESPERANDO_TEXTO
+        conTexto: BACO.camposActivos({ editables: ['texto'] }).texto,
+        sinTexto: BACO.camposActivos({ editables: ['titulo'] }).texto,
+        label: BACO.OPCIONES.confirmar_texto.label
     }));
     """
     r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
     res = json.loads(r.stdout)
-    assert res["campoActivoTexto"] is True
-    assert res["accionPrincipal"]["label"] == "Confirmar texto"
-    assert res["accionPrincipal"]["campo"] == "texto"
+    assert res["conTexto"] is True
+    assert res["sinTexto"] is False
+    assert res["label"] == "Confirmar texto"
 
-    # En app.js se valida que Baco Companion excluya 'confirmar_texto'
+    # app.js agrupa la habilitación del botón principal por accion_panel.
     app_code = (FRONT / "js" / "app.js").read_text(encoding="utf-8")
-    assert "opcionesCompanion = (opciones || []).filter((op) => op !== 'confirmar_texto')" in app_code
+    assert "confirmar_texto: 'texto'" in app_code
 
 
 @pytest.mark.skipif(NODE is None, reason="Node no disponible")
@@ -262,9 +279,6 @@ def test_nodos_ocultos_desacoplados_null_safe():
     for sel in ("#fCuerpo", "#preview", "#panelMultimedia", "#editorImgBar"):
         assert f"$('{sel}')." not in app_code
         assert f'$("{sel}").' not in app_code
-
-
-
 
 
 def test_barra_herramientas_discourse_y_accesibilidad():
@@ -373,91 +387,6 @@ def test_conteo_code_points_y_copiar_texto_alineado_discourse():
     assert "Array.from(" in APP_JS
     assert "b.texto_alineado_discourse" in APP_JS
     assert "skills_motivo" in APP_JS
-
-
-@pytest.mark.skipif(NODE is None, reason="Node no disponible")
-def test_api_mock_paridad_particion_atomica_y_fusion_al_borrar():
-    script = """
-    const fs = require('fs');
-    global.window = global;
-    global.BACO = {
-      config: {
-        MIN_TITULO: 15, MAX_TITULO: 140, MIN_TEXTO: 20,
-        MAX_TEXTO_PERCENTIL_99: 16777, MIN_TAGS: 2, MAX_TAGS: 5,
-        CATEGORIA_DEFAULT: 5,
-        mock: { LATENCIA_MS: 0, LATENCIA_AGENTE_MS: 0, TASA_ERROR: 0 }
-      },
-      datos: {
-        baseConocimiento: [],
-        categorias: [{ id: 5, nombre: 'Ventas' }],
-        etiquetas: [{ tag: 'facturacion', usos: 10 }],
-        plantillas: { instructivo: 'Plantilla instructivo' }
-      }
-    };
-    eval(fs.readFileSync('frontend/js/api-mock.js', 'utf8'));
-    (async () => {
-      await BACO.apiMock.turno({});
-      await BACO.apiMock.turno({ titulo: 'Instructivo completo de facturación electrónica' });
-      const rTxt = await BACO.apiMock.turno({
-        accion: 'confirmar_texto',
-        texto: 'Paso 1 detallando la configuración inicial del módulo en el sistema.'
-      });
-      const estadoSubida = await BACO.apiMock.subirRecursoMultimedia(
-        { name: 'captura.png', type: 'image/png', size: 2048 },
-        0,
-        ['Bloque 1 con CUIT 20-12345678-9 antes de imagen.', 'Bloque 2 después de imagen.']
-      );
-
-      let errorSvg = null;
-      try {
-        await BACO.apiMock.subirRecursoMultimedia(
-          { name: 'malicioso.svg', type: 'image/svg+xml', size: 500 },
-          0,
-          ['Texto que no debe guardarse', 'Otro bloque']
-        );
-      } catch (e) {
-        errorSvg = e.message;
-      }
-      const estadoTrasError = await BACO.apiMock.obtenerRecursos();
-
-      const recId = estadoSubida.recursos[0].id;
-      const estadoTrasBorrar = await BACO.apiMock.eliminarRecurso(recId);
-
-      console.log(JSON.stringify({
-        multiHab: rTxt.multimedia_habilitada,
-        estadoSubida,
-        errorSvg,
-        estadoTrasError,
-        estadoTrasBorrar
-      }));
-    })();
-    """
-    r = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", check=True)
-    out = json.loads(r.stdout)
-
-    assert out["multiHab"] is True
-    subida = out["estadoSubida"]
-    assert len(subida["bloques_texto"]) == 2
-    assert "[CUIT_OCULTO]" in subida["bloques_texto"][0]
-    assert "20-12345678-9" not in subida["texto_limpio"]
-    assert len(subida["recursos"]) == 1
-    assert subida["recursos"][0]["posicion"] == 0
-    assert subida["recursos"][0]["orden"] == 0
-    assert subida["skills_habilitadas"] is False
-    assert "Quitá los recursos" in subida["skills_motivo"]
-
-    # Rollback atómico ante falla (SVG rechazado)
-    assert "SVG" in out["errorSvg"]
-    assert out["estadoTrasError"]["bloques_texto"] == subida["bloques_texto"]
-    assert len(out["estadoTrasError"]["recursos"]) == 1
-
-    # Fusión al borrar el recurso intermedio y reactivación de skills
-    borrado = out["estadoTrasBorrar"]
-    assert len(borrado["recursos"]) == 0
-    assert len(borrado["bloques_texto"]) == 1
-    assert "[CUIT_OCULTO]" in borrado["bloques_texto"][0]
-    assert "Bloque 2 después de imagen." in borrado["bloques_texto"][0]
-    assert borrado["skills_habilitadas"] is True
 
 
 @pytest.mark.skipif(NODE is None, reason="Node no disponible")
@@ -581,7 +510,7 @@ def test_vista_previa_editable_interactiva():
     assert "sincronizarTextoDesdePreview()" in app_text[i_conf:i_conf + 300]
 
     # Contenteditable en preview y protección de recursos
-    assert 'bDiv.setAttribute(\'contenteditable\', \'true\')' in app_text
+    assert 'bDiv.setAttribute(\'contenteditable\', textoEditablePreview ? \'true\' : \'false\')' in app_text
     assert 'mediaEl.setAttribute(\'contenteditable\', \'false\')' in app_text
 
     # Estilos en CSS

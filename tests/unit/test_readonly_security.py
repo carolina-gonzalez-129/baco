@@ -94,13 +94,11 @@ def test_fail_fast_sin_db_ro_password():
 
 
 def test_consumidores_usan_get_ro_conn_y_no_psycopg_connect_suelto():
-    """Verifica estáticamente que dependencies.py y mcp_server.py usen get_ro_conn."""
+    """Verifica estáticamente que dependencies.py use get_ro_conn."""
     import inspect
-    from baco.server.app import dependencies, mcp_server
+    from baco.server.app import dependencies
 
     src_dep = inspect.getsource(dependencies)
-    src_mcp = inspect.getsource(mcp_server)
 
     assert "get_ro_conn" in src_dep
-    assert "get_ro_conn" in src_mcp
     assert "psycopg.connect(" not in src_dep

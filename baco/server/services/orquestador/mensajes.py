@@ -77,6 +77,11 @@ MSG_VOLVER_PLANTILLA = (
 MSG_VOLVER_METADATOS = (
     "Volvemos al paso anterior. Podes corregir **la categoría y los tags tematicos** para clasificar tu artículo:"
 )
+# Volver desde ESPERANDO_TEXTO en enriquecer descarta el borrador cargado (decisión 7/11).
+MSG_ENRIQUECIMIENTO_DESCARTADO = (
+    "Descarté el artículo que había cargado y los cambios que le hiciste. "
+    "Si volvés a elegir **Enriquecer**, se carga de nuevo el original.\n\n"
+)
 MSG_VOLVER_ENRIQUECER_O_DESCARTAR = (
     "Volvemos al paso anterior. ¿Deseás **enriquecer** el artículo encontrado o **descartarlo**?"
 )
@@ -470,11 +475,5 @@ def msg_plantilla_obligatoria(actual: str) -> str:
         "El **tipo de plantilla** es obligatorio, así que no lo quité"
         + (f": sigue siendo **{actual}**" if actual else "")
         + ". El resto de los cambios quedó guardado.\n\n"
-        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel o escribiéndolo acá."
-    )
-
-
-def msg_plantilla_sin_cambio(actual: str) -> str:
-    return (
-        f"El tipo de plantilla ya es **{actual}**, no hay nada que cambiar."
+        "Si querés cambiarlo, elegí **instructivo** o **soluciones** desde el panel."
     )

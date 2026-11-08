@@ -118,19 +118,23 @@ def test_flujo_chat_resolucion_agro_directa(client, mock_buscador):
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
-    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    assert r_meta["estado"] == EstadoFlujo.REVISION_TIPO
+    # Nuevo flujo: plantilla -> REVISION_TIPO; 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
     # Turno 1: ingresa etiquetas
     r_tags = client.post("/chat", json={"session_id": sid, "mensaje": "granos, cosecha"}).json()
     assert r_tags["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "decime la categoría por acá" in r_tags["mensaje"]
+    assert "Sólo falta la **categoría**" in r_tags["mensaje"]
 
     # Turno 2: escribe 'Agro' -> ya no es interceptado por tags, resuelve categoría Agro
     r_cat = client.post("/chat", json={"session_id": sid, "mensaje": "Agro"}).json()
-    assert r_cat["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_cat["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r_cat["accion_panel"]["accion"] == "enviar_datos"
+    r_cat = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
+    assert r_cat["estado"] == EstadoFlujo.REVISION_METADATOS
     assert r_cat["borrador"]["categoria_id"] == 37
     assert r_cat["borrador"]["categoria_nombre"] == "Agro"
 
@@ -144,7 +148,7 @@ def test_flujo_chat_categoria_ambigua_y_seleccion_posterior(client, mock_buscado
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    # Nuevo flujo: plantilla -> REVISION_TIPO; 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
     client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
     client.post("/chat", json={"session_id": sid, "mensaje": "facturacion, proveedores"})
 
@@ -158,9 +162,9 @@ def test_flujo_chat_categoria_ambigua_y_seleccion_posterior(client, mock_buscado
     r_ok = client.post("/chat", json={"session_id": sid, "mensaje": "Compras"}).json()
     # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
     assert r_ok["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "enviar_datos" in r_ok["opciones"]
+    assert r_ok["accion_panel"]["accion"] == "enviar_datos"
     r_ok = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
-    assert r_ok["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_ok["estado"] == EstadoFlujo.REVISION_METADATOS
     assert r_ok["borrador"]["categoria_id"] == 24
     assert r_ok["borrador"]["categoria_nombre"] == "Compras"
 
@@ -174,7 +178,7 @@ def test_flujo_chat_categoria_inexistente_mensaje_especifico(client, mock_buscad
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    # Nuevo flujo: plantilla -> REVISION_TIPO; 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
     client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
     client.post("/chat", json={"session_id": sid, "mensaje": "gestion, administracion"})
 
@@ -192,12 +196,12 @@ def test_seleccion_via_menu_desplegable_asigna_id_y_nombre(client, mock_buscador
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    # Nuevo flujo: plantilla -> REVISION_TIPO; 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
     client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
     client.post("/chat", json={"session_id": sid, "mensaje": "ventas, facturacion"})
 
     r_menu = client.post("/chat", json={"session_id": sid, "categoria_id": 20}).json()
-    assert r_menu["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_menu["estado"] == EstadoFlujo.REVISION_METADATOS
     assert r_menu["borrador"]["categoria_id"] == 20
     assert r_menu["borrador"]["categoria_nombre"] == "Ventas"
 
@@ -211,7 +215,7 @@ def test_reproduccion_caso_original_articulo_muestra_nombre_ventas(client, mock_
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     client.post("/chat", json={"session_id": sid, "accion": "instructivo"})
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    # Nuevo flujo: plantilla -> REVISION_TIPO; 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
     client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"})
 
     # 1. Tags temáticos
@@ -221,9 +225,9 @@ def test_reproduccion_caso_original_articulo_muestra_nombre_ventas(client, mock_
     r_cat = client.post("/chat", json={"session_id": sid, "mensaje": "Ventas"}).json()
     # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
     assert r_cat["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "enviar_datos" in r_cat["opciones"]
+    assert r_cat["accion_panel"]["accion"] == "enviar_datos"
     r_cat = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
-    assert r_cat["estado"] == EstadoFlujo.REVISION_BORRADOR
+    assert r_cat["estado"] == EstadoFlujo.REVISION_METADATOS
     assert r_cat["borrador"]["categoria_id"] == 20
     assert r_cat["borrador"]["categoria_nombre"] == "Ventas"
 
@@ -255,22 +259,26 @@ def test_turno_etiquetas_tematicas_con_ventas_y_agro_no_asigna_categoria_prematu
     sid = r1["session_id"]
     client.post("/chat", json={"session_id": sid, "accion": "confirmar_texto", "texto": TEXTO_VALIDO})
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "instructivo"}).json()
-    assert r_meta["estado"] == EstadoFlujo.REVISION_BORRADOR
-    # Nuevo flujo: plantilla -> revisión intermedia (REVISION_BORRADOR); 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
+    assert r_meta["estado"] == EstadoFlujo.REVISION_TIPO
+    # Nuevo flujo: plantilla -> REVISION_TIPO; 'continuar_revision' sin categoría/tags -> ESPERANDO_METADATOS
     r_meta = client.post("/chat", json={"session_id": sid, "accion": "continuar_revision"}).json()
     assert r_meta["estado"] == EstadoFlujo.ESPERANDO_METADATOS
 
     # Turno 1: usuario ingresa 'ventas, agro'
     r_tags = client.post("/chat", json={"session_id": sid, "mensaje": "ventas, agro"}).json()
     assert r_tags["estado"] == EstadoFlujo.ESPERANDO_METADATOS
-    assert "decime la categoría por acá" in r_tags["mensaje"]
+    assert "Sólo falta la **categoría**" in r_tags["mensaje"]
     assert r_tags["borrador"]["categoria_id"] is None
     assert "ventas" in r_tags["borrador"]["tags"]
     assert "agro" in r_tags["borrador"]["tags"]
 
     # Turno 2: usuario ingresa la categoría (ej. 'Agro' o 'Ventas')
     r_cat = client.post("/chat", json={"session_id": sid, "mensaje": "Agro"}).json()
-    assert r_cat["estado"] == EstadoFlujo.REVISION_BORRADOR
+    # La carga por chat se confirma con Enviar datos (rama arreglar-meta-datos)
+    assert r_cat["estado"] == EstadoFlujo.ESPERANDO_METADATOS
+    assert r_cat["accion_panel"]["accion"] == "enviar_datos"
+    r_cat = client.post("/chat", json={"session_id": sid, "accion": "enviar_datos"}).json()
+    assert r_cat["estado"] == EstadoFlujo.REVISION_METADATOS
     assert r_cat["borrador"]["categoria_id"] == 37
     assert r_cat["borrador"]["categoria_nombre"] == "Agro"
     assert "ventas" in r_cat["borrador"]["tags"]

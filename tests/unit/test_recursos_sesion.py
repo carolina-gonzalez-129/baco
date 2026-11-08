@@ -179,7 +179,7 @@ def test_cota_maxima_caracteres_se_evalua_estrictamente_sobre_texto_limpio():
     # Validar que sesion y validación del borrador operan sobre texto_limpio
     sesion = SesionChat(
         session_id="test-cota-sesion",
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Instructivo Conciliación Bancaria",
@@ -217,7 +217,7 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
     sid = "sesion-eliminar-recurso-test"
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.FINALIZADO,
+        estado=EstadoFlujo.EDICION_FINAL,  # FINALIZADO es terminal: no admite mutaciones (409)
         titulo="Título de prueba",
         texto=reconstruir_texto_con_recursos(texto_limpio, recursos),
         texto_limpio=texto_limpio,
@@ -228,7 +228,7 @@ def test_eliminacion_recurso_borrador_y_endpoint_api(client):
             texto=reconstruir_texto_con_recursos(texto_limpio, recursos),
             texto_limpio=texto_limpio,
             recursos=recursos,
-            finalizado=True,
+            finalizado=False,
             categoria_id=2,
             tags=["instructivo", "general"],
         ),
@@ -304,14 +304,14 @@ def test_subida_recurso_rechazada_en_fase_1(client):
     sid = "sesion-upload-fase1"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.FINALIZADO,
+        estado=EstadoFlujo.EDICION_FINAL,  # FINALIZADO es terminal: no admite mutaciones (409)
         titulo="Título de prueba",
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título de prueba",
             texto="Contenido",
             texto_limpio="Contenido",
-            finalizado=True,
+            finalizado=False,
             categoria_id=1,
             tags=["instructivo"],
         ),
@@ -337,14 +337,14 @@ def test_subida_recursos_con_flag_activo(client):
     sid = "sesion-upload-valida"
     SESIONES[sid] = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.FINALIZADO,
+        estado=EstadoFlujo.EDICION_FINAL,  # FINALIZADO es terminal: no admite mutaciones (409)
         titulo="Título con uploads",
         borrador=BorradorSesion(
             modo="nuevo",
             titulo="Título con uploads",
             texto="Texto base",
             texto_limpio="Texto base",
-            finalizado=True,
+            finalizado=False,
             categoria_id=1,
             tags=["instructivo"],
         ),
@@ -625,7 +625,7 @@ def test_gestor_sesiones_y_endpoints_api_multimedia(client):
 
     sesion = SesionChat(
         session_id=sid,
-        estado=EstadoFlujo.REVISION_BORRADOR,
+        estado=EstadoFlujo.REVISION_METADATOS,
         titulo="Manual Operativo",
         texto=texto_con_recursos,
         texto_limpio=texto_limpio,

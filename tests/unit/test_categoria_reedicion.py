@@ -27,7 +27,7 @@ def limpiar_sesiones():
 
 
 def _crear_sesion(
-    estado=EstadoFlujo.REVISION_BORRADOR,
+    estado=EstadoFlujo.REVISION_METADATOS,
     cat_id=1,
     cat_nombre="General",
     finalizado=False,
@@ -45,7 +45,6 @@ def _crear_sesion(
         tipo_plantilla=plantilla,
         tags=list(tags),
         finalizado=finalizado,
-        revision_intermedia=False,
     )
     sesion = SesionChat(
         session_id="test-categoria-reedicion",
@@ -135,28 +134,6 @@ def test_categoria_id_inexistente_no_pisa_categoria_anterior():
     # Si no resuelve, no debe pisar la categoría existente
     assert sesion.borrador.categoria_id == 1
     assert sesion.borrador.categoria_nombre == "General"
-
-
-def test_cambiar_categoria_en_finalizado_vuelve_a_revision_y_finalizado_false():
-    """Verifica que cambiar la categoría desde estado FINALIZADO altera la huella, volviendo a REVISION_BORRADOR con finalizado=False."""
-    sesion = _crear_sesion(
-        estado=EstadoFlujo.FINALIZADO,
-        cat_id=1,
-        cat_nombre="General",
-        finalizado=True,
-    )
-    req = ChatOrquestadorRequest(
-        session_id=sesion.session_id,
-        categoria_id=5,
-        hubo_cambios=True,
-    )
-
-    _aplicar_mutaciones_borrador(sesion, req)
-
-    assert sesion.borrador.finalizado is False
-    assert sesion.estado == EstadoFlujo.REVISION_BORRADOR
-    assert sesion.borrador.categoria_id == 5
-    assert sesion.borrador.categoria_nombre == "Ventas"
 
 
 def test_cambiar_categoria_no_altera_tipo_plantilla_ni_tags():

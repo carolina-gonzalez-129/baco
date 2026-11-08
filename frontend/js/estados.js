@@ -105,6 +105,7 @@ BACO.store = (function () {
     botones: [],
     navegacion: [],
     navegacion_etiquetas: {},
+    guardan_campos: [],  // acciones que viajan con los campos del panel (contrato)
     editables: ['titulo'],
     accion_panel: null,
     texto_servidor: '',  // texto_limpio que tiene el back (base para detectar cambios sin borrador)
@@ -228,6 +229,7 @@ BACO.store = (function () {
       estado.navegacion_etiquetas = (r.navegacion_etiquetas && typeof r.navegacion_etiquetas === 'object')
         ? Object.assign({}, r.navegacion_etiquetas) : {};
       estado.editables = Array.isArray(r.editables) ? r.editables.slice() : [];
+      estado.guardan_campos = Array.isArray(r.guardan_campos) ? r.guardan_campos.slice() : [];
       estado.accion_panel = r.accion_panel || null;
       estado.skills = r.skills || null;
       estado.tags_acumulados = Array.isArray(r.tags_acumulados)
@@ -359,6 +361,7 @@ BACO.store = (function () {
       };
       estado.opciones = []; estado.botones = []; estado.tags_acumulados = [];
       estado.navegacion = []; estado.navegacion_etiquetas = {}; estado.editables = ['titulo'];
+      estado.guardan_campos = [];
       estado.accion_panel = null; estado.skills = null;
       estado.coincidencias = [];
       estado.borrador = null; estado.validacion = null; estado.error = null;

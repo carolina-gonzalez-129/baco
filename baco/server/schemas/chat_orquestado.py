@@ -808,6 +808,14 @@ class ChatOrquestadorResponse(BaseModel):
         default_factory=dict,
         description="Texto visible de cada acción de `navegacion` (p. ej. {'volver': 'Cambiar el título'}). Si falta, el front usa 'Volver'.",
     )
+    guardan_campos: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Acciones del turno (opciones, navegación o panel) que viajan con los campos `editables`: "
+            "el back guarda lo editado antes de ejecutarlas. Con cualquier otra acción, lo no guardado "
+            "se descarta. Incluye 'reaplicar' (acción del panel) solo si hay un resultado de skill pendiente."
+        ),
+    )
     botones: List[BotonOpcion] = Field(
         default_factory=list,
         description="Botones inyectados dinámicamente por el servidor.",

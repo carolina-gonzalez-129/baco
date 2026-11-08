@@ -6,7 +6,8 @@ from baco.server.app.main import app
 from baco.server.app.api import get_buscador_duplicados
 from baco.server.app.middleware import API_KEY
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.app.mcp_server import validar_formato
+from baco.server.schemas.articulo import ArticuloSchema
+from baco.server.services.validar_articulo import validar_texto_y_estructura_post_duplicados
 
 
 @pytest.fixture
@@ -48,18 +49,19 @@ def test_api_tags_vacios_retorna_articulo_invalido_con_hallazgo_bloqueante():
         "Primero ingresar al módulo de Ventas, luego seleccionar Configuración de Parámetros. "
         "Allí verificar el número de punto de venta asignado por el ente fiscal."
     )
-    resultado = validar_formato(
+    articulo = ArticuloSchema(
+        id=0,
         titulo="Configuración de Parámetros AFIP",
         texto=texto_valido,
         tags=[],
-        categoria_id=5
+        categoria_id=5,
     )
+    resultado = validar_texto_y_estructura_post_duplicados(articulo)
 
-    assert resultado.valido is False
-    assert resultado.status == "Pendiente"
+    assert resultado["status"] == "Pendiente"
     assert any(
-        h.severidad == "Bloqueante" and h.campo == "tags"
-        for h in resultado.hallazgos
+        f["severity"] == "Bloqueante" and f["field"] == "tags"
+        for f in resultado["findings"]
     )
 
 

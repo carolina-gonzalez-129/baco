@@ -99,6 +99,7 @@ def main():
         print(f"Retomando: ya hay {len(articulos)} artículos guardados.")
 
     nuevos = 0
+    fallidos = []
     url_base = base_url()
     with httpx.Client(base_url=url_base, headers=headers, timeout=30) as http:
         for n, tema in enumerate(listar_temas(http), start=1):
@@ -145,9 +146,19 @@ def main():
 
             except Exception as e:
                 print(f"Error en tema {tema_id}: {e}", file=sys.stderr)
+                fallidos.append(tema_id)
                 continue
 
+    # Se guarda igual: el script retoma desde el JSON y reintenta los fallidos en la próxima corrida.
     guardar(articulos)
+
+    if fallidos:
+        print(
+            f"\n[-] {len(fallidos)} tema(s) no se pudieron descargar: {fallidos}\n"
+            f"    {SALIDA.name} quedó INCOMPLETO. Volvé a correr el script antes de reconstruir la base.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

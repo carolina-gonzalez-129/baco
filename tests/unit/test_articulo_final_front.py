@@ -57,8 +57,8 @@ def test_encabezados_clase_css_unica_y_variables():
     assert "encabezado-articulo" in ARTICULO_JS
 
 
-def test_boton_ver_articulo_en_chat():
-    """Botón 'Ver artículo' disponible en chat en color naranja (coral) al registrar conformidad."""
+def test_boton_ver_articulo_en_panel():
+    """'Ver artículo' viaja en navegación (FINALIZADO) y lo muestra el botón principal del panel."""
     assert "ver_articulo_final" in ESTADOS_JS
     assert "Ver artículo" in ESTADOS_JS
 
@@ -68,12 +68,8 @@ def test_boton_ver_articulo_en_chat():
     assert "window.open(" in APP_JS
     assert "'_blank'" in APP_JS
 
-    assert "opcionesTurno.unshift('ver_articulo_final')" in APP_JS or "opcionesTurno.includes('ver_articulo_final')" in APP_JS
-    assert "btn.id = 'btnVerArticuloFinal'" in APP_JS
-
-    # Estilos del botón en styles.css (color naranja/coral idéntico a Copiar borrador)
-    assert "#btnVerArticuloFinal" in CSS
-    assert "var(--coral)" in CSS
+    assert "(s.navegacion || []).includes('ver_articulo_final')" in APP_JS
+    assert "btn.dataset.accion = 'ver_articulo_final'" in APP_JS
 
 
 def test_secciones_separacion_y_orden_estricto():
@@ -168,11 +164,11 @@ def test_parsear_secciones_orden_e_imagenes_sin_seccion_con_numero():
     for s in sec2:
         assert not re.match(r"^Secci[oó]n\s*\d*$", s.get("encabezado", ""), re.IGNORECASE)
 
-def test_reutilizacion_vista_post_skill_y_boton_en_chat():
-    """Tras ejecutar una skill, el botón 'Ver artículo' debe ofrecerse en el chat y
-    articulo.js debe ser capaz de leer el borrador existente de sesión."""
-    # Verificar que invocarAgente emite 'ver_articulo_final' en las opciones del turno/mensaje
-    assert "decir(msgHtml, ['ver_articulo_final'], true)" in APP_JS
+def test_reutilizacion_vista_post_skill_sin_boton_en_chat():
+    """Tras ejecutar una skill no se ofrece 'Ver artículo' en el chat (solo en FINALIZADO, por el panel)
+    y articulo.js debe ser capaz de leer el borrador existente de sesión."""
+    assert "decir(msgHtml, [], true)" in APP_JS
+    assert "decir(msgHtml, ['ver_articulo_final'], true)" not in APP_JS
     # Verificar que el borrador preserva texto_alineado_discourse resultante
     assert "s.borrador.texto_alineado_discourse = texto;" in APP_JS
     # Verificar que articulo.js tiene la capacidad de leer la sesin existente (vía opener / store)
