@@ -15,7 +15,8 @@ localhost:3000 · localhost:5173 · 127.0.0.1:3000 · 127.0.0.1:5173
 **Por eso el panel ahora corre en el 5173**, no en el 5501:
 
 ```bash
-cd "Proyecto BACO/Panel"
+# desde la raíz del repo
+cd frontend
 python -m http.server 5173
 ```
 
@@ -54,7 +55,7 @@ Mucho más trabajo. Necesitás PostgreSQL con **pgvector**, ~2 GB de dependencia
 Además ahora la base necesita **un usuario de solo lectura**: Caro agregó `baco_readonly` para que las consultas del chat nunca puedan modificar nada. Si lo levantás local, pedile también el script de creación de ese rol.
 
 ```powershell
-cd "...\Proyecto BACO\backend-caro"
+# desde la raíz del repo (si estás en frontend\, hacé: cd ..)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt

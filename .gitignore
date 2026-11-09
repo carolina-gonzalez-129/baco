@@ -44,3 +44,8 @@ logs/*
 !logs/.gitkeep
 *.log
 
+
+# Salidas locales de pytest (contienen rutas absolutas de la máquina)
+nuevo_tests.txt
+resultados-tests.txt
+resultadosuwu-tests-nuevo.txt

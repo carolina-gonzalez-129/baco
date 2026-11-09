@@ -7,7 +7,8 @@ Funciona de punta a punta sin backend, contra un simulador que reproduce su máq
 ## Cómo correrlo
 
 ```bash
-cd "Proyecto BACO/Panel"
+# desde la raíz del repo
+cd frontend
 python -m http.server 5173
 ```
 

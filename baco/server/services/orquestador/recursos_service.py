@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -25,7 +26,9 @@ from baco.server.schemas.recurso import (
 
 logger = logging.getLogger(__name__)
 
-DIR_TEMP_SESIONES = Path("data/temp_sesiones")
+# Relativo a la raíz del proyecto (no al cwd); DATA_DIR permite moverlo (ej. volumen Docker).
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+DIR_TEMP_SESIONES = Path(os.getenv("DATA_DIR", PROJECT_ROOT / "data")) / "temp_sesiones"
 
 # Extensiones / URLs para clasificación de tipo (SVG estrictamente bloqueado por seguridad)
 EXTS_IMAGEN = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
