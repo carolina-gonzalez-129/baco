@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import logging
 from typing import Optional, List, Tuple
+import os
+
 import httpx
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-BC_PROD_URL = "https://bc.finneg.com"
+BC_PROD_URL = os.getenv("DISCOURSE_PUBLIC_URL", "https://bc.finneg.com").rstrip("/")
 TIMEOUT_SEGUNDOS = 5.0
 
 

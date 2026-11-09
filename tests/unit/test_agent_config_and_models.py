@@ -55,8 +55,9 @@ def test_discourse_base_url_lanza_error_si_no_esta_definida(monkeypatch):
         discourse_base_url()
 
 
-def test_httpx_client_con_discourse_base_url_contiene_host():
+def test_httpx_client_con_discourse_base_url_contiene_host(monkeypatch):
     import httpx
+    monkeypatch.setenv("DISCOURSE_URL", "https://bc-dev.finneg.com")
     from baco.server.db.ingesta import discourse_base_url
     from baco.server.discourse.client import base_url
 

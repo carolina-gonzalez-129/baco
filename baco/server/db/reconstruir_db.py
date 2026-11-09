@@ -9,10 +9,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import json
 import os
-from baco.server.db.config import get_conn, DB_RO_PASSWORD
+from baco.server.db.config import get_conn, DB_RO_PASSWORD, DB_RO_USER
 from baco.server.db.ingesta import normalizar_articulo, upsert_articulos
 
-RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", PROJECT_ROOT / "data" / "articulos.json"))
+DATA_DIR = Path(os.getenv("DATA_DIR", PROJECT_ROOT / "data"))
+RUTA_JSON = Path(os.getenv("RUTA_ARTICULOS_JSON", DATA_DIR / "articulos.json"))
 
 
 def leer_articulos_json(ruta: Path = RUTA_JSON) -> list[dict]:
@@ -48,6 +49,13 @@ def aplicar_esquema_ddl(conn, reset: bool = False):
 
     if not SCHEMA_FILE.exists():
         raise FileNotFoundError(f"No se encontró el archivo de esquema {SCHEMA_FILE}")
+
+    if DB_RO_USER != "baco_readonly":
+        # Los .sql crean y dan permisos al rol baco_readonly (nombre fijo en el DDL).
+        raise RuntimeError(
+            f"DB_RO_USER={DB_RO_USER!r}: el esquema solo crea el rol 'baco_readonly'. "
+            "Definí DB_RO_USER=baco_readonly."
+        )
 
     print(f"[+] Ejecutando {SCHEMA_FILE.name}...")
     ddl_sql = SCHEMA_FILE.read_text(encoding="utf-8")

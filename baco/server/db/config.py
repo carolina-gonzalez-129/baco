@@ -54,7 +54,10 @@ def get_ro_conn():
 
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-CONN_INFO = f"host={DB_HOST} port={DB_PORT} user={DB_USER} password={DB_PASSWORD} dbname={DB_NAME}"
+CONN_INFO = f"host={DB_HOST} port={DB_PORT} user={DB_USER} dbname={DB_NAME}"
+if DB_PASSWORD:
+    # Sin DB_PASSWORD no se agrega: evita que el DSN lleve el texto literal "password=None".
+    CONN_INFO += f" password={DB_PASSWORD}"
 
 db_pool = ConnectionPool(
     conninfo=CONN_INFO,

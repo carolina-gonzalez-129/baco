@@ -1,3 +1,4 @@
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -104,7 +105,7 @@ def _bloque_plantilla_referencia(tipo_plantilla: Optional[str]) -> str:
 # Desactivar con BACO_CACHE_SKILLS=0. Para regenerar, borrar data/cache_skills.json.
 # Se guardan también salidas con marcadores [Indicar...] (se corrigen a mano en la Vista previa);
 # no se guardan llamadas a herramienta devueltas como texto ni salidas fuera de los límites de largo.
-_CACHE_SKILLS_PATH = Path(__file__).resolve().parents[3] / "data" / "cache_skills.json"
+_CACHE_SKILLS_PATH = Path(os.getenv("DATA_DIR", Path(__file__).resolve().parents[3] / "data")) / "cache_skills.json"
 
 
 def _cache_skills_activa() -> bool:
