@@ -9,8 +9,13 @@ from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
 from baco.server.config_limites import (
     PERMITIR_SUBIDA_RECURSOS,
     RECURSO_MAX_BYTES,
+    TAGS_MAX,
+    TAGS_MIN,
+    TEXTO_MAX,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
+    TITULO_MAX,
+    TITULO_MIN,
 )
 from baco.server.schemas.chat import ChatResponse
 from baco.server.schemas.chat_orquestado import (
@@ -823,6 +828,16 @@ def previsualizar_recurso_temporal(session_id: str, archivo: str):
 
 ##ARREGLAR ESTO DESPUES DEL VIERNES PARA Q
 #1)ABARQUE LO DE SKILLS UN PERCENTIL RAZONABLE DEL 51 % (P 90, 95, 98?)
-## 2) EL FRONT LO LEA DIRECTO DESDE ACA Y NO ESTE HARDCODEADO
-## 3)@router.get("/limites")
-#def obtener_limites():
+
+
+@router.get("/limites", summary="Límites de config_limites.py que el front usa para validar y mostrar")
+def obtener_limites():
+    return {
+        "MIN_TITULO": TITULO_MIN,
+        "MAX_TITULO": TITULO_MAX,
+        "MIN_TEXTO": TEXTO_MIN,
+        "MAX_TEXTO": TEXTO_MAX,
+        "MAX_TEXTO_PERCENTIL_99": TEXTO_MAX_PERCENTIL_99,
+        "MIN_TAGS": TAGS_MIN,
+        "MAX_TAGS": TAGS_MAX,
+    }

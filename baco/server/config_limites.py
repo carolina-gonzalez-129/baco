@@ -3,20 +3,28 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Carga el .env de la raíz del proyecto antes de leer límites configurables
-# (este módulo puede importarse antes que los que ya llaman a load_dotenv).
+
 for _p in Path(__file__).resolve().parents:
     if (_p / ".env").exists():
         load_dotenv(_p / ".env")
         break
 
-TITULO_MIN = 15
-TITULO_MAX = 255
-TEXTO_MIN = 20
-# Quizas estaria bueno mas adelante que a la cota de texto max skills lo obtenga viendo los p 90, 95, y 99
-#haciendo un join de la tabla de cant_caracteres con la tabla de artículos para usar la columna texto_sin_headers
-# Cota máxima de texto para usar skills. Configurable con BACO_TEXTO_MAX en el .env.
-TEXTO_MAX = int(os.getenv("BACO_TEXTO_MAX", "6687"))
+
+TITULO_MIN = 15 #ALINEADO  CON DISCOURSE PERO EL MINIMO DE LA TABLA ES DE 5 CARACTERES
+# ID : esta en el informe INFORME_CAROLINA en ARTICULOS_TITULO_MENOR_A_MIN_DISCOURSE.xlsx
+TITULO_MAX = 255 #ALINEADO CON DISCOURSE P100 DE LA TABLA
+TEXTO_MIN = 20 # ALINEADO CON DISCOURSE PERO LOS MINIMOS POR DEBAJO DE ESO DE LA TABLA SON
+# 0 CARACTERES(ID 2391), SEGUIDO DE DE 19 CARACTERES (ID 4049), tmb esta en el informe
+
+
+#Cota max de texto p/skills, configurable con baco_texto_max en el .env
+# Corresponde (aproximadamente, es 7 caracteres menor) al p95 de texto_sin_headers
+#Como van a permitir usar skills para multimedia sugeríria aumentarlo
+_TEXTO_MAX_DEFAULT = 6687
+try:
+    TEXTO_MAX = int(os.getenv("BACO_TEXTO_MAX") or _TEXTO_MAX_DEFAULT)
+except ValueError:
+    TEXTO_MAX = _TEXTO_MAX_DEFAULT
 TAGS_MIN = 2
 TAGS_MAX = 5
 TAGS_PLANTILLAS_PERMITIDAS = ("instructivo", "soluciones")
@@ -31,8 +39,10 @@ MAX_RECURSOS_POR_SESION: int = 20
 MAX_BLOQUES_TEXTO: int = MAX_RECURSOS_POR_SESION + 1
 
 
-##ES DE TODA LA TABLA, SIN DISCRIMINAR pero no lo
-TEXTO_MAX_PERCENTIL_99 = 16777
+##ES DE TODA LA TABLA, SIN DISCRIMINAR TEXTO SIN HEADERS DE TEXTO CON HEADERS
+TEXTO_MAX_PERCENTIL_99 = 16791
+# OBTENIDO MEDIANTE SELECT PERCENTILE.DISC(0.99)WITHIN GROUP ORDER BY LENGTH(TEXTO) FROM ARTICULOS
+##CONFIGURAR DESDE ACÁ SI SE QUIERE CAMBIARLO PARA Q SE CONDIGA CON EL MAX DE DISCOURSE
 
 BUFFER_CARACTERES_PROMPT_XML: int = 500
 

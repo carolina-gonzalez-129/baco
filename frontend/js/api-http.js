@@ -217,6 +217,11 @@ BACO.apiHttp = (function () {
       return pedir('POST', '/chat/bloques', { bloques: bloques });
     },
 
+    /* Límites de baco/server/config_limites.py */
+    limites() {
+      return pedir('GET', '/limites');
+    },
+
     /* Para que el panel pueda mostrar / limpiar la sesión */
     sesionActual() { return sessionId; },
     olvidarSesion() { sessionId = null; }

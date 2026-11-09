@@ -984,6 +984,15 @@
     conectarEventos();
     conectarEventosMultimedia();
     store.suscribir(pintar);
+    /* Límites desde el backend (config_limites.py). Si falla, quedan los de config.js. */
+    if (!api.esMock && typeof api.limites === 'function') {
+      try {
+        const limites = await api.limites();
+        if (limites && typeof limites === 'object') Object.assign(cfg, limites);
+      } catch (e) {
+        console.warn('No se pudieron obtener los límites del backend; se usan los de config.js.', e);
+      }
+    }
     await enviarTurno({});     // primer turno: trae la bienvenida
   }
 

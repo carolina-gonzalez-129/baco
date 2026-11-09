@@ -17,7 +17,11 @@ BACO.ESTADOS = {
   DECISION_TITULO:    { etiqueta: 'Título duplicado',    tono: 'alerta',
                         ayuda: 'Encontró un artículo con título parecido. Decidí si lo enriquecés o seguís con uno nuevo.' },
   ESPERANDO_TEXTO:    { etiqueta: 'Esperando contenido', tono: 'proceso',
-                        ayuda: 'Escribí o pegá el cuerpo del artículo de a poco (máximo 16777 caracteres, skills disponibles hasta 6687) y tocá "Confirmar texto" cuando esté listo.' },
+                        get ayuda() {
+                          const c = BACO.config || {};
+                          return 'Escribí o pegá el cuerpo del artículo de a poco (máximo ' + c.MAX_TEXTO_PERCENTIL_99 +
+                            ' caracteres, skills disponibles hasta ' + c.MAX_TEXTO + ') y tocá "Confirmar texto" cuando esté listo.';
+                        } },
   DECISION_TEXTO:     { etiqueta: 'Contenido similar',   tono: 'alerta',
                         ayuda: 'El contenido se parece a uno existente. Elegí si lo enriquecés o continuás con el tuyo.' },
   ESPERANDO_PLANTILLA:{ etiqueta: 'Elegir plantilla',    tono: 'proceso',

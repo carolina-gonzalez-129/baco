@@ -208,8 +208,9 @@ def msg_error_longitud_maxima(campo: str, max_c: int, intento: int = 0) -> str:
 
 
 def msg_articulo_muy_largo(max_c: int) -> str:
+    max_fmt = f"{max_c:,}".replace(",", ".")
     return (
-        "Este artículo es demasiado largo para editarlo desde el chat (más de 15.000 caracteres). "
+        f"Este artículo es demasiado largo para editarlo desde el chat (más de {max_fmt} caracteres). "
         "Tocá **Es un tema distinto** para escribir uno nuevo, o **Empezar de nuevo**."
     )
 

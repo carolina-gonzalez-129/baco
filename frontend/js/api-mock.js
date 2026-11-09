@@ -45,7 +45,6 @@ BACO.apiMock = (function () {
   const MAX_BLOQUES = 21;
   const MAX_ARCHIVO_BYTES = 10 * 1024 * 1024;
   const MAX_SESION_BYTES = 50 * 1024 * 1024;
-  const MAX_SKILLS_CHARS = 6687;
 
   function cpLen(s) {
     return Array.from(String(s || '')).length;
@@ -147,9 +146,9 @@ BACO.apiMock = (function () {
     }
     b.texto_alineado_discourse = partes.join('\n\n').trim();
 
-    if (cpLen(b.texto_limpio) > MAX_SKILLS_CHARS) {
+    if (cpLen(b.texto_limpio) > lim().MAX_TEXTO) {
       b.skills_habilitadas = false;
-      b.skills_motivo = 'El texto supera el máximo de ' + MAX_SKILLS_CHARS + ' caracteres para las skills del agente.';
+      b.skills_motivo = 'El texto supera el máximo de ' + lim().MAX_TEXTO + ' caracteres para las skills del agente.';
     } else {
       b.skills_habilitadas = true;
       b.skills_motivo = null;
