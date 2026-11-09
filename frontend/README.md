@@ -64,7 +64,8 @@ Panel/
 │   ├── datos-mock.js    catálogos y artículos simulados
 │   └── app.js           la interfaz
 ├── CONECTAR-BACKEND.md  ← empezar por acá para integrar
-└── MAQUINA-ESTADOS.md
+├── CONTRATO-API.md      contrato del back: estados, transiciones y reglas
+└── openapi.json         referencia generada de endpoints y esquemas
 ```
 
 La regla que hace barata la integración: **la UI no conoce `fetch` ni URLs**. Llama `BACO.api.turno(...)` y recibe la forma que define el backend.

@@ -30,7 +30,8 @@ venv/
 ENV/
 
 
-**/data/
+**/data/*
+!data/articulos.json
 *.tmp
 *.log
 .last_success_*

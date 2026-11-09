@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Annotated, List, Literal, Optional, Tuple, Union
 
-from fastapi import APIRouter, Cookie, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Cookie, Depends, File, Form, Header, HTTPException, Path as PathParam, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
@@ -65,15 +65,15 @@ router = APIRouter(tags=["API REST"])
 
 
 def extraer_session_id(
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> Optional[str]:
     return baco_session or x_session_id
 
 
 def resolver_sesion_y_borrador(
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> Tuple[str, BorradorSesion]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
@@ -86,8 +86,8 @@ def resolver_sesion_y_borrador(
 
 
 def resolver_sesion_y_borrador_para_skills(
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> Tuple[str, BorradorSesion]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
@@ -113,8 +113,8 @@ def _exigir_estado_skill(sid: str, skill: str) -> None:
 
 
 def resolver_sesion_activa(
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> Tuple[str, SesionChat]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
@@ -154,8 +154,8 @@ def resolver_sesion_activa_editable(
 
 
 def resolver_sesion_con_borrador(
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> Tuple[str, BorradorSesion]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
@@ -219,6 +219,11 @@ class ReordenarContenidoAdicionalRequest(BaseModel):
     orden_ids: List[str] = Field(..., description="Lista ordenada con los IDs de los ítems de contenido adicional.")
 
 
+class EliminarContenidoAdicionalResponse(BaseModel):
+    status: Literal["ok"] = Field(..., description="Siempre 'ok' si el ítem se eliminó.")
+    eliminado: str = Field(..., description="ID del ítem eliminado.")
+
+
 class ModificarContenidoAdicionalRequest(BaseModel):
     contenido: str = Field(..., min_length=1, description="Nuevo contenido del ítem.")
     tipo: Optional[str] = Field(default=None, description="Nuevo tipo opcional.")
@@ -233,8 +238,8 @@ async def chat_orquestado(
     http_request: Request,
     request: ChatOrquestadorRequest,
     response: Response,
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
     buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ) -> ChatOrquestadorResponse:
     request.session_id = extraer_session_id(baco_session, x_session_id)
@@ -363,8 +368,8 @@ def revalidar_post_skill(
 )
 def confirmar_bloques(
     body: ConfirmarBloquesRequest,
-    baco_session: Optional[str] = Cookie(default=None),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> ConfirmarBloquesResponse:
     # No se loguea el body para preservar datos sensibles
     sid = body.session_id or extraer_session_id(baco_session, x_session_id)
@@ -529,7 +534,7 @@ def listar_recursos(
     summary="Elimina un recurso multimedia del borrador, aplica fusión condicional y devuelve el estado unificado"
 )
 def eliminar_recurso(
-    recurso_id: str,
+    recurso_id: str = PathParam(..., description="ID del recurso multimedia a eliminar."),
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
@@ -603,9 +608,9 @@ def agregar_recurso_multimedia(
     summary="Sube un archivo y lo agrega a la lista multimedia del borrador (opcionalmente partiendo bloques en una posición)"
 )
 async def subir_recurso(
-    file: UploadFile = File(...),
-    posicion: Optional[int] = Form(default=None),
-    bloques_texto: Optional[List[str]] = Form(default=None),
+    file: UploadFile = File(..., description="Archivo multimedia a subir."),
+    posicion: Optional[int] = Form(default=None, description="Índice del bloque de texto tras el cual va el recurso (-1 para el inicio); si se omite, va al final."),
+    bloques_texto: Optional[List[str]] = Form(default=None, description="Opcional. Bloques de texto que reemplazan a los del borrador (p. ej. al partir un bloque para insertar el recurso)."),
     sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
@@ -749,10 +754,11 @@ def agregar_contenido_adicional(
 
 @router.delete(
     "/chat/contenido-adicional/{item_id}",
+    response_model=EliminarContenidoAdicionalResponse,
     summary="Elimina un ítem de la sección de contenido adicional del borrador"
 )
 def eliminar_contenido_adicional(
-    item_id: str,
+    item_id: str = PathParam(..., description="ID del ítem de contenido adicional a eliminar."),
     sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> dict:
     sid, _ = sesion_activa
@@ -795,7 +801,7 @@ def reordenar_contenido_adicional(
     summary="Modifica el contenido de un ítem de la sección adicional del borrador"
 )
 def modificar_contenido_adicional(
-    item_id: str,
+    item_id: Annotated[str, PathParam(description="ID del ítem de contenido adicional a modificar.")],
     body: ModificarContenidoAdicionalRequest,
     sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> ItemContenidoAdicional:

@@ -82,9 +82,9 @@ class EstadoFlujo(str, Enum):
 
 
 class CoincidenciaArticulo(BaseModel):
-    id: int
-    titulo: str
-    url: Optional[str] = None
+    id: int = Field(..., description="ID del artículo existente que coincide.")
+    titulo: str = Field(..., description="Título del artículo existente que coincide.")
+    url: Optional[str] = Field(default=None, description="URL del artículo existente en la base de conocimiento.")
     score: Optional[float] = Field(
         default=None,
         description="Score de similitud (1.0 exacto, 0.70+ trigramas, 0.90+ embeddings)."
@@ -117,8 +117,8 @@ class SkillDisponibilidad(BaseModel):
 
 
 class SkillsEstado(BaseModel):
-    plantilla: SkillDisponibilidad = Field(default_factory=SkillDisponibilidad)
-    auditor: SkillDisponibilidad = Field(default_factory=SkillDisponibilidad)
+    plantilla: SkillDisponibilidad = Field(default_factory=SkillDisponibilidad, description="Disponibilidad de la skill de plantilla.")
+    auditor: SkillDisponibilidad = Field(default_factory=SkillDisponibilidad, description="Disponibilidad de la skill auditora (validador semántico).")
 
 
 class CategoriaOpcion(BaseModel):
@@ -144,21 +144,21 @@ class ItemContenidoAdicional(BaseModel):
 
 
 class BorradorSesion(BaseModel):
-    modo: Literal["nuevo", "enriquecimiento"]
-    articulo_original_id: Optional[int] = None
-    articulo_original_url: Optional[str] = None
-    titulo: str
+    modo: Literal["nuevo", "enriquecimiento"] = Field(..., description="'nuevo' (artículo desde cero) o 'enriquecimiento' (actualiza o enriquece uno existente).")
+    articulo_original_id: Optional[int] = Field(default=None, description="ID del artículo existente que se enriquece o actualiza (solo en modo enriquecimiento).")
+    articulo_original_url: Optional[str] = Field(default=None, description="URL del artículo existente que se enriquece o actualiza.")
+    titulo: str = Field(..., description="Título del borrador.")
     bloques_texto: List[str] = Field(
         default_factory=list,
         description="Fuente de verdad única del texto: lista ordenada de bloques de texto limpio (sin marcadores).",
     )
-    recursos: Dict[str, Recurso] = Field(default_factory=dict)
+    recursos: Dict[str, Recurso] = Field(default_factory=dict, description="Recursos multimedia del borrador, indexados por ID.")
     ultimo_id_recurso: int = Field(
         default=0,
         description="Contador monotónico por borrador que nunca reutiliza el ID de un recurso eliminado.",
     )
-    texto_base_limpio: str = ""
-    texto_en_edicion: str = ""
+    texto_base_limpio: str = Field(default="", description="Texto base de referencia (en enriquecimiento, el del artículo original).")
+    texto_en_edicion: str = Field(default="", description="Copia del texto limpio en edición; la fuente de verdad es bloques_texto.")
     texto_editor: Optional[str] = Field(
         default=None,
         description="Texto escrito exclusivamente por la persona en el Editor, independiente de la Vista previa.",
@@ -179,15 +179,15 @@ class BorradorSesion(BaseModel):
         default_factory=list,
         description="Sección aparte de contenido adicional para flujos de enriquecer o actualizar, separada de texto_limpio."
     )
-    advertencias_recursos: List[str] = Field(default_factory=list)
+    advertencias_recursos: List[str] = Field(default_factory=list, description="Advertencias sobre los recursos multimedia del borrador.")
     finalizado: bool = Field(default=False, description="Indica si el usuario finalizó el borrador.")
-    tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = None
-    categoria_id: Optional[int] = None
+    tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = Field(default=None, description="Tipo de plantilla del artículo: 'instructivo' o 'soluciones'.")
+    categoria_id: Optional[int] = Field(default=None, description="ID de la categoría elegida (tabla 'categorias').")
     categoria_nombre: Optional[str] = Field(
         default=None,
         description="Nombre legible de la categoría para visualización y resúmenes."
     )
-    tags: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list, description="Etiquetas elegidas para el artículo.")
     metadatos_anteriores: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Metadatos heredados del artículo original: categoria_id, categoria_nombre, tags",
@@ -785,13 +785,13 @@ class ChatOrquestadorRequest(BaseModel):
 
 
 class ChatOrquestadorResponse(BaseModel):
-    session_id: str
-    estado: EstadoFlujo
+    session_id: str = Field(..., description="ID de la sesión FSM (también viaja en la cookie baco_session).")
+    estado: EstadoFlujo = Field(..., description="Estado actual del flujo tras procesar el turno.")
     etapa: EtapaFlujo = Field(
         ...,
         description="Etapa actual del flujo (n de N) y listado de etapas para el stepper."
     )
-    mensaje: str
+    mensaje: str = Field(..., description="Mensaje del asistente para mostrar en el chat.")
     opciones: List[str] = Field(
         default_factory=list,
         description="Botones del chat válidos en el estado actual (no incluye la navegación)."
@@ -840,8 +840,8 @@ class ChatOrquestadorResponse(BaseModel):
         default_factory=list,
         description="Etiquetas disponibles provenientes de la tabla 'tags'."
     )
-    coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list)
-    borrador: Optional[BorradorSesion] = None
+    coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list, description="Artículos existentes similares al título o texto (detección de duplicados).")
+    borrador: Optional[BorradorSesion] = Field(default=None, description="Borrador de la sesión, si ya existe.")
     titulo: Optional[str] = Field(default=None, description="Título limpio y sanitizado actual de la sesión o borrador.")
     texto_limpio: Optional[str] = Field(
         default=None,
@@ -875,7 +875,7 @@ class ChatOrquestadorResponse(BaseModel):
         default=None,
         description="Motivo explicativo si las skills están deshabilitadas.",
     )
-    validacion: Optional[ValidarFormatoResponse] = None
+    validacion: Optional[ValidarFormatoResponse] = Field(default=None, description="Resultado de la última validación de formato (hallazgos bloqueantes y advertencias).")
     aviso_privacidad: Optional[str] = Field(
         default=None,
         description="Notificación puntual ('flash') emitida cuando se detectan y anonimizan datos sensibles en el turno actual."

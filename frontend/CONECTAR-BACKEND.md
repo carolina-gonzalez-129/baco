@@ -50,7 +50,7 @@ API_KEY: 'la-key-que-te-pase',
 
 ## Camino B — Levantarlo en tu máquina
 
-Mucho más trabajo. Necesitás PostgreSQL con **pgvector**, ~2 GB de dependencias de Python, los modelos de embeddings, el `.env` (que no está en el repo) y el `data/articulos.json` (que tampoco).
+Mucho más trabajo. Necesitás PostgreSQL con **pgvector**, ~2 GB de dependencias de Python, los modelos de embeddings, el `.env` (que no está en el repo) y el `data/articulos.json` (incluido en el repo).
 
 Además ahora la base necesita **un usuario de solo lectura**: Caro agregó `baco_readonly` para que las consultas del chat nunca puedan modificar nada. Si lo levantás local, pedile también el script de creación de ese rol.
 

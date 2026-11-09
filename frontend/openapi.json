@@ -1,0 +1,3256 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BACO",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/chat": {
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Endpoint unificado de chat conversacional con el orquestador",
+        "operationId": "chat_orquestado_chat_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatOrquestadorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatOrquestadorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/borrador": {
+      "get": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Obtiene el borrador de sesión validado y finalizado de la sesión activa",
+        "operationId": "obtener_borrador_de_sesion_chat_borrador_get",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BorradorSesion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/aplicar-plantilla": {
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Aplica la skill 'plantillas' para estructurar el borrador en su formato oficial",
+        "operationId": "aplicar_plantilla_chat_aplicar_plantilla_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/auditar-semantica": {
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Aplica la skill 'validador' para auditar la coherencia semántica y estilo del artículo",
+        "operationId": "auditar_semantica_chat_auditar_semantica_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/revalidar-post-skill": {
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Revalida el borrador de sesión tras la aplicación de skills en silencio",
+        "operationId": "revalidar_post_skill_chat_revalidar_post_skill_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidarFormatoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/bloques": {
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Recibe una lista de bloques y deriva texto_limpio con marcadores [[recurso:rec_N]] y recursos por separado",
+        "operationId": "confirmar_bloques_chat_bloques_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmarBloquesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmarBloquesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/recursos": {
+      "get": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Devuelve el estado unificado de bloques_texto y recursos del borrador de la sesión activa",
+        "operationId": "listar_recursos_chat_recursos_get",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstadoRecursosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Sube un archivo y lo agrega a la lista multimedia del borrador (opcionalmente partiendo bloques en una posición)",
+        "operationId": "subir_recurso_chat_recursos_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_subir_recurso_chat_recursos_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstadoRecursosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/recursos/{recurso_id}": {
+      "delete": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Elimina un recurso multimedia del borrador, aplica fusión condicional y devuelve el estado unificado",
+        "operationId": "eliminar_recurso_chat_recursos__recurso_id__delete",
+        "parameters": [
+          {
+            "name": "recurso_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID del recurso multimedia a eliminar.",
+              "title": "Recurso Id"
+            },
+            "description": "ID del recurso multimedia a eliminar."
+          },
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstadoRecursosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/recursos/reordenar": {
+      "put": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Reordena los recursos multimedia en el borrador mediante índices o vector explícito",
+        "operationId": "reordenar_recursos_multimedia_chat_recursos_reordenar_put",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReordenarMultimediaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstadoRecursosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/recursos/agregar": {
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Agrega o inserta un recurso multimedia en el borrador sin restricción de flujo",
+        "operationId": "agregar_recurso_multimedia_chat_recursos_agregar_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgregarRecursoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstadoRecursosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/contenido-adicional": {
+      "get": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Lista los ítems de contenido adicional del borrador de la sesión activa",
+        "operationId": "listar_contenido_adicional_chat_contenido_adicional_get",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemContenidoAdicional"
+                  },
+                  "title": "Response Listar Contenido Adicional Chat Contenido Adicional Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Agrega contenido nuevo a la sección adicional del borrador (flujos de actualizar o enriquecer)",
+        "operationId": "agregar_contenido_adicional_chat_contenido_adicional_post",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgregarContenidoAdicionalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemContenidoAdicional"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/contenido-adicional/{item_id}": {
+      "delete": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Elimina un ítem de la sección de contenido adicional del borrador",
+        "operationId": "eliminar_contenido_adicional_chat_contenido_adicional__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID del ítem de contenido adicional a eliminar.",
+              "title": "Item Id"
+            },
+            "description": "ID del ítem de contenido adicional a eliminar."
+          },
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EliminarContenidoAdicionalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Modifica el contenido de un ítem de la sección adicional del borrador",
+        "operationId": "modificar_contenido_adicional_chat_contenido_adicional__item_id__patch",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID del ítem de contenido adicional a modificar.",
+              "title": "Item Id"
+            },
+            "description": "ID del ítem de contenido adicional a modificar."
+          },
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModificarContenidoAdicionalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemContenidoAdicional"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Modifica el contenido de un ítem de la sección adicional del borrador",
+        "operationId": "modificar_contenido_adicional_chat_contenido_adicional__item_id__put",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID del ítem de contenido adicional a modificar.",
+              "title": "Item Id"
+            },
+            "description": "ID del ítem de contenido adicional a modificar."
+          },
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModificarContenidoAdicionalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemContenidoAdicional"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/contenido-adicional/reordenar": {
+      "put": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Reordena los ítems de la sección de contenido adicional del borrador",
+        "operationId": "reordenar_contenido_adicional_chat_contenido_adicional_reordenar_put",
+        "parameters": [
+          {
+            "name": "X-Session-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session.",
+              "title": "X-Session-Id"
+            },
+            "description": "ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."
+          },
+          {
+            "name": "baco_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID.",
+              "title": "Baco Session"
+            },
+            "description": "ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReordenarContenidoAdicionalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemContenidoAdicional"
+                  },
+                  "title": "Response Reordenar Contenido Adicional Chat Contenido Adicional Reordenar Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/limites": {
+      "get": {
+        "tags": [
+          "API REST"
+        ],
+        "summary": "Límites de config_limites.py que el front usa para validar y mostrar",
+        "operationId": "obtener_limites_limites_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccionPanel": {
+        "properties": {
+          "accion": {
+            "type": "string",
+            "title": "Accion",
+            "description": "Acción del botón principal del panel: 'confirmar_texto', 'enviar_datos' o 'guardar'. 'guardar' no viaja como `accion`: el front envía solo los `campos`."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Texto visible del botón principal del panel."
+          },
+          "campos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Campos",
+            "description": "Campos del panel que el botón envía (subconjunto de `editables`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "accion",
+          "label"
+        ],
+        "title": "AccionPanel"
+      },
+      "AgregarContenidoAdicionalRequest": {
+        "properties": {
+          "contenido": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Contenido",
+            "description": "Contenido a agregar en la sección adicional."
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo",
+            "description": "Tipo de contenido (ej. 'texto', 'nota', 'recurso').",
+            "default": "texto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contenido"
+        ],
+        "title": "AgregarContenidoAdicionalRequest"
+      },
+      "AgregarRecursoRequest": {
+        "properties": {
+          "referencia": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Referencia",
+            "description": "URL (http/https) del recurso"
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre",
+            "description": "Nombre visible; si falta se deriva de la URL"
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "imagen",
+                  "video",
+                  "audio",
+                  "documento"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo",
+            "description": "Opcional. El tipo se detecta de la URL; este valor solo se usa si la detección no es concluyente."
+          },
+          "posicion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posicion",
+            "description": "Posición donde insertar; si falta, va al final"
+          }
+        },
+        "type": "object",
+        "required": [
+          "referencia"
+        ],
+        "title": "AgregarRecursoRequest"
+      },
+      "BloqueItem": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "texto",
+              "recurso"
+            ],
+            "title": "Tipo",
+            "description": "Tipo de bloque: 'texto' o 'recurso' (multimedia)."
+          },
+          "contenido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contenido",
+            "description": "Texto si tipo=='texto', o ID/URL si tipo=='recurso'."
+          },
+          "recurso": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecursoBloqueInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Objeto de recurso si tipo=='recurso'."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tipo"
+        ],
+        "title": "BloqueItem"
+      },
+      "Body_subir_recurso_chat_recursos_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Archivo multimedia a subir."
+          },
+          "posicion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posicion",
+            "description": "Índice del bloque de texto tras el cual va el recurso (-1 para el inicio); si se omite, va al final."
+          },
+          "bloques_texto": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bloques Texto",
+            "description": "Opcional. Bloques de texto que reemplazan a los del borrador (p. ej. al partir un bloque para insertar el recurso)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_subir_recurso_chat_recursos_post"
+      },
+      "BorradorSesion": {
+        "properties": {
+          "modo": {
+            "type": "string",
+            "enum": [
+              "nuevo",
+              "enriquecimiento"
+            ],
+            "title": "Modo",
+            "description": "'nuevo' (artículo desde cero) o 'enriquecimiento' (actualiza o enriquece uno existente)."
+          },
+          "articulo_original_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Articulo Original Id",
+            "description": "ID del artículo existente que se enriquece o actualiza (solo en modo enriquecimiento)."
+          },
+          "articulo_original_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Articulo Original Url",
+            "description": "URL del artículo existente que se enriquece o actualiza."
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo",
+            "description": "Título del borrador."
+          },
+          "bloques_texto": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bloques Texto",
+            "description": "Fuente de verdad única del texto: lista ordenada de bloques de texto limpio (sin marcadores)."
+          },
+          "recursos": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Recurso"
+            },
+            "type": "object",
+            "title": "Recursos",
+            "description": "Recursos multimedia del borrador, indexados por ID."
+          },
+          "ultimo_id_recurso": {
+            "type": "integer",
+            "title": "Ultimo Id Recurso",
+            "description": "Contador monotónico por borrador que nunca reutiliza el ID de un recurso eliminado.",
+            "default": 0
+          },
+          "texto_base_limpio": {
+            "type": "string",
+            "title": "Texto Base Limpio",
+            "description": "Texto base de referencia (en enriquecimiento, el del artículo original).",
+            "default": ""
+          },
+          "texto_en_edicion": {
+            "type": "string",
+            "title": "Texto En Edicion",
+            "description": "Copia del texto limpio en edición; la fuente de verdad es bloques_texto.",
+            "default": ""
+          },
+          "texto_editor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Editor",
+            "description": "Texto escrito exclusivamente por la persona en el Editor, independiente de la Vista previa."
+          },
+          "texto_original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Original",
+            "description": "Texto original previo a la aplicación de una skill, destinado al Editor."
+          },
+          "orden_multimedia": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Orden Multimedia",
+            "description": "Vector numérico que guarda el orden explícito de los contenidos multimedia en el borrador."
+          },
+          "posiciones": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Posiciones",
+            "description": "Vector numérico con las posiciones de bloque de los contenidos multimedia."
+          },
+          "contenido_adicional": {
+            "items": {
+              "$ref": "#/components/schemas/ItemContenidoAdicional"
+            },
+            "type": "array",
+            "title": "Contenido Adicional",
+            "description": "Sección aparte de contenido adicional para flujos de enriquecer o actualizar, separada de texto_limpio."
+          },
+          "advertencias_recursos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Advertencias Recursos",
+            "description": "Advertencias sobre los recursos multimedia del borrador."
+          },
+          "finalizado": {
+            "type": "boolean",
+            "title": "Finalizado",
+            "description": "Indica si el usuario finalizó el borrador.",
+            "default": false
+          },
+          "tipo_plantilla": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "instructivo",
+                  "soluciones"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Plantilla",
+            "description": "Tipo de plantilla del artículo: 'instructivo' o 'soluciones'."
+          },
+          "categoria_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria Id",
+            "description": "ID de la categoría elegida (tabla 'categorias')."
+          },
+          "categoria_nombre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria Nombre",
+            "description": "Nombre legible de la categoría para visualización y resúmenes."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Etiquetas elegidas para el artículo."
+          },
+          "metadatos_anteriores": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadatos Anteriores",
+            "description": "Metadatos heredados del artículo original: categoria_id, categoria_nombre, tags"
+          },
+          "texto_base_revision_final": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Base Revision Final",
+            "description": "Texto base revision final."
+          },
+          "metadatos_heredados_revisados": {
+            "type": "boolean",
+            "title": "Metadatos Heredados Revisados",
+            "description": "Indica si el usuario ya revisó o confirmó los metadatos heredados.",
+            "default": false
+          },
+          "resultado_skill_pendiente": {
+            "type": "boolean",
+            "title": "Resultado Skill Pendiente",
+            "description": "Indica si hay un resultado de skill (plantilla o auditor) visible en la Vista previa.",
+            "default": false
+          },
+          "resultado_skill_desactualizado": {
+            "type": "boolean",
+            "title": "Resultado Skill Desactualizado",
+            "description": "Indica si el resultado de la skill en la Vista previa quedó desactualizado tras editar el texto del Editor.",
+            "default": false
+          },
+          "skill_pendiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Pendiente",
+            "description": "Identifica la skill pendiente en la Vista previa ('plantilla' o 'auditor')."
+          },
+          "skill_aplicada": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Aplicada",
+            "description": "Identifica la última skill aplicada ('plantilla' o 'auditor')."
+          },
+          "texto_limpio": {
+            "type": "string",
+            "title": "Texto Limpio",
+            "description": "Texto limpio derivado de bloques_texto (nunca contiene marcadores ni recursos).",
+            "readOnly": true
+          },
+          "texto_alineado_discourse": {
+            "type": "string",
+            "title": "Texto Alineado Discourse",
+            "description": "Vista compuesta derivada para Discourse: intercala bloques_texto y recursos según (posicion, orden).",
+            "readOnly": true
+          },
+          "skills_habilitadas": {
+            "type": "boolean",
+            "title": "Skills Habilitadas",
+            "description": "Indica si las skills del agente están habilitadas para el borrador.\n\nCalculado estrictamente en el servidor:\nFalse si el largo efectivo supera TEXTO_MAX (6687).",
+            "readOnly": true
+          },
+          "skills_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skills Motivo",
+            "description": "Texto explicativo del motivo por el cual las skills están deshabilitadas.",
+            "readOnly": true
+          },
+          "multimedia": {
+            "items": {
+              "$ref": "#/components/schemas/Recurso"
+            },
+            "type": "array",
+            "title": "Multimedia",
+            "description": "Lista de recursos multimedia ordenados por (posicion, orden).",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "modo",
+          "titulo",
+          "texto_limpio",
+          "texto_alineado_discourse",
+          "skills_habilitadas",
+          "skills_motivo",
+          "multimedia"
+        ],
+        "title": "BorradorSesion"
+      },
+      "BotonOpcion": {
+        "properties": {
+          "accion": {
+            "type": "string",
+            "title": "Accion",
+            "description": "Identificador de la opción del chat ('confirmar_texto', 'continuar', etc.). La navegación ('volver') no viaja acá."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Texto visible del botón ('Volver', 'Confirmar texto', etc.)"
+          },
+          "estilo": {
+            "type": "string",
+            "title": "Estilo",
+            "description": "Clase CSS del botón",
+            "default": "btn-ghost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accion",
+          "label"
+        ],
+        "title": "BotonOpcion"
+      },
+      "CategoriaOpcion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "ID de la categoría en la tabla 'categorias'."
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre",
+            "description": "Nombre de la categoría en la tabla 'categorias'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "title": "CategoriaOpcion"
+      },
+      "ChatOrquestadorRequest": {
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "El ID de sesión es gestionado exclusivamente por el servidor mediante cookie 'baco_session' o cabecera 'X-Session-ID'. Cualquier valor enviado en este campo del cuerpo será ignorado."
+          },
+          "mensaje": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mensaje",
+            "description": "Entrada del usuario (título, texto o respuesta)."
+          },
+          "accion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accion",
+            "description": "Id de una opción u acción de navegación devuelta en el turno anterior (`opciones`/`navegacion`), una opción global ('reiniciar', 'ayuda') o una acción de panel del estado ('confirmar_texto', 'enviar_datos', 'reaplicar'). Cualquier otra se rechaza. Ver contrato.py."
+          },
+          "titulo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titulo",
+            "description": "Título al editar el borrador."
+          },
+          "texto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto",
+            "description": "Cuerpo al cargar texto o editar el borrador."
+          },
+          "texto_editor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Editor",
+            "description": "Texto escrito exclusivamente por la persona en el Editor."
+          },
+          "categoria_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria Id",
+            "description": "Categoría o ID de módulo ERP del borrador."
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Lista de tags del borrador."
+          },
+          "tipo_plantilla": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Plantilla",
+            "description": "Tipo de plantilla ('instructivo' o 'soluciones') del borrador."
+          },
+          "aviso_privacidad_detectado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Privacidad Detectado",
+            "description": "Aviso de privacidad detectado en las entradas del request."
+          }
+        },
+        "type": "object",
+        "title": "ChatOrquestadorRequest"
+      },
+      "ChatOrquestadorResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "ID de la sesión FSM (también viaja en la cookie baco_session)."
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoFlujo",
+            "description": "Estado actual del flujo tras procesar el turno."
+          },
+          "etapa": {
+            "$ref": "#/components/schemas/EtapaFlujo",
+            "description": "Etapa actual del flujo (n de N) y listado de etapas para el stepper."
+          },
+          "mensaje": {
+            "type": "string",
+            "title": "Mensaje",
+            "description": "Mensaje del asistente para mostrar en el chat."
+          },
+          "opciones": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Opciones",
+            "description": "Botones del chat válidos en el estado actual (no incluye la navegación)."
+          },
+          "editables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Editables",
+            "description": "Campos del panel que el back acepta en el estado actual; el resto se descarta con aviso."
+          },
+          "navegacion": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Navegacion",
+            "description": "Acciones de navegación disponibles (p. ej. 'volver'); el front decide cómo mostrarlas."
+          },
+          "navegacion_etiquetas": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Navegacion Etiquetas",
+            "description": "Texto visible de cada acción de `navegacion` (p. ej. {'volver': 'Cambiar el título'}). Si falta, el front usa 'Volver'."
+          },
+          "guardan_campos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guardan Campos",
+            "description": "Acciones del turno (opciones, navegación o panel) que viajan con los campos `editables`: el back guarda lo editado antes de ejecutarlas. Con cualquier otra acción, lo no guardado se descarta. Incluye 'reaplicar' (acción del panel) solo si hay un resultado de skill pendiente."
+          },
+          "botones": {
+            "items": {
+              "$ref": "#/components/schemas/BotonOpcion"
+            },
+            "type": "array",
+            "title": "Botones",
+            "description": "Botones inyectados dinámicamente por el servidor."
+          },
+          "accion_panel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccionPanel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Botón principal del panel en el estado actual (None si el estado no tiene)."
+          },
+          "skills": {
+            "$ref": "#/components/schemas/SkillsEstado",
+            "description": "Disponibilidad de cada skill (plantilla, auditor) en el estado actual, según ESTADOS_SKILL."
+          },
+          "tags_acumulados": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags Acumulados",
+            "description": "Etiquetas acumuladas en la sesión o borrador hasta el momento."
+          },
+          "categorias_disponibles": {
+            "items": {
+              "$ref": "#/components/schemas/CategoriaOpcion"
+            },
+            "type": "array",
+            "title": "Categorias Disponibles",
+            "description": "Categorías elegibles provenientes de la tabla 'categorias' (id y nombre)."
+          },
+          "tags_disponibles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags Disponibles",
+            "description": "Etiquetas disponibles provenientes de la tabla 'tags'."
+          },
+          "coincidencias": {
+            "items": {
+              "$ref": "#/components/schemas/CoincidenciaArticulo"
+            },
+            "type": "array",
+            "title": "Coincidencias",
+            "description": "Artículos existentes similares al título o texto (detección de duplicados)."
+          },
+          "borrador": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BorradorSesion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Borrador de la sesión, si ya existe."
+          },
+          "titulo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titulo",
+            "description": "Título limpio y sanitizado actual de la sesión o borrador."
+          },
+          "texto_limpio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Limpio",
+            "description": "Texto limpio y sanitizado actual de la sesión o borrador."
+          },
+          "texto_original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Original",
+            "description": "Texto original previo a la aplicación de una skill para el Editor, separado del resultado en Vista previa."
+          },
+          "texto_editor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Editor",
+            "description": "Texto actual destinado al Editor, separado del resultado en Vista previa."
+          },
+          "plantilla_pendiente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plantilla Pendiente",
+            "description": "Tipo de plantilla pedido en EDICION_FINAL que espera Confirmar/Cancelar (aún no aplicado)."
+          },
+          "frenar_finalizar": {
+            "type": "boolean",
+            "title": "Frenar Finalizar",
+            "description": "True si el guardado previo a Finalizar dejó un aviso que la persona debe leer (p. ej. plantilla obligatoria): el front no encadena Finalizar.",
+            "default": false
+          },
+          "multimedia_habilitada": {
+            "type": "boolean",
+            "title": "Multimedia Habilitada",
+            "description": "True una vez superada buscar_duplicados (en cualquier rama): el mini panel multimedia está operativo.",
+            "default": false
+          },
+          "skills_habilitadas": {
+            "type": "boolean",
+            "title": "Skills Habilitadas",
+            "description": "Indica si las skills del agente están habilitadas para el borrador actual (calculado en el servidor).",
+            "default": true
+          },
+          "skills_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skills Motivo",
+            "description": "Motivo explicativo si las skills están deshabilitadas."
+          },
+          "validacion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidarFormatoResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resultado de la última validación de formato (hallazgos bloqueantes y advertencias)."
+          },
+          "aviso_privacidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Privacidad",
+            "description": "Notificación puntual ('flash') emitida cuando se detectan y anonimizan datos sensibles en el turno actual."
+          },
+          "aviso_metadatos_heredados": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Metadatos Heredados",
+            "description": "Aviso informativo cuando el borrador heredó metadatos de una versión anterior que aún no fueron confirmados."
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "estado",
+          "etapa",
+          "mensaje"
+        ],
+        "title": "ChatOrquestadorResponse"
+      },
+      "ChatResponse": {
+        "properties": {
+          "response": {
+            "type": "string",
+            "title": "Response",
+            "description": "Respuesta textual devuelta por el agente (artículo formateado en markdown según la plantilla elegida, dictamen de validación o respuesta conversacional)."
+          },
+          "texto_corregido": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Corregido",
+            "description": "Texto completo corregido delimitado por el auditor semántico, o None si no corresponde o no hubo match."
+          }
+        },
+        "type": "object",
+        "required": [
+          "response"
+        ],
+        "title": "ChatResponse",
+        "example": {
+          "response": "## Consulta\nAl intentar emitir una factura electrónica...\n\n## Respuesta\nEl error se produce debido a...\n\n## Pasos a seguir\n1. Ingresar al módulo de Ventas..."
+        }
+      },
+      "CoincidenciaArticulo": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "ID del artículo existente que coincide."
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo",
+            "description": "Título del artículo existente que coincide."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "URL del artículo existente en la base de conocimiento."
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "Score de similitud (1.0 exacto, 0.70+ trigramas, 0.90+ embeddings)."
+          },
+          "texto_original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Original",
+            "description": "Texto original del artículo coincidente."
+          },
+          "tipo_coincidencia": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Coincidencia",
+            "description": "Tipo de coincidencia: 'exacto', 'serie', 'trigrama' o 'semantico'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "titulo"
+        ],
+        "title": "CoincidenciaArticulo"
+      },
+      "ConfirmarBloquesRequest": {
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "ID de sesión."
+          },
+          "bloques": {
+            "items": {
+              "$ref": "#/components/schemas/BloqueItem"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Bloques",
+            "description": "Lista ordenada de bloques."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "bloques"
+        ],
+        "title": "ConfirmarBloquesRequest"
+      },
+      "ConfirmarBloquesResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "ID de la sesión a la que se aplicaron los bloques."
+          },
+          "bloques_texto": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bloques Texto",
+            "description": "Bloques de texto limpio resultantes, en orden."
+          },
+          "texto_limpio": {
+            "type": "string",
+            "title": "Texto Limpio",
+            "description": "Texto limpio completo (bloques unidos), sin marcadores de recurso."
+          },
+          "recursos": {
+            "items": {
+              "$ref": "#/components/schemas/Recurso"
+            },
+            "type": "array",
+            "title": "Recursos",
+            "description": "Recursos multimedia del borrador tras confirmar los bloques."
+          },
+          "aviso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso",
+            "description": "Aviso para mostrar a la persona (p. ej. anonimización de datos o ajustes sobre recursos)."
+          },
+          "borrador": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrador",
+            "description": "Borrador completo de la sesión (BorradorSesion) tras confirmar los bloques."
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "texto_limpio",
+          "recursos"
+        ],
+        "title": "ConfirmarBloquesResponse"
+      },
+      "EliminarContenidoAdicionalResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status",
+            "description": "Siempre 'ok' si el ítem se eliminó."
+          },
+          "eliminado": {
+            "type": "string",
+            "title": "Eliminado",
+            "description": "ID del ítem eliminado."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "eliminado"
+        ],
+        "title": "EliminarContenidoAdicionalResponse"
+      },
+      "EstadoFlujo": {
+        "type": "string",
+        "enum": [
+          "ESPERANDO_TITULO",
+          "DECISION_TITULO",
+          "ESPERANDO_TEXTO",
+          "DECISION_TEXTO",
+          "ESPERANDO_PLANTILLA",
+          "ESPERANDO_METADATOS",
+          "REVISION_TIPO",
+          "REVISION_METADATOS",
+          "EDICION_FINAL",
+          "FINALIZADO",
+          "RECHAZADO"
+        ],
+        "title": "EstadoFlujo"
+      },
+      "EstadoRecursosResponse": {
+        "properties": {
+          "bloques_texto": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bloques Texto",
+            "description": "Bloques de texto limpio del borrador, en orden."
+          },
+          "recursos": {
+            "items": {
+              "$ref": "#/components/schemas/Recurso"
+            },
+            "type": "array",
+            "title": "Recursos",
+            "description": "Recursos multimedia del borrador, en orden."
+          },
+          "texto_limpio": {
+            "type": "string",
+            "title": "Texto Limpio",
+            "description": "Texto limpio completo (bloques unidos), sin marcadores de recurso.",
+            "default": ""
+          },
+          "multimedia_habilitada": {
+            "type": "boolean",
+            "title": "Multimedia Habilitada",
+            "description": "True si el panel multimedia está operativo en el estado actual.",
+            "default": false
+          },
+          "skills_habilitadas": {
+            "type": "boolean",
+            "title": "Skills Habilitadas",
+            "description": "Indica si las skills están habilitadas para el borrador actual.",
+            "default": true
+          },
+          "skills_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skills Motivo",
+            "description": "Motivo por el que las skills están deshabilitadas, si lo están."
+          },
+          "estado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estado",
+            "description": "Estado actual del flujo (EstadoFlujo) de la sesión."
+          },
+          "borrador": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrador",
+            "description": "Borrador completo de la sesión (BorradorSesion) tras la operación."
+          }
+        },
+        "type": "object",
+        "title": "EstadoRecursosResponse"
+      },
+      "EtapaFlujo": {
+        "properties": {
+          "actual": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Actual",
+            "description": "Número de etapa actual (n de N)."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Total",
+            "description": "Cantidad total de etapas del flujo (N).",
+            "default": 5
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre",
+            "description": "Nombre descriptivo de la etapa actual."
+          },
+          "etapas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Etapas",
+            "description": "Lista ordenada de todas las etapas del flujo para el stepper."
+          }
+        },
+        "type": "object",
+        "required": [
+          "actual",
+          "nombre"
+        ],
+        "title": "EtapaFlujo"
+      },
+      "FindingSchema": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "description": "Nivel de severidad: 'Bloqueante', 'Ajuste' o 'Sugerencia'"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Detalle del hallazgo encontrado"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "Campo del artículo afectado (ej: 'texto', 'titulo', 'tags')"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action",
+            "description": "Acción recomendada para resolver el problema"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "Categoría de la regla"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level",
+            "description": "Nivel de severidad normalizado"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet",
+            "description": "Fragmento del texto donde se detectó el problema"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion",
+            "description": "Recomendación adicional"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "description"
+        ],
+        "title": "FindingSchema"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ItemContenidoAdicional": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "ID estable del ítem adicional."
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo",
+            "description": "Tipo de contenido: texto, nota, enlace, etc.",
+            "default": "texto"
+          },
+          "contenido": {
+            "type": "string",
+            "title": "Contenido",
+            "description": "Contenido textual o valor del ítem.",
+            "default": ""
+          },
+          "posicion": {
+            "type": "integer",
+            "title": "Posicion",
+            "description": "Posición u orden del ítem en la lista.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "ItemContenidoAdicional"
+      },
+      "ModificarContenidoAdicionalRequest": {
+        "properties": {
+          "contenido": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Contenido",
+            "description": "Nuevo contenido del ítem."
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo",
+            "description": "Nuevo tipo opcional."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contenido"
+        ],
+        "title": "ModificarContenidoAdicionalRequest"
+      },
+      "Recurso": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Identificador único del recurso (ej: 'rec_1', 'rec_2')"
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "imagen",
+              "video",
+              "audio",
+              "documento",
+              "otro"
+            ],
+            "title": "Tipo",
+            "description": "Tipo de recurso multimedia (imagen, video, audio, documento, otro)"
+          },
+          "nombre": {
+            "type": "string",
+            "title": "Nombre",
+            "description": "Nombre descriptivo o nombre del archivo"
+          },
+          "origen": {
+            "type": "string",
+            "enum": [
+              "existente",
+              "subido"
+            ],
+            "title": "Origen",
+            "description": "Origen del recurso: 'existente' (Discourse/externo) o 'subido' (temporal de sesión)",
+            "default": "existente"
+          },
+          "tamano_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tamano Bytes",
+            "description": "Tamaño del archivo en bytes si está disponible"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type",
+            "description": "Tipo MIME verificado del recurso"
+          },
+          "referencia": {
+            "type": "string",
+            "title": "Referencia",
+            "description": "URL externa del recurso o URL lógica de previsualización (/api/recursos-temp/{session_id}/{archivo})",
+            "default": ""
+          },
+          "posicion": {
+            "type": "integer",
+            "title": "Posicion",
+            "description": "Índice del bloque de texto tras el cual se ubica (-1 si va antes del primer bloque)",
+            "default": 0
+          },
+          "orden": {
+            "type": "integer",
+            "title": "Orden",
+            "description": "Posición ordinal global única y contigua 0..N-1",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tipo",
+          "nombre"
+        ],
+        "title": "Recurso"
+      },
+      "RecursoBloqueInput": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "ID del recurso subido en la sesión."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "URL o enlace del recurso externo."
+          },
+          "nombre": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nombre",
+            "description": "Nombre descriptivo."
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "imagen",
+                  "video",
+                  "audio",
+                  "documento",
+                  "otro"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo",
+            "description": "Tipo sugerido de recurso."
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type",
+            "description": "Tipo MIME del recurso."
+          },
+          "tamano_bytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tamano Bytes",
+            "description": "Tamaño en bytes."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RecursoBloqueInput"
+      },
+      "ReordenarContenidoAdicionalRequest": {
+        "properties": {
+          "orden_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Orden Ids",
+            "description": "Lista ordenada con los IDs de los ítems de contenido adicional."
+          }
+        },
+        "type": "object",
+        "required": [
+          "orden_ids"
+        ],
+        "title": "ReordenarContenidoAdicionalRequest"
+      },
+      "ReordenarMultimediaRequest": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "ID del recurso a mover a un nuevo (posicion, orden)"
+          },
+          "recurso_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurso Id",
+            "description": "Alias de id del recurso a mover a un nuevo (posicion, orden)"
+          },
+          "posicion": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posicion",
+            "description": "Nuevo índice del bloque de texto tras el cual va (-1 para el inicio)"
+          },
+          "orden": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orden",
+            "description": "Nuevo orden del recurso"
+          },
+          "from_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Index",
+            "description": "Índice origen para mover elemento"
+          },
+          "to_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Index",
+            "description": "Índice destino para mover elemento"
+          },
+          "orden_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orden Ids",
+            "description": "Vector de IDs en el nuevo orden"
+          },
+          "orden_indices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orden Indices",
+            "description": "Vector de índices numéricos en el nuevo orden"
+          }
+        },
+        "type": "object",
+        "title": "ReordenarMultimediaRequest"
+      },
+      "ResumenValidacionSchema": {
+        "properties": {
+          "longitud_texto": {
+            "type": "integer",
+            "title": "Longitud Texto",
+            "description": "Cantidad de caracteres del cuerpo del artículo"
+          },
+          "tags_count": {
+            "type": "integer",
+            "title": "Tags Count",
+            "description": "Cantidad de etiquetas asignadas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "longitud_texto",
+          "tags_count"
+        ],
+        "title": "ResumenValidacionSchema"
+      },
+      "SkillDisponibilidad": {
+        "properties": {
+          "habilitada": {
+            "type": "boolean",
+            "title": "Habilitada",
+            "description": "True si la skill se puede ejecutar en el estado actual.",
+            "default": false
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo",
+            "description": "Motivo por el que está deshabilitada (None si está habilitada)."
+          }
+        },
+        "type": "object",
+        "title": "SkillDisponibilidad"
+      },
+      "SkillsEstado": {
+        "properties": {
+          "plantilla": {
+            "$ref": "#/components/schemas/SkillDisponibilidad",
+            "description": "Disponibilidad de la skill de plantilla."
+          },
+          "auditor": {
+            "$ref": "#/components/schemas/SkillDisponibilidad",
+            "description": "Disponibilidad de la skill auditora (validador semántico)."
+          }
+        },
+        "type": "object",
+        "title": "SkillsEstado"
+      },
+      "ValidarFormatoResponse": {
+        "properties": {
+          "valido": {
+            "type": "boolean",
+            "title": "Valido",
+            "description": "True si el artículo no tiene hallazgos bloqueantes y está listo para publicarse."
+          },
+          "fase": {
+            "type": "string",
+            "title": "Fase",
+            "description": "Fase del pipeline de validación ejecutada",
+            "default": "fase_2_texto_y_estructura"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Estado final del artículo: 'Listo' o 'Pendiente'"
+          },
+          "titulo_sanitizado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titulo Sanitizado",
+            "description": "Título sanitizado deterministamente (sin fórmulas redundantes como 'Cómo...')."
+          },
+          "texto_sanitizado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Sanitizado",
+            "description": "Cuerpo sanitizado deterministamente (CUITs reales y correos reemplazados por ejemplos seguros)."
+          },
+          "aviso_privacidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aviso Privacidad",
+            "description": "Aviso de privacidad y protección de datos si se sanitizaron PIIs."
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingSchema"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Listado de observaciones, alertas bloqueantes o sugerencias"
+          },
+          "resumen": {
+            "$ref": "#/components/schemas/ResumenValidacionSchema",
+            "description": "Resumen de métricas de tamaño y etiquetas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valido",
+          "status",
+          "resumen"
+        ],
+        "title": "ValidarFormatoResponse",
+        "example": {
+          "fase": "fase_2_texto_y_estructura",
+          "findings": [],
+          "resumen": {
+            "longitud_texto": 450,
+            "tags_count": 3
+          },
+          "status": "Listo",
+          "texto_sanitizado": "Para configurar los comprobantes con CUIT 20-12345678-9...",
+          "titulo_sanitizado": "Configurar Facturación Electrónica AFIP",
+          "valido": true
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

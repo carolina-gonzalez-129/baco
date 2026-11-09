@@ -6,6 +6,15 @@ Especificación técnica de la API REST del backend de BACO (`baco/server/app/ap
 - **Prefijo base:** `/` (las rutas cuelgan directamente de la raíz, sin prefijo `/api/v1`)
 - **Formato:** JSON, UTF-8
 
+## Cómo leer esta documentación
+
+La API se documenta en dos partes complementarias:
+
+1. **Referencia de endpoints y esquemas (generada desde el código):** rutas, métodos, parámetros, cuerpos de request/response y la descripción de cada campo.
+   - En vivo: `/docs` (Swagger UI) o `/redoc` del servidor (piden HTTP Basic con `DOCS_USER` / `DOCS_PASSWORD`).
+   - Sin levantar el servidor: [`openapi.json`](openapi.json), en esta misma carpeta. Se regenera con `python scripts/exportar_openapi.py` (desde la raíz del repo) cada vez que cambian endpoints o esquemas.
+2. **Este documento:** lo que el esquema no expresa: autenticación, sesión, errores, límites, reglas de negocio y el comportamiento del orquestador por estado (qué botones, campos editables y transiciones hay en cada paso).
+
 ---
 
 ## Autenticación y Sesión
@@ -93,7 +102,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 
 ## Orquestador: estados y `POST /chat`
 
-**Branch:** `corrigiendo-estados` · **Fuente de verdad:** `baco/server/services/orquestador/contrato.py`
+**Fuente de verdad:** `baco/server/services/orquestador/contrato.py` (estados, acciones de panel, acciones que guardan, skills); `opciones` y transiciones las resuelven `handlers.py`, `continuar.py` y `retroceso.py`.
 **Destinatario:** front (`cliente.js`). El front no replica reglas de estado: muestra lo que declara cada respuesta.
 
 ---
@@ -115,45 +124,12 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 
 ### 2. `POST /chat`
 
-#### 2.1. Request (`ChatOrquestadorRequest`)
+#### 2.1. Request y response
 
-| Campo | Tipo | Uso |
-| :--- | :--- | :--- |
-| `mensaje` | `str?` | Texto libre del usuario (título, texto o respuesta). |
-| `accion` | `str?` | Id de una opción/navegación recibida en el turno anterior, global o de panel (§1.2). |
-| `titulo` | `str?` | Si `titulo` ∈ `editables`. |
-| `texto` | `str?` | Si `texto` ∈ `editables`. |
-| `texto_editor` | `str?` | Texto escrito por la persona en el Editor. Si ∈ `editables`. |
-| `categoria_id` | `int?` | Si ∈ `editables`. |
-| `tags` | `list[str]?` | Si ∈ `editables`. |
-| `tipo_plantilla` | `"instructivo" \| "soluciones"?` | Si ∈ `editables`. |
-| `session_id` | — | **Ignorado.** La sesión la gestiona el servidor (cookie `baco_session` o header `X-Session-ID`). |
+Los campos de `ChatOrquestadorRequest` y `ChatOrquestadorResponse` están descritos en la referencia generada (`openapi.json` o `/docs`). Reglas que el esquema no expresa:
 
-#### 2.2. Response (`ChatOrquestadorResponse`)
-
-**Control de flujo** (lo que el front usa para renderizar):
-
-| Campo | Tipo | Significado |
-| :--- | :--- | :--- |
-| `estado` | `EstadoFlujo` | Informativo; el front no deriva botones de acá. |
-| `etapa` | `EtapaFlujo` | Paso n de 5 y etapas para el stepper. |
-| `mensaje` | `str` | Mensaje del asistente. |
-| `opciones` | `list[str]` | Botones del chat válidos ahora. Nunca incluye navegación. |
-| `botones` | `list[BotonOpcion]` | Las mismas `opciones` con etiqueta para mostrar. |
-| `navegacion` | `list[str]` | `volver` o `ver_articulo_final`; el front decide cómo mostrarlas (no necesariamente como botón del chat). |
-| `navegacion_etiquetas` | `dict[str, str]` | Texto visible de cada acción de `navegacion`, calculado por el back según el destino (p. ej. `{"volver": "Cambiar el título"}`). Si falta, el front usa `Volver`. |
-| `editables` | `list[str]` | Campos del panel que el back acepta ahora. |
-| `guardan_campos` | `list[str]` | Acciones del turno (opciones, navegación o panel) que viajan con los `editables`: el back guarda lo editado antes de ejecutarlas. Ver 2.4. |
-| `frenar_finalizar` | `bool` | El guardado previo a Finalizar dejó un aviso: no encadenar `finalizar`. |
-| `multimedia_habilitada` | `bool` | Mini panel multimedia operativo (superado `buscar_duplicados`). |
-| `accion_panel` | `AccionPanel?` | Botón principal del panel: `{accion, label, campos}` o `null`. Ver 2.3. |
-| `skills` | `SkillsEstado` | `{plantilla: {habilitada, motivo}, auditor: {habilitada, motivo}}`. Ver 2.3. |
-| `skills_habilitadas` / `skills_motivo` | `bool` / `str?` | Solo el límite de largo del borrador (`TEXTO_MAX`). Para habilitar cada skill usar `skills`. |
-| `plantilla_pendiente` | `str?` | En `EDICION_FINAL`: tipo pedido que espera `confirmar_plantilla`/`cancelar_plantilla`. |
-
-**Datos del borrador:** `borrador`, `titulo`, `texto_limpio`, `texto_original` (Editor, previo a skill), `texto_editor`, `tags_acumulados`, `categorias_disponibles`, `tags_disponibles`, `coincidencias` (solo `DECISION_TITULO`/`DECISION_TEXTO`), `validacion`.
-
-**Avisos puntuales:** `aviso_privacidad` (flash del turno), `aviso_metadatos_heredados`.
+- **Request.** `accion` es el id de una opción o navegación del turno anterior, una global o una de panel (§1.2). `titulo`, `texto`, `texto_editor`, `categoria_id`, `tags` y `tipo_plantilla` solo se tienen en cuenta si figuran en `editables`. `session_id` se ignora: la sesión la gestiona el servidor (cookie `baco_session` o header `X-Session-ID`).
+- **Response.** El front renderiza a partir de `opciones`/`botones`, `navegacion`/`navegacion_etiquetas`, `editables`, `guardan_campos` (§2.4), `accion_panel` y `skills` (§2.3); `estado` es informativo y no se usa para deducir botones. `coincidencias` solo viene con datos en `DECISION_TITULO`/`DECISION_TEXTO`. `skills_habilitadas`/`skills_motivo` reflejan solo el límite de largo (`TEXTO_MAX`): para habilitar cada skill usar `skills`.
 
 #### 2.3. `accion_panel` y `skills`
 
@@ -224,7 +200,33 @@ Fuente única: `contrato.ACCIONES_QUE_GUARDAN`. La respuesta trae la intersecci�
 - En `ESPERANDO_METADATOS` las opciones de categoría no son ids fijos: el front envía el nombre tal cual lo recibió.
 - `ver_articulo_final` reemite el mensaje de artículo finalizado; no muta nada.
 - Al pasar a `RECHAZADO` el servidor destruye la cookie de sesión.
-- `descartar` en `DECISION_TITULO` con texto de al menos `TEXTO_MIN` caracteres salta `ESPERANDO_TEXTO` y sigue por el tronco (`ESPERANDO_PLANTILLA`), previa búsqueda de duplicados por texto; con menos, pide el texto.
+
+#### 3.1. Transiciones
+
+Estado siguiente según la acción. Las acciones que no figuran (p. ej. `aplicar_plantilla`, `auditar`, `editar`, `reaplicar`, `rechazar`, `cancelar_rechazo`, `confirmar_plantilla`, guardar) dejan el flujo en el mismo estado. `reiniciar` (global) descarta la sesión y empieza otra en `ESPERANDO_TITULO`.
+
+| Estado | Acción | Siguiente estado |
+| :--- | :--- | :--- |
+| `ESPERANDO_TITULO` | título (`mensaje` o `titulo`) | `DECISION_TITULO` si hay coincidencias por título; si no, `ESPERANDO_TEXTO` |
+| `DECISION_TITULO` | `enriquecer` / `actualizar` | `ESPERANDO_TEXTO` (modo enriquecimiento) |
+| | `descartar` | con texto de al menos `TEXTO_MIN`: búsqueda por texto → `DECISION_TEXTO` si hay coincidencias, si no `ESPERANDO_PLANTILLA`; sin texto: `ESPERANDO_TEXTO` |
+| | `volver` | `ESPERANDO_TITULO` |
+| `ESPERANDO_TEXTO` | `confirmar_texto` | nuevo: `DECISION_TEXTO` si hay coincidencias por texto, si no `ESPERANDO_PLANTILLA` · enriquecimiento: `ESPERANDO_PLANTILLA` |
+| | `descartar` (enriquecimiento) | con texto propio: `ESPERANDO_PLANTILLA`; sin texto: sigue en `ESPERANDO_TEXTO` en modo nuevo |
+| | `volver` | nuevo: `ESPERANDO_TITULO` · enriquecimiento: `DECISION_TEXTO` si la coincidencia vino por texto, si no `DECISION_TITULO` |
+| `DECISION_TEXTO` | `enriquecer` | `ESPERANDO_TEXTO` (modo enriquecimiento) |
+| | `continuar` | `ESPERANDO_PLANTILLA` |
+| | `volver` | `ESPERANDO_TEXTO` |
+| `ESPERANDO_PLANTILLA` | `instructivo` / `soluciones` | `REVISION_TIPO` |
+| | `volver` | `ESPERANDO_TEXTO` |
+| `REVISION_TIPO` | `continuar` | `ESPERANDO_METADATOS` |
+| | `confirmar_rechazo` | `RECHAZADO` |
+| `ESPERANDO_METADATOS` | `enviar_datos` | `REVISION_METADATOS` si quedan categoría y al menos 2 etiquetas; si no, sigue en `ESPERANDO_METADATOS` |
+| | `volver` (no disponible si ya se aplicó la plantilla) | `REVISION_TIPO` si hay tipo de plantilla; si no, `ESPERANDO_PLANTILLA` |
+| `REVISION_METADATOS` | `continuar` | `EDICION_FINAL` |
+| | `confirmar_rechazo` | `RECHAZADO` |
+| `EDICION_FINAL` | `finalizar` | `FINALIZADO` si se cumplen los obligatorios; si no, sigue en `EDICION_FINAL` con aviso |
+| `FINALIZADO`, `RECHAZADO` | — | Terminales |
 
 ---
 
@@ -252,108 +254,27 @@ Fuente única: `contrato.ACCIONES_QUE_GUARDAN`. La respuesta trae la intersecci�
 
 ---
 
-### 6. Fuera del contrato
-
-Estos ids **no son parte del contrato**; si llegan como `accion`, se rechazan con `MSG_OPCION_NO_DISPONIBLE`. El front no debe enviarlos.
-
-| Id | Situación en el back |
-| :--- | :--- |
-| `sanitizar` | Rama en `handlers.py` inalcanzable. |
-| `copiar_borrador` | Sin implementación. |
-| `aceptar`, `aceptar_metadatos`, `rechazar_metadatos` | Reemplazados por la asignación directa + `enviar_datos`. |
-| `descartar` en `DECISION_TEXTO` | Rama inalcanzable (se ofrece `continuar`). |
-| `continuar` en `ESPERANDO_TEXTO` | Rama inalcanzable (se ofrece `confirmar_texto`/`descartar`). |
-| `volver` en `EDICION_FINAL` o tras una skill | Excluido por diseño. |
-| `SUBSANANDO_BORRADOR`, `REVISION_BORRADOR`, `CONFORMIDAD_USUARIO`, `APROBADO` | Estados eliminados. |
+Si llega como `accion` un id que no está en el contrato (no vino en el turno anterior, no es global ni de panel), se rechaza con `MSG_OPCION_NO_DISPONIBLE`.
 
 ---
 
 ## Gestión de Bloques y Recursos Multimedia
 
-### `POST /chat/bloques`
-Recibe una secuencia de bloques ordenados de texto y recursos, deriva el texto limpio y asocia las posiciones de los recursos.
+Rutas, parámetros y esquemas en la referencia generada (`openapi.json` o `/docs`). Reglas de negocio:
 
-- **Request (`ConfirmarBloquesRequest`):**
-  ```json
-  {
-    "session_id": null,
-    "bloques": [
-      { "tipo": "texto", "contenido": "Paso 1: Abrir la configuración" },
-      { "tipo": "recurso", "recurso": { "id": "rec_1" } },
-      { "tipo": "texto", "contenido": "Paso 2: Guardar los cambios" }
-    ]
-  }
-  ```
-  > `session_id` en el body tiene prioridad sobre cookie/cabecera en este endpoint (ver *Identificador de sesión FSM*). Enviarlo en `null`.
-- **Response (`ConfirmarBloquesResponse`):**
-  ```json
-  {
-    "session_id": "...",
-    "bloques_texto": ["Paso 1: Abrir la configuración", "Paso 2: Guardar los cambios"],
-    "texto_limpio": "Paso 1: Abrir la configuración\n\nPaso 2: Guardar los cambios",
-    "recursos": [
-      {
-        "id": "rec_1",
-        "tipo": "imagen",
-        "nombre": "captura.png",
-        "origen": "subido",
-        "referencia": "/api/recursos-temp/.../captura.png",
-        "posicion": 0,
-        "orden": 0
-      }
-    ],
-    "aviso": null,
-    "borrador": {}
-  }
-  ```
-  > `borrador` trae el `BorradorSesion` completo; acá se abrevia como `{}`.
-
-### `GET /chat/recursos`
-Devuelve el estado consolidado de `bloques_texto` y `recursos` multimedia (`EstadoRecursosResponse`). Requiere haber superado la etapa de duplicados.
-
-### `POST /chat/recursos` (Subida de archivo)
-Carga un archivo temporal en la sesión (`multipart/form-data`).
-- **Form Data:**
-  - `file`: Archivo binario (máx. 10 MB, no SVG).
-  - `posicion` (opcional): Índice del bloque de texto tras el cual se inserta (-1 para el inicio).
-  - `bloques_texto` (opcional): Lista JSON de cadenas con la partición actualizada de bloques de texto.
-- **Response:** `EstadoRecursosResponse`
-
-### `POST /chat/recursos/agregar`
-Inserta un recurso por URL externa (`http://` o `https://`).
-- **Request (`AgregarRecursoRequest`):**
-  ```json
-  {
-    "referencia": "https://servidor.com/imagen.png",
-    "nombre": "Diagrama de flujo",
-    "tipo": "imagen",
-    "posicion": 1
-  }
-  ```
-- **Response:** `EstadoRecursosResponse`
-
-### `DELETE /chat/recursos/{recurso_id}`
-Elimina un recurso multimedia del borrador. Si dos bloques de texto quedan contiguos sin ningún otro recurso intermedio, aplica **fusión condicional** de bloques.
-- **Response:** `EstadoRecursosResponse`
-
-### `PUT /chat/recursos/reordenar`
-Reordena los recursos multimedia en el borrador mediante `from_index`/`to_index`, lista de `orden_ids` o lista de `orden_indices`.
-- **Response:** `EstadoRecursosResponse`
-
-### `GET /api/recursos-temp/{session_id}/{archivo}`
-Sirve la previsualización del archivo temporal para el navegador (no requiere cabecera de autenticación).
+- **`POST /chat/bloques`:** recibe la secuencia ordenada de bloques de texto y recursos, deriva el texto limpio y asigna las posiciones de los recursos. El `session_id` del body **tiene prioridad** sobre cookie/cabecera (ver *Identificador de sesión FSM*): enviarlo en `null`.
+- **`GET /chat/recursos` y demás endpoints de recursos:** requieren haber superado la etapa de duplicados (si no, `409`).
+- **`POST /chat/recursos`** (`multipart/form-data`): archivo de hasta `RECURSO_MAX_BYTES`, sin SVG. `posicion` es el índice del bloque de texto tras el cual se inserta (`-1` para el inicio); `bloques_texto`, si viene, reemplaza la partición de bloques (p. ej. al partir un bloque para insertar el recurso).
+- **`POST /chat/recursos/agregar`:** solo URLs `http://` o `https://`.
+- **`DELETE /chat/recursos/{recurso_id}`:** si dos bloques de texto quedan contiguos sin recurso intermedio, se fusionan (**fusión condicional**).
+- **`PUT /chat/recursos/reordenar`:** acepta `from_index`/`to_index`, `orden_ids` u `orden_indices`.
+- **`GET /api/recursos-temp/{session_id}/{archivo}`:** sirve la previsualización del archivo temporal al navegador. No requiere autenticación y **no figura en la referencia generada** (está excluido del esquema OpenAPI).
 
 ---
 
 ## Contenido Adicional (Flujos Actualizar / Enriquecer)
 
-Endpoints para gestionar ítems de contenido adicional independientes del cuerpo principal:
-
-- `GET /chat/contenido-adicional` → `ItemContenidoAdicional[]`
-- `POST /chat/contenido-adicional` → Body: `{ "contenido": "...", "tipo": "texto" }`
-- `DELETE /chat/contenido-adicional/{item_id}` → `{ "status": "ok", "eliminado": "..." }`
-- `PUT /chat/contenido-adicional/reordenar` → Body: `{ "orden_ids": ["item_2", "item_1"] }`
-- `PUT /chat/contenido-adicional/{item_id}` o `PATCH` → Body: `{ "contenido": "...", "tipo": "texto" }`
+Ítems de contenido adicional, independientes del cuerpo principal del borrador. Endpoints (`GET`, `POST`, `DELETE`, `PUT .../reordenar`, `PUT`/`PATCH .../{item_id}`) y esquemas en la referencia generada.
 
 **Restricciones de `POST /chat/contenido-adicional`:**
 - `409 Conflict` si la sesión está en `FINALIZADO` o `RECHAZADO`.

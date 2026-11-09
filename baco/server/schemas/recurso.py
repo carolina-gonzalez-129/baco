@@ -150,7 +150,7 @@ class RecursoBloqueInput(BaseModel):
 class BloqueItem(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True, extra="forbid")
 
-    tipo: Literal["texto", "recurso"]
+    tipo: Literal["texto", "recurso"] = Field(..., description="Tipo de bloque: 'texto' o 'recurso' (multimedia).")
     contenido: Optional[str] = Field(default=None, description="Texto si tipo=='texto', o ID/URL si tipo=='recurso'.")
     recurso: Optional[RecursoBloqueInput] = Field(default=None, description="Objeto de recurso si tipo=='recurso'.")
 
@@ -219,22 +219,22 @@ class ConfirmarBloquesRequest(BaseModel):
 
 
 class ConfirmarBloquesResponse(BaseModel):
-    session_id: str
-    bloques_texto: List[str] = Field(default_factory=list)
-    texto_limpio: str
-    recursos: List[Recurso]
-    aviso: Optional[str] = None
-    borrador: Optional[Any] = None
+    session_id: str = Field(..., description="ID de la sesión a la que se aplicaron los bloques.")
+    bloques_texto: List[str] = Field(default_factory=list, description="Bloques de texto limpio resultantes, en orden.")
+    texto_limpio: str = Field(..., description="Texto limpio completo (bloques unidos), sin marcadores de recurso.")
+    recursos: List[Recurso] = Field(..., description="Recursos multimedia del borrador tras confirmar los bloques.")
+    aviso: Optional[str] = Field(default=None, description="Aviso para mostrar a la persona (p. ej. anonimización de datos o ajustes sobre recursos).")
+    borrador: Optional[Any] = Field(default=None, description="Borrador completo de la sesión (BorradorSesion) tras confirmar los bloques.")
 
 
 class EstadoRecursosResponse(BaseModel):
-    bloques_texto: List[str] = Field(default_factory=list)
-    recursos: List[Recurso] = Field(default_factory=list)
-    texto_limpio: str = ""
-    multimedia_habilitada: bool = False
-    skills_habilitadas: bool = True
-    skills_motivo: Optional[str] = None
-    estado: Optional[str] = None
-    borrador: Optional[Any] = None
+    bloques_texto: List[str] = Field(default_factory=list, description="Bloques de texto limpio del borrador, en orden.")
+    recursos: List[Recurso] = Field(default_factory=list, description="Recursos multimedia del borrador, en orden.")
+    texto_limpio: str = Field(default="", description="Texto limpio completo (bloques unidos), sin marcadores de recurso.")
+    multimedia_habilitada: bool = Field(default=False, description="True si el panel multimedia está operativo en el estado actual.")
+    skills_habilitadas: bool = Field(default=True, description="Indica si las skills están habilitadas para el borrador actual.")
+    skills_motivo: Optional[str] = Field(default=None, description="Motivo por el que las skills están deshabilitadas, si lo están.")
+    estado: Optional[str] = Field(default=None, description="Estado actual del flujo (EstadoFlujo) de la sesión.")
+    borrador: Optional[Any] = Field(default=None, description="Borrador completo de la sesión (BorradorSesion) tras la operación.")
 
 

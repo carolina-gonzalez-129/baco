@@ -107,9 +107,9 @@ Panel/
 │   └── app.js           la interfaz
 ├── INTEGRACION.md       esto
 ├── CONECTAR-BACKEND.md  el paso a paso de la conexión
-├── MAQUINA-ESTADOS.md   los estados y sus transiciones
-└── CONTRATO-API.md      contrato vigente del back: estados, opciones,
-                         navegación, editables y endpoints REST
+├── CONTRATO-API.md      contrato vigente del back: estados, transiciones,
+│                        opciones, navegación, editables y reglas REST
+└── openapi.json         referencia generada de endpoints y esquemas
 ```
 
 Si algo del contrato cambia, el único archivo a tocar es **`js/api-http.js`**. La interfaz no conoce `fetch` ni URLs: llama `BACO.api.turno(...)` y listo.
