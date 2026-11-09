@@ -11,13 +11,10 @@ TEXTO_VALIDO = (
 )
 
 
-@pytest.mark.xfail(
-    reason="Regla de negocio: un artículo no puede publicarse con título vacío. El validador actual no audita el campo título.",
-    strict=True
-)
 def test_titulo_vacio_debe_generar_hallazgo_bloqueante():
     """Regla: Todo artículo debe tener un título con contenido significativo; un título vacío es inválido."""
-    articulo = ArticuloSchema(
+    # model_construct: se prueba el validador, no la barrera de Pydantic.
+    articulo = ArticuloSchema.model_construct(
         id=1,
         titulo="",
         categoria_id=5,
@@ -33,13 +30,10 @@ def test_titulo_vacio_debe_generar_hallazgo_bloqueante():
     ), "Debe registrarse un hallazgo bloqueante sobre el campo título"
 
 
-@pytest.mark.xfail(
-    reason="Regla de negocio: un título compuesto solo por espacios en blanco no es válido.",
-    strict=True
-)
 def test_titulo_solo_espacios_debe_generar_hallazgo_bloqueante():
     """Regla: Un título compuesto exclusivamente de espacios o tabulaciones debe rechazarse."""
-    articulo = ArticuloSchema(
+    # model_construct: se prueba el validador, no la barrera de Pydantic.
+    articulo = ArticuloSchema.model_construct(
         id=2,
         titulo="     \t  \n ",
         categoria_id=5,
@@ -55,10 +49,6 @@ def test_titulo_solo_espacios_debe_generar_hallazgo_bloqueante():
     )
 
 
-@pytest.mark.xfail(
-    reason="Regla editorial Finnegans: los títulos no deben llevar punto final.",
-    strict=True
-)
 def test_titulo_que_termina_en_punto_debe_requerir_ajuste_editorial():
     """Regla de estilo: Los títulos de la Base de Conocimiento no deben terminar con punto."""
     articulo = ArticuloSchema(
@@ -91,16 +81,13 @@ def test_titulo_con_acentos_mayusculas_y_emojis_es_admitido():
     assert res["titulo"] == "¿Cómo CONFIGURAR Liquidación de Sueldos & Jornales (AFIP)? 🚀"
 
 
-@pytest.mark.xfail(
-    reason="Regla de negocio: títulos con más de 255 caracteres exceden el límite admisible.",
-    strict=True
-)
 def test_titulo_excesivamente_largo_debe_generar_hallazgo():
     """Regla: Títulos que exceden los 255 caracteres deben ser señalados para síntesis editorial."""
     titulo_largo = "Configuración de " + ("parámetros adicionales y comprobantes fiscales de " * 8)
     assert len(titulo_largo) > 255
 
-    articulo = ArticuloSchema(
+    # model_construct: se prueba el validador, no la barrera de Pydantic.
+    articulo = ArticuloSchema.model_construct(
         id=5,
         titulo=titulo_largo,
         categoria_id=5,

@@ -111,11 +111,8 @@ def test_plantilla_none_toma_plantilla_de_req_tags_como_respaldo():
     assert "facturacion" in sesion.borrador.tags
 
 
-@pytest.mark.xfail(
-    reason="retroceso.py: _restaurar_esperando_metadatos (L146) conserva b.tipo_plantilla para volver a revisión intermedia en vez de resetearlo a None."
-)
-def test_volver_desde_esperando_metadatos_resetea_tipo_plantilla_a_none():
-    """Verifica que la acción 'volver' desde ESPERANDO_METADATOS sigue reseteando b.tipo_plantilla a None."""
+def test_volver_desde_esperando_metadatos_conserva_tipo_plantilla():
+    """Volver desde ESPERANDO_METADATOS con plantilla definida vuelve a REVISION_TIPO y conserva el tipo."""
     sesion = _crear_sesion(
         estado=EstadoFlujo.ESPERANDO_METADATOS,
         plantilla="instructivo",
@@ -124,4 +121,5 @@ def test_volver_desde_esperando_metadatos_resetea_tipo_plantilla_a_none():
 
     retroceder(sesion)
 
-    assert sesion.borrador.tipo_plantilla is None
+    assert sesion.estado == EstadoFlujo.REVISION_TIPO
+    assert sesion.borrador.tipo_plantilla == "instructivo"

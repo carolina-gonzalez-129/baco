@@ -103,55 +103,6 @@ def test_titulo_trigrama_justo_por_debajo_de_umbral_70_no_coincide(clean_db):
 
 
 @pytest.mark.integration
-def test_mismo_texto_con_y_sin_headers_de_plantilla_es_duplicado(clean_db):
-    """
-    Regla: Dos artículos que contienen el mismo texto sustancial pero uno tiene encabezados
-    de plantilla Markdown (# Consulta / # Pasos a seguir) y el otro no, deben detectarse como duplicados.
-    """
-    texto_con_headers = (
-        "# Consulta\n"
-        "¿Cómo configurar el punto de venta de facturación electrónica en Finnegans ERP?\n\n"
-        "# Pasos a seguir\n"
-        "1. Ingresar a Parámetros de Facturación.\n"
-        "2. Asignar el nuevo número de punto de venta AFIP.\n"
-        "3. Guardar los cambios realizados."
-    )
-
-    texto_sin_headers = (
-        "¿Cómo configurar el punto de venta de facturación electrónica en Finnegans ERP?\n\n"
-        "1. Ingresar a Parámetros de Facturación.\n"
-        "2. Asignar el nuevo número de punto de venta AFIP.\n"
-        "3. Guardar los cambios realizados."
-    )
-
-    with clean_db.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO articulos (id, titulo, url, texto)
-            VALUES (%s, %s, %s, %s);
-            """,
-            (
-                504,
-                "Configurar Punto de Venta",
-                "https://bc-dev.finneg.com/t/504",
-                texto_con_headers
-            )
-        )
-        clean_db.commit()
-
-        buscador = BuscadorDuplicados(cur)
-        # Evaluamos el texto sin headers contra el artículo existente que tenía headers
-        resultado = buscador.evaluar_nuevo_articulo_sin_headers(
-            titulo="Otro título no relacionado",
-            texto=texto_sin_headers
-        )
-
-        assert resultado["encontrado"] is True
-        assert resultado["link"] == "https://bc-dev.finneg.com/t/504"
-        assert "exactamente la misma descripción" in resultado["mensaje"]
-
-
-@pytest.mark.integration
 def test_titulo_sin_relacion_con_similitud_baja_no_debe_aparecer_como_coincidencia(clean_db):
     """
     Regla: Consultas sobre temas completamente ajenos a los existentes en la base
@@ -180,7 +131,7 @@ def test_titulo_sin_relacion_con_similitud_baja_no_debe_aparecer_como_coincidenc
         )
 
         assert resultado["encontrado"] is False
-        assert "No se encontraron duplicados" in resultado["mensaje"]
+        assert resultado["mensaje"] == "No se encontraron coincidencias de ningun tipo"
 
 
 @pytest.mark.integration

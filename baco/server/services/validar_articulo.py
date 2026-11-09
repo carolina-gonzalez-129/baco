@@ -603,6 +603,30 @@ def validar_por_tipo(articulo: ArticuloSchema, titulo_original: str, longitud_te
         ))
 
 
+    # Título: obligatorio, largo según config_limites y sin punto final (criterio editorial).
+    # Se mide sobre el título ingresado (strip) para no penalizar el recorte de fórmulas redundantes.
+    if not titulo_limpio or len(titulo_limpio) < TITULO_MIN:
+        findings.append(_finding(
+            severity="Bloqueante",
+            field="titulo",
+            description=f"El título es obligatorio y debe tener al menos {TITULO_MIN} caracteres.",
+            action=f"Definir un título descriptivo de al menos {TITULO_MIN} caracteres."
+        ))
+    elif len(titulo_limpio) > TITULO_MAX:
+        findings.append(_finding(
+            severity="Bloqueante",
+            field="titulo",
+            description=f"El título supera la longitud máxima permitida ({len(titulo_limpio)} caracteres, máximo {TITULO_MAX}).",
+            action=f"Sintetizar el título para no superar los {TITULO_MAX} caracteres."
+        ))
+    if titulo_limpio.endswith("."):
+        findings.append(_finding(
+            severity="Requiere ajuste",
+            field="titulo",
+            description="El título no debe terminar con punto final.",
+            action="Eliminar el punto final del título."
+        ))
+
     # largo minimo y maximo segun config_limites y que no queden marcadores tipo
     if longitud_texto < TEXTO_MIN:
         findings.append(_finding(

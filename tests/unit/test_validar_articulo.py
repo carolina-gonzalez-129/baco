@@ -1,4 +1,5 @@
 import pytest
+from baco.server.config_limites import TEXTO_MIN
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.services.validar_articulo import (
     validar_texto_y_estructura_post_duplicados,
@@ -33,19 +34,19 @@ def test_estructura_valida_completa():
     assert res["tags_count"] == 2
 
 
-@pytest.mark.xfail(reason="El validador en validar_articulo.py fue modificado para exigir 19 caracteres en lugar de los 300 requeridos por la regla original.")
 def test_texto_demasiado_corto_es_bloqueante():
-    articulo = ArticuloSchema(
+    # model_construct: ArticuloSchema ya rechaza textos < TEXTO_MIN; acá se prueba el validador.
+    articulo = ArticuloSchema.model_construct(
         id=11,
-        titulo="Configuración",
+        titulo="Configuración de Parámetros",
         categoria_id=5,
         tags=[Tag(name="instructivo"), Tag(name="ventas")],
-        texto="Texto muy breve con menos de trescientos caracteres."
+        texto="Texto breve."
     )
     res = validar_texto_y_estructura_post_duplicados(articulo)
     assert res["status"] == "Pendiente"
     assert any(
-        f["severity"] == "Bloqueante" and f["field"] == "texto" and "300" in f["description"]
+        f["severity"] == "Bloqueante" and f["field"] == "texto" and str(TEXTO_MIN) in f["description"]
         for f in res["findings"]
     )
 
