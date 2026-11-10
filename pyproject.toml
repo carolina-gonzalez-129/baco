@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=69.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,26 +9,34 @@ description = "BACO - Asistente de Base de Conocimiento Finnegans"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "strands-agents>=1.0.0",
-    "strands-agents-tools>=0.2.0",
-    "requests",
+    "strands-agents[openai]>=1.0.0",
     "python-dotenv",
     "fastapi",
     "uvicorn",
     "httpx",
     "pydantic",
-    "psycopg>=3.1.0",
+    "python-multipart",
+    "psycopg[binary]>=3.1.0",
     "psycopg-pool>=3.2.0",
     "onnxruntime>=1.18.0",
     "beautifulsoup4",
-    "sentence-transformers>=3.0.0",
-    "pytest>=8.0.0",
+    "sentence-transformers[onnx]>=3.0.0",
     "tqdm",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "respx>=0.23.0",
+    "testcontainers[postgres]>=4.0.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["baco*"]
+
+[tool.setuptools.package-data]
+baco = ["skills/**/*.md", "server/db/*.sql"]
 
 [tool.pytest.ini_options]
 markers = [

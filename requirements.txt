@@ -1,20 +1,2 @@
-strands-agents>=1.0.0
-strands-agents-tools>=0.2.0
-
-requests
-python-dotenv
-
-
-fastapi
-uvicorn
-httpx
-pydantic
-psycopg
-psycopg-pool
-onnxruntime
-beautifulsoup4
-sentence-transformers>=3.0.0
-pytest>=8.0.0
-respx>=0.23.0
-testcontainers[postgres]>=4.0.0
-tqdm
+# Fuente de verdad: pyproject.toml. Instala baco en modo editable + dependencias de test.
+-e .[test]
