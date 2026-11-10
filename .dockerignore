@@ -1,0 +1,40 @@
+# Secretos: la imagen nunca lleva .env
+.env
+.env.*
+
+# Entorno virtual, Git e IDE
+.venv/
+.git/
+.gitignore
+.gitattributes
+.idea/
+*.iml
+
+# Cachés, builds, tests y cobertura
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+resultadosuwu-tests-nuevo.txt
+tests/
+
+# Datos de runtime (solo entra data/articulos.json)
+data/*
+!data/articulos.json
+
+# Logs y scripts de Windows / desarrollo
+logs/
+.last_success_*
+scripts/
+
+# Archivos de Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

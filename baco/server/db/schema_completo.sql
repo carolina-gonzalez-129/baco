@@ -179,6 +179,8 @@ DO $$
                 RAISE EXCEPTION 'Para crear baco_readonly se requiere definir la variable de entorno DB_RO_PASSWORD';
             END IF;
             EXECUTE format('CREATE ROLE baco_readonly WITH LOGIN PASSWORD %L', ro_pwd);
+        ELSIF ro_pwd IS NOT NULL THEN
+            EXECUTE format('ALTER ROLE baco_readonly WITH LOGIN PASSWORD %L', ro_pwd);
         END IF;
 
         ALTER ROLE baco_readonly SET default_transaction_read_only = on;

@@ -1,0 +1,84 @@
+# Baco: docker compose up --build
+#
+# Requiere un archivo .env junto a este docker-compose.yml (basado en .env.example).
+# Variables mínimas: API_KEY_SERVIDOR, DOCS_USER, DOCS_PASSWORD, DB_PASSWORD,
+# DB_RO_USER=baco_readonly, DB_RO_PASSWORD, OPEN_ROUTER_API_KEY.
+#
+# En cada "up", el servicio rebuild aplica el schema, carga data/articulos.json
+# y calcula solo los embeddings faltantes (la primera vez calcula todos y tarda).
+#
+# Operaciones manuales (no corren solas):
+#   Reconstruir la base desde cero:
+#     docker compose run --rm rebuild python -m baco.server.db.reconstruir_db --reset --forzar --con-embeddings
+#   Descargar artículos desde Discourse y cargarlos (requiere DISCOURSE_URL, DISCOURSE_API_KEY, DISCOURSE_API_USERNAME):
+#     docker compose run --rm rebuild python -m baco.server.db.reconstruir_db --desde-api --con-embeddings
+#
+# El front (http://localhost:5173) usa BASE_URL y API_KEY de frontend/js/config.js:
+# API_KEY debe coincidir con API_KEY_SERVIDOR del .env.
+
+name: baco
+
+x-baco: &baco
+  build: .
+  image: baco:latest
+  env_file:
+    - .env
+  environment:
+    DB_HOST: db
+    DB_PORT: "5432"
+    DB_USER: postgres
+    DATA_DIR: /app/data
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      # El schema fija OWNER TO postgres: el superusuario tiene que ser postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Definir DB_PASSWORD en .env}
+      POSTGRES_DB: ${DB_NAME:-baco_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # -h 127.0.0.1: durante el initdb el server temporal no escucha por TCP
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  rebuild:
+    <<: *baco
+    command: ["python", "-m", "baco.server.db.reconstruir_db", "--cargar-json", "--con-embeddings"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    <<: *baco
+    command: ["uvicorn", "baco.server.app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      rebuild:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    image: baco:latest
+    command: ["python", "-m", "http.server", "5173", "--directory", "/app/frontend"]
+    volumes:
+      # config.js se lee del repo: cambiar API_KEY / BASE_URL no requiere reconstruir la imagen
+      - ./frontend/js/config.js:/app/frontend/js/config.js:ro
+    ports:
+      - "5173:5173"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  pgdata:
