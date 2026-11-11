@@ -72,7 +72,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 - **403 Forbidden:** Subida de recursos deshabilitada por configuración (`PERMITIR_SUBIDA_RECURSOS = False`) o acción restringida a ciertos modos (ver Contenido Adicional).
 - **404 Not Found:** Sesión expirada/inexistente o recurso no encontrado.
 - **409 Conflict:** Incoherencia de estado en la FSM (ej. intentar listar recursos antes de superar duplicados, o pedir borrador finalizado cuando el estado no es `FINALIZADO`).
-- **422 Unprocessable Entity:** Falla de validación de esquema Pydantic (devuelve lista de objetos `{loc, msg, type}`, sin el campo `input`) o precondición de negocio no cumplida (ej. invocar skill con artículo que supera límite de caracteres o faltan categorías/etiquetas). Excesos de cantidad detectados por el esquema de `POST /chat/bloques` también responden 422; el texto que supera `TEXTO_MAX` responde 400.
+- **422 Unprocessable Entity:** Falla de validación de esquema Pydantic (devuelve lista de objetos `{loc, msg, type}`, sin el campo `input`) o precondición de negocio no cumplida (ej. invocar skill con artículo que supera límite de caracteres o faltan categorías/etiquetas). Excesos de cantidad de bloques/recursos o de bytes detectados por el esquema de `POST /chat/bloques` también responden 422. El texto que supera `TEXTO_MAX_PERCENTIL_99` responde **400** en `POST /chat/bloques` y **422** en `POST /chat` (validación del esquema). Superar `TEXTO_MAX` no genera error: solo deshabilita las skills.
 
 > El backend **no** usa `413 Payload Too Large`: los excesos de tamaño responden `400` o `422` según dónde se detecten.
 
@@ -80,23 +80,23 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 
 ## Límites del Sistema (`baco/server/config_limites.py`)
 
-| Parámetro | Valor | Descripción |
-|---|---|---|
-| `TITULO_MIN` | 15 caracteres | Longitud mínima del título |
-| `TITULO_MAX` | 255 caracteres | Longitud máxima del título |
-| `TEXTO_MIN` | 20 caracteres | Longitud mínima del texto efectivo |
-| `TEXTO_MAX` | 6687 caracteres | Límite máximo de caracteres de texto para invocar skills del agente |
-| `TEXTO_MAX_PERCENTIL_99` | 16777 caracteres | Límite máximo de admisión de texto para el orquestador |
-| `TAGS_MIN` | 2 | Mínimo de etiquetas para clasificar un artículo |
-| `TAGS_MAX` | 5 | Máximo de etiquetas permitido |
-| `TAGS_PLANTILLAS_PERMITIDAS` | `["instructivo", "soluciones"]` | Plantillas oficiales soportadas |
-| `CATEGORIA_ID_DEFAULT` | 1 | Categoría asignada por defecto |
-| `PERMITIR_SUBIDA_RECURSOS` | `true` | Si es `false`, `POST /chat/recursos` responde `403` |
-| `RECURSO_MAX_BYTES` | 10 MB (10485760 B) | Tamaño máximo por archivo multimedia subido |
-| `MAX_RECURSOS_TOTAL_BYTES` | 50 MB (52428800 B) | Tamaño máximo acumulado de recursos por borrador |
-| `MAX_RECURSOS_POR_SESION` | 20 | Cantidad máxima de recursos multimedia por sesión |
-| `MAX_BLOQUES_TEXTO` | 21 | Cantidad máxima de bloques de texto por borrador (`MAX_RECURSOS_POR_SESION + 1`) |
-| `BUFFER_CARACTERES_PROMPT_XML` | 500 | Margen de caracteres reservado para el envoltorio XML del prompt (uso interno del back) |
+| Parámetro | Valor                           | Descripción                                                                             |
+|---|---------------------------------|-----------------------------------------------------------------------------------------|
+| `TITULO_MIN` | 15 caracteres                   | Longitud mínima del título                                                              |
+| `TITULO_MAX` | 255 caracteres                  | Longitud máxima del título                                                              |
+| `TEXTO_MIN` | 20 caracteres                   | Longitud mínima del texto efectivo                                                      |
+| `TEXTO_MAX` | 6687 caracteres                 | Límite máximo de caracteres de texto para invocar skills del agente                     |
+| `TEXTO_MAX_PERCENTIL_99` | 16791 caracteres                | Límite máximo de admisión de texto para el orquestador P99                              |
+| `TAGS_MIN` | 2                               | Mínimo de etiquetas para clasificar un artículo                                         |
+| `TAGS_MAX` | 5                               | Máximo de etiquetas permitido                                                           |
+| `TAGS_PLANTILLAS_PERMITIDAS` | `["instructivo", "soluciones"]` | Plantillas oficiales soportadas                                                         |
+| `CATEGORIA_ID_DEFAULT` | 1                               | Categoría asignada por defecto                                                          |
+| `PERMITIR_SUBIDA_RECURSOS` | `true`                          | Si es `false`, `POST /chat/recursos` responde `403`                                     |
+| `RECURSO_MAX_BYTES` | 10 MB (10485760 B)              | Tamaño máximo por archivo multimedia subido                                             |
+| `MAX_RECURSOS_TOTAL_BYTES` | 50 MB (52428800 B)              | Tamaño máximo acumulado de recursos por borrador                                        |
+| `MAX_RECURSOS_POR_SESION` | 20                              | Cantidad máxima de recursos multimedia por sesión                                       |
+| `MAX_BLOQUES_TEXTO` | 21                              | Cantidad máxima de bloques de texto por borrador (`MAX_RECURSOS_POR_SESION + 1`)        |
+| `BUFFER_CARACTERES_PROMPT_XML` | 500                             | Margen de caracteres reservado para el envoltorio XML del prompt (uso interno del back) |
 
 ---
 
@@ -188,7 +188,7 @@ Fuente única: `contrato.ACCIONES_QUE_GUARDAN`. La respuesta trae la intersecci�
 | `ESPERANDO_TEXTO` | nuevo: `[]` · enriquecimiento: `descartar` (`confirmar_texto` solo desde el panel) | `volver` | `texto` | — |
 | `DECISION_TEXTO` | `enriquecer, continuar` | `volver` | `texto` | — |
 | `ESPERANDO_PLANTILLA` | `instructivo, soluciones` | `volver` | `[]` (el tipo se elige solo por chat) | — |
-| `ESPERANDO_METADATOS` | `[]` (se confirma con `enviar_datos`, solo desde el panel) · categoría ambigua: nombres de categorías candidatas (dinámicos) | `volver` | `C`, `categoria_id`, `tags` | — |
+| `ESPERANDO_METADATOS` | `[]` (se confirma con `enviar_datos`, solo desde el panel) · categoría ambigua: nombres de categorías candidatas (dinámicos) | `volver` (con la plantilla ya aplicada: `[]`) | `C`, `categoria_id`, `tags` | — |
 | `REVISION_TIPO` | válido sin skill: `aplicar_plantilla, continuar` · plantilla aplicada: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | `[]` | sin skill: `C`, `tipo_plantilla` · con skill: `C` | `plantilla` (no con bloqueantes) |
 | `REVISION_METADATOS` | válido sin skill: `auditar, continuar` · auditado: `continuar` · con bloqueantes: `editar, rechazar` · confirmando rechazo: `confirmar_rechazo, cancelar_rechazo` | `[]` | sin skill: `C`, `categoria_id`, `tags` · con skill: `C` | `auditor` (no con bloqueantes) |
 | `EDICION_FINAL` | `finalizar` · cambio de plantilla pedido: `confirmar_plantilla, cancelar_plantilla` | `[]` | `C`, `tipo_plantilla`, `categoria_id`, `tags` | `plantilla`, `auditor` |
@@ -244,11 +244,12 @@ Estado siguiente según la acción. Las acciones que no figuran (p. ej. `aplicar
 
 | Endpoint | Estados permitidos | Requisitos / errores |
 | :--- | :--- | :--- |
-| `POST /chat/aplicar-plantilla` | `REVISION_TIPO`, `EDICION_FINAL` | Fuera de estado → rechazo. `FINALIZADO` → 409. |
-| `POST /chat/auditar-semantica` | `REVISION_METADATOS`, `EDICION_FINAL` | Además: `categoria_id` cargada y ≥ 2 tags. `FINALIZADO` → 409. |
+| `POST /chat/aplicar-plantilla` | `REVISION_TIPO`, `EDICION_FINAL` | Fuera de esos estados (incluidos `FINALIZADO` y `RECHAZADO`) → 409. |
+| `POST /chat/auditar-semantica` | `REVISION_METADATOS`, `EDICION_FINAL` | Además: `categoria_id` cargada y ≥ 2 tags. Fuera de esos estados (incluidos `FINALIZADO` y `RECHAZADO`) → 409. |
 | `POST /chat/revalidar-post-skill` | `REVISION_TIPO`, `REVISION_METADATOS`, `EDICION_FINAL`, `FINALIZADO` | Solo revalida, no muta contenido. |
 | `POST /chat/bloques` | no terminales | `FINALIZADO` o `RECHAZADO` → 409. |
 | `GET /chat/borrador` | `FINALIZADO` | Exige `borrador.finalizado == true`. |
+| `GET /limites` | cualquiera | Devuelve los límites de `config_limites.py` (título, texto, `MAX_TEXTO_PERCENTIL_99`, tags); el front los toma de acá. |
 
 `RECHAZADO` destruye la cookie, pero la sesión sigue en memoria hasta el TTL: un cliente que reenvíe el `session_id` recibe 409 en `POST /chat/bloques`, recursos y contenido adicional. El cliente web descarta el `session_id` al recibir `RECHAZADO`, así que ahí recibe 400 (falta identificar la sesión).
 
