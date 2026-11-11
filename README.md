@@ -5,7 +5,7 @@ Asistente para la carga de artículos en la Base de Conocimiento (Discourse). El
 - detecta duplicados por búsqueda léxica y semántica (embeddings ONNX + pgvector),
 - valida formato, longitud y datos personales (PII),
 - reestructura y audita el borrador con skills de un LLM (`plantillas` y `validador`),
-- gestiona los recursos multimedia y el contenido adicional del artículo.
+- gestiona el contenido adicional al actualizar o enriquecer un artículo existente.
 
 El proyecto tiene tres partes:
 
@@ -40,7 +40,7 @@ El proyecto tiene tres partes:
 | Proveedor LLM | API compatible con OpenAI. Por defecto, OpenRouter. Lo usan las skills `plantillas` y `validador`. |
 | Discourse | API key de la instancia (`DISCOURSE_URL`). Se usa para la descarga inicial y la sincronización. |
 | Hugging Face Hub | Acceso a internet en la primera ejecución, para descargar los modelos ONNX. |
-| Docker | Opcional. Lo usan los tests de integración (`testcontainers`). |
+| Docker | Opcional. Para levantar todo con Docker Compose (ver [sección 7](#7-docker)) y para los tests de integración (`testcontainers`). |
 | Node.js | Opcional. Lo usan los tests de frontend. |
 | Windows Task Scheduler | Opcional. Lo usa la actualización periódica. |
 
@@ -69,14 +69,19 @@ Las dependencias se declaran en `pyproject.toml`. `requirements.txt` contiene so
 
 Se leen de `.env`. La plantilla está en `.env.example`.
 
-### Obligatorias
+### Obligatorias (sin estas el servidor no arranca)
 
 | Variable | Uso |
 | :--- | :--- |
-| `API_KEY_SERVIDOR` | API key que valida el header `X-API-Key`. Debe coincidir con `API_KEY` en `frontend/js/config.js`. Si falta, el servidor no arranca. |
-| `DOCS_USER` / `DOCS_PASSWORD` | Credenciales de HTTP Basic Auth para `/docs`, `/redoc` y `/openapi.json`. Si faltan, el servidor no arranca. |
+| `API_KEY_SERVIDOR` | API key que valida el header `X-API-Key` (o `Authorization: Bearer`). Debe coincidir con `API_KEY` en `frontend/js/config.js`. |
+| `DOCS_USER` / `DOCS_PASSWORD` | Credenciales de HTTP Basic Auth para `/docs`, `/redoc` y `/openapi.json`. |
 | `DB_RO_USER` | Rol de solo lectura que usa el servidor. **Debe valer `baco_readonly`**. |
 | `DB_RO_PASSWORD` | Contraseña de `baco_readonly`. La toma `reconstruir_db` al crear el rol. |
+
+### Obligatorias según el flujo (fallan al usarse si faltan)
+
+| Variable | Uso |
+| :--- | :--- |
 | `OPEN_ROUTER_API_KEY` | API key del proveedor LLM. Sin ella fallan las skills. |
 | `DISCOURSE_URL` | URL de la instancia de Discourse que se usa para descargar y sincronizar. |
 | `DISCOURSE_API_KEY` / `DISCOURSE_API_USERNAME` | Credenciales de la API de Discourse. Las exigen los scripts de sincronización. |
@@ -138,7 +143,8 @@ Las variables que se usan solo en tests están en la [sección 9](#9-tests).
 | `--cargar-json` | Carga `data/articulos.json`. |
 | `--desde-api --con-embeddings` | Descarga primero los artículos desde Discourse y después carga y genera embeddings. |
 | `--reset --forzar --con-embeddings` | **Destructivo**: hace `DROP SCHEMA public CASCADE` y reconstruye todo desde cero. |
-| `--con-embeddings` / `--todo-embeddings` | Calcula los embeddings de título y texto. |
+| `--con-embeddings` | Calcula los embeddings de título y texto que falten o estén desactualizados. |
+| `--todo-embeddings` | Recalcula todos los embeddings, incluso los ya calculados. |
 
 ### Alternativa paso a paso
 
@@ -158,8 +164,8 @@ python -m baco.server.db.generar_embeddings
 | Archivo | Rol |
 | :--- | :--- |
 | `discourse/descargar_articulos.py` | Descarga temas y artículos de Discourse a `data/articulos.json`. |
-| `db/schema_completo.sql` | Schema completo. **Ya incluye** `duplicados_schema.sql`. |
-| `db/duplicados_schema.sql` | Schema `duplicados` con sus 7 funciones de búsqueda por niveles. No hace falta correrlo por separado. |
+| `db/schema_completo.sql` | Schema completo. **Ya incluye** el contenido de `duplicados_schema.sql`. |
+| `db/duplicados_schema.sql` | Schema `duplicados` con las funciones de búsqueda de duplicados. No hace falta correrlo por separado. |
 | `db/ingesta.py` | Librería de normalización y upsert. No se ejecuta directamente. |
 | `db/reconstruir_db.py` | Orquestador de la puesta en marcha. |
 | `db/generar_embeddings.py` | Valida los modelos contra `embeddings_meta` y calcula, en lotes, los embeddings faltantes o desactualizados. |
@@ -201,7 +207,7 @@ Configuración en `frontend/js/config.js`:
 | `MODO` | `'http'` | `'http'` llama al backend real. `'mock'` simula las respuestas en el navegador (ver nota). |
 | `BASE_URL` | `'http://127.0.0.1:8080'` | URL del backend. |
 | `API_KEY` | — | Debe coincidir con `API_KEY_SERVIDOR` del `.env`. |
-| `limites` | valores de respaldo | En modo `'http'` se reemplazan al iniciar con la respuesta de `GET /limites`. |
+| `MIN_TITULO`, `MAX_TITULO`, `MIN_TEXTO`, `MAX_TEXTO`, `MAX_TEXTO_PERCENTIL_99`, `MIN_TAGS`, `MAX_TAGS` | valores de respaldo | En modo `'http'` se reemplazan al iniciar con la respuesta de `GET /limites`. |
 
 > ⚠️ El modo `'mock'` está desactualizado: le falta el objeto `mock` en `config.js` y usa estados viejos del flujo. Usar `'http'`.
 
@@ -209,9 +215,15 @@ Configuración en `frontend/js/config.js`:
 
 ## 7. Docker
 
-> 🚧 **Pendiente.** En esta sección van las instrucciones para levantar Baco (PostgreSQL con pgvector + backend + front) con Docker / Docker Compose.
+Con Docker Desktop abierto y el `.env` completo:
 
-<!-- TODO Docker: imágenes, docker-compose.yml, variables de entorno, carga inicial de la base, puertos -->
+```bash
+docker compose up --build   # o ./baco.sh desde Git Bash (chequea Docker, el .env y la API key antes)
+```
+
+Levanta PostgreSQL con pgvector, carga la base, y expone el front en `http://localhost:5173` y la API en `http://localhost:8080/docs`.
+
+Paso a paso: [docs/GUIA-DOCKER.md](docs/GUIA-DOCKER.md). Variables, front y comandos de `baco.sh`: [docs/CONFIGURACION.md](docs/CONFIGURACION.md).
 
 ---
 
@@ -283,7 +295,9 @@ Los tests de frontend se saltan si `node` no está en el `PATH`.
 
 ## 10. Endpoints
 
-Todos requieren el header `X-API-Key`, salvo `/api/recursos-temp/...`.
+Contrato completo: [frontend/CONTRATO-API.md](frontend/CONTRATO-API.md). Documentación OpenAPI en `http://localhost:8080/docs` (pide `DOCS_USER` / `DOCS_PASSWORD`).
+
+Todos requieren el header `X-API-Key` (o `Authorization: Bearer`).
 
 | Método | Ruta | Propósito |
 | :--- | :--- | :--- |
@@ -292,21 +306,12 @@ Todos requieren el header `X-API-Key`, salvo `/api/recursos-temp/...`.
 | `POST` | `/chat/aplicar-plantilla` | Skill `plantillas`: reestructura el borrador como `instructivo` o `soluciones`. |
 | `POST` | `/chat/auditar-semantica` | Skill `validador`: auditoría semántica y editorial, con `texto_corregido`. |
 | `POST` | `/chat/revalidar-post-skill` | Revalida formato, longitud y PII después de aplicar una skill. |
-| `POST` | `/chat/bloques` | Recibe bloques de texto y recursos ordenados, y calcula el texto limpio y las posiciones. |
-| `GET` | `/chat/recursos` | Estado actual de bloques de texto y recursos multimedia. |
-| `POST` | `/chat/recursos` | Sube un archivo (máx. 10 MB, sin SVG). |
-| `POST` | `/chat/recursos/agregar` | Agrega un recurso externo por URL. |
-| `PUT` | `/chat/recursos/reordenar` | Reordena los recursos. |
-| `DELETE` | `/chat/recursos/{recurso_id}` | Elimina un recurso. |
 | `GET` | `/chat/contenido-adicional` | Lista los ítems de contenido adicional. |
-| `POST` | `/chat/contenido-adicional` | Agrega un ítem. Solo en el flujo de enriquecimiento. |
+| `POST` | `/chat/contenido-adicional` | Agrega un ítem. Solo al actualizar o enriquecer un artículo existente. |
 | `PUT` / `PATCH` | `/chat/contenido-adicional/{item_id}` | Modifica un ítem. |
 | `PUT` | `/chat/contenido-adicional/reordenar` | Reordena los ítems. |
 | `DELETE` | `/chat/contenido-adicional/{item_id}` | Elimina un ítem. |
-| `GET` | `/api/recursos-temp/{session_id}/{archivo}` | Sirve un archivo subido en la sesión, para previsualizarlo. |
 | `GET` | `/limites` | Devuelve los límites vigentes de título, texto y etiquetas. |
-
-Formatos aceptados en la subida de archivos: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.pdf`, `.mp4`, `.webm`, `.mp3`, `.docx`, `.pptx`, `.xlsx`, `.zip`, `.txt` y `.csv`.
 
 ---
 
