@@ -38,7 +38,6 @@ ENV/
 *_backup.json
 
 *.iml
-docs
 
 
 logs/*
