@@ -191,13 +191,24 @@ async def _manejar_turno(
         )
         if es_solo_edicion:
             opciones_edicion = res_edicion.opciones_sugeridas or sesion.ultimas_opciones
-            sesion.ultimas_opciones = list(opciones_edicion)
             # Detalle de lo guardado/descartado, seguido de los avisos que correspondan.
             partes_msg = [msg_cambios_guardados(
                 res_edicion.cambios, descartes_contrato + list(res_edicion.descartes or [])
             )]
             partes_msg += [a for a in (res_edicion.aviso_skill_desactualizada, res_edicion.aviso) if a]
             mensaje_edicion = "\n\n".join(partes_msg)
+            # En revisión, si el paso quedó bloqueado (p. ej. marcadores [Indicar...]) y se
+            # guardaron cambios, se revalida: si se resolvieron, vuelve a habilitarse Continuar.
+            if (
+                sesion.estado in (EstadoFlujo.REVISION_TIPO, EstadoFlujo.REVISION_METADATOS)
+                and sesion.validacion is not None
+                and not sesion.validacion.valido
+                and (res_edicion.cambios or res_edicion.descartes)
+            ):
+                mensaje_edicion, opciones_edicion = validar_borrador(
+                    sesion, mensaje_edicion + "\n\n", reingreso=True
+                )
+            sesion.ultimas_opciones = list(opciones_edicion)
             return construir_respuesta(
                 sesion,
                 mensaje_edicion,
