@@ -22,6 +22,7 @@ JURISDICCIONES: Dict[str, Set[str]] = {
     "CL": {"chile", "sii"},
     "BO": {"bolivia"},
     "EC": {"ecuador", "sri"},
+    "BR": {"brasil", "brazil"},
 }
 
 # Siglas de organismos que coinciden con palabras comunes ("sin", "set").
@@ -86,6 +87,20 @@ def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]], texto_raw: str =
     return None
 
 
+def detectar_jurisdicciones(tokens_o_texto: Union[str, Set[str]], texto_raw: str = "") -> Set[str]:
+    """Como detectar_jurisdiccion, pero devuelve TODOS los países mencionados
+    (ej. "Localización Brasil: diferencias con Argentina" -> {"BR", "AR"})."""
+    if isinstance(tokens_o_texto, set):
+        tokens = {t.lower() for t in tokens_o_texto}
+    else:
+        tokens = _tokenizar(tokens_o_texto)
+    paises = {pais for pais, keywords in JURISDICCIONES.items() if tokens & keywords}
+    if texto_raw:
+        tokens_raw = set(re.findall(r"\w+", texto_raw))
+        paises |= {pais for pais, siglas in SIGLAS_AMBIGUAS.items() if tokens_raw & siglas}
+    return paises
+
+
 def son_semanticas_divergentes(
         cand_normalizado: str,
         cons_normalizada: str,
@@ -101,14 +116,16 @@ def son_semanticas_divergentes(
     tokens_cand = _tokenizar(cand_normalizado)
     tokens_cons = _tokenizar(cons_normalizada)
 
-    pais_cand = detectar_jurisdiccion(tokens_cand, cand_raw)
-    pais_cons = detectar_jurisdiccion(tokens_cons, cons_raw)
-    if not pais_cand and cand_texto:
-        pais_cand = detectar_jurisdiccion(_tokenizar(cand_texto[:1000]), cand_texto[:1000])
-    if not pais_cons and cons_texto:
-        pais_cons = detectar_jurisdiccion(_tokenizar(cons_texto[:1000]), cons_texto[:1000])
+    paises_cand = detectar_jurisdicciones(tokens_cand, cand_raw)
+    paises_cons = detectar_jurisdicciones(tokens_cons, cons_raw)
+    if not paises_cand and cand_texto:
+        paises_cand = detectar_jurisdicciones(_tokenizar(cand_texto[:1000]), cand_texto[:1000])
+    if not paises_cons and cons_texto:
+        paises_cons = detectar_jurisdicciones(_tokenizar(cons_texto[:1000]), cons_texto[:1000])
 
-    if pais_cand and pais_cons and pais_cand != pais_cons:
+    # Divergen si cada uno menciona algún país que el otro no
+    # (ej. {AR, BR} vs {AR, CL}: comparten Argentina pero Brasil != Chile).
+    if (paises_cand - paises_cons) and (paises_cons - paises_cand):
         return True
 
     for grupo_a, grupo_b in CIRCUITOS_OPUESTOS:
