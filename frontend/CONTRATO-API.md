@@ -85,7 +85,7 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 | `TITULO_MIN` | 15 caracteres                   | Longitud mínima del título                                                              |
 | `TITULO_MAX` | 255 caracteres                  | Longitud máxima del título                                                              |
 | `TEXTO_MIN` | 20 caracteres                   | Longitud mínima del texto efectivo                                                      |
-| `TEXTO_MAX` | 6687 caracteres                 | Límite máximo de caracteres de texto para invocar skills del agente                     |
+| `TEXTO_MAX` | 6687 caracteres (por defecto)   | Límite máximo de caracteres de texto para invocar skills del agente. Configurable con `BACO_TEXTO_MAX` en el `.env` |
 | `TEXTO_MAX_PERCENTIL_99` | 16791 caracteres                | Límite máximo de admisión de texto para el orquestador P99                              |
 | `TAGS_MIN` | 2                               | Mínimo de etiquetas para clasificar un artículo                                         |
 | `TAGS_MAX` | 5                               | Máximo de etiquetas permitido                                                           |
@@ -129,9 +129,9 @@ El backend utiliza el formato estándar de FastAPI / Starlette (`baco/server/app
 Los campos de `ChatOrquestadorRequest` y `ChatOrquestadorResponse` están descritos en la referencia generada (`openapi.json` o `/docs`). Reglas que el esquema no expresa:
 
 - **Request.** `accion` es el id de una opción o navegación del turno anterior, una global o una de panel (§1.2). `titulo`, `texto`, `texto_editor`, `categoria_id`, `tags` y `tipo_plantilla` solo se tienen en cuenta si figuran en `editables`. `session_id` se ignora: la sesión la gestiona el servidor (cookie `baco_session` o header `X-Session-ID`).
-- **Response.** El front renderiza a partir de `opciones`/`botones`, `navegacion`/`navegacion_etiquetas`, `editables`, `guardan_campos` (§2.4), `accion_panel` y `skills` (§2.3); `estado` es informativo y no se usa para deducir botones. `coincidencias` solo viene con datos en `DECISION_TITULO`/`DECISION_TEXTO`. `skills_habilitadas`/`skills_motivo` reflejan solo el límite de largo (`TEXTO_MAX`): para habilitar cada skill usar `skills`.
+- **Response.** El front renderiza a partir de `opciones`/`botones`, `navegacion`/`navegacion_etiquetas`, `editables`, `guardan_campos` (§2.3), `accion_panel` y `skills` (§2.2); `estado` es informativo y no se usa para deducir botones. `coincidencias` solo viene con datos en `DECISION_TITULO`/`DECISION_TEXTO`. `skills_habilitadas`/`skills_motivo` reflejan solo el límite de largo (`TEXTO_MAX`): para habilitar cada skill usar `skills`.
 
-#### 2.3. `accion_panel` y `skills`
+#### 2.2. `accion_panel` y `skills`
 
 **`accion_panel`** (`contrato.accion_panel`): el front pinta el botón principal desde acá, no desde `estado`. Esa acción nunca se repite en `opciones` (no hay botón equivalente en el chat).
 
@@ -154,7 +154,7 @@ Los campos de `ChatOrquestadorRequest` y `ChatOrquestadorResponse` están descri
 
 El largo del borrador puede cambiar entre turnos por los endpoints de recursos: si `borrador.skills_habilitadas` pasa a `false`, el front lo prioriza sobre `skills`.
 
-#### 2.4. `guardan_campos`: qué acciones guardan lo editado
+#### 2.3. `guardan_campos`: qué acciones guardan lo editado
 
 Fuente única: `contrato.ACCIONES_QUE_GUARDAN`. La respuesta trae la intersección con lo disponible en el turno. Regla para el front:
 

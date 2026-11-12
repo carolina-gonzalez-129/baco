@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "BACO",
-    "version": "0.1.0"
+    "version": "1.0.0"
   },
   "paths": {
     "/chat": {
@@ -3251,6 +3251,25 @@
         ],
         "title": "ValidationError"
       }
+    },
+    "securitySchemes": {
+      "ApiKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
     }
-  }
+  },
+  "security": [
+    {
+      "ApiKeyHeader": []
+    },
+    {
+      "BearerAuth": []
+    }
+  ]
 }
