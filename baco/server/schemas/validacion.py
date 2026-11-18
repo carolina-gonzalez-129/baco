@@ -1,7 +1,6 @@
 from enum import Enum
-from typing import Optional, List
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StatusValidacionEnum(str, Enum):
@@ -14,12 +13,12 @@ class StatusValidacionEnum(str, Enum):
 class FindingSchema(BaseModel):
     severity: str = Field(..., description="Nivel de severidad: 'Bloqueante', 'Ajuste' o 'Sugerencia'")
     description: str = Field(..., description="Detalle del hallazgo encontrado")
-    field: Optional[str] = Field(default=None, description="Campo del artículo afectado (ej: 'texto', 'titulo', 'tags')")
-    action: Optional[str] = Field(default=None, description="Acción recomendada para resolver el problema")
-    category: Optional[str] = Field(default=None, description="Categoría de la regla")
-    level: Optional[str] = Field(default=None, description="Nivel de severidad normalizado")
-    snippet: Optional[str] = Field(default=None, description="Fragmento del texto donde se detectó el problema")
-    suggestion: Optional[str] = Field(default=None, description="Recomendación adicional")
+    field: str | None = Field(default=None, description="Campo del artículo afectado (ej: 'texto', 'titulo', 'tags')")
+    action: str | None = Field(default=None, description="Acción recomendada para resolver el problema")
+    category: str | None = Field(default=None, description="Categoría de la regla")
+    level: str | None = Field(default=None, description="Nivel de severidad normalizado")
+    snippet: str | None = Field(default=None, description="Fragmento del texto donde se detectó el problema")
+    suggestion: str | None = Field(default=None, description="Recomendación adicional")
 
 
 class ResumenValidacionSchema(BaseModel):
@@ -40,19 +39,19 @@ class ValidarFormatoResponse(BaseModel):
         ...,
         description="Estado final del artículo: 'Listo' o 'Pendiente'"
     )
-    titulo_sanitizado: Optional[str] = Field(
+    titulo_sanitizado: str | None = Field(
         default=None,
         description="Título sanitizado deterministamente (sin fórmulas redundantes como 'Cómo...')."
     )
-    texto_sanitizado: Optional[str] = Field(
+    texto_sanitizado: str | None = Field(
         default=None,
         description="Cuerpo sanitizado deterministamente (CUITs reales y correos reemplazados por ejemplos seguros)."
     )
-    aviso_privacidad: Optional[str] = Field(
+    aviso_privacidad: str | None = Field(
         default=None,
         description="Aviso de privacidad y protección de datos si se sanitizaron PIIs."
     )
-    findings: List[FindingSchema] = Field(
+    findings: list[FindingSchema] = Field(
         default_factory=list,
         description="Listado de observaciones, alertas bloqueantes o sugerencias"
     )

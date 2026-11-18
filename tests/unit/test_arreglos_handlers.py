@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorRequest,
@@ -7,7 +8,11 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.coordinador import manejar_turno
-from baco.server.services.orquestador.sesion import BorradorSesion, SesionChat, gestor_sesiones
+from baco.server.services.orquestador.sesion import (
+    BorradorSesion,
+    SesionChat,
+    gestor_sesiones,
+)
 
 TITULO_VALIDO = "Título Válido Para Pruebas De Orquestador"
 TEXTO_VALIDO = (

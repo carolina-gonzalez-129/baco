@@ -1,8 +1,10 @@
-from typing import Optional, List, Literal
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 
 class ChatRequest(BaseModel):
-    session_id: Optional[str] = Field(
+    session_id: str | None = Field(
         default=None,
         description="ID de la sesión del orquestador. Si la sesión está en estado FINALIZADO, se inyecta automáticamente su borrador sanitizado."
     )
@@ -12,34 +14,34 @@ class ChatRequest(BaseModel):
         description="Instrucción, pregunta o requerimiento editorial del usuario para el agente.",
         examples=["Pasa este borrador al formato de soluciones con verbos en infinitivo."]
     )
-    skill: Optional[Literal["plantillas", "validador"]] = Field(
+    skill: Literal["plantillas", "validador"] | None = Field(
         default=None,
         description="Skill específica de BACO a ejecutar ('plantillas' o 'validador').",
         examples=["plantillas", "validador"]
     )
-    tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = Field(
+    tipo_plantilla: Literal["instructivo", "soluciones"] | None = Field(
         default=None,
         description="Plantilla oficial a aplicar ('instructivo' o 'soluciones'). "
                     "Obligatorio al invocar la skill 'plantillas', ya que BACO no infiere "
                     "la plantilla a partir del contexto; solo aplica la indicada.",
         examples=["soluciones", "instructivo"]
     )
-    borrador: Optional[str] = Field(
+    borrador: str | None = Field(
         default=None,
         description="Texto o contenido actual del borrador en el editor para que BACO lo procese con sus skills.",
         examples=["Consulta: El usuario no puede emitir factura. Causa: Falta punto de venta."]
     )
-    titulo: Optional[str] = Field(
+    titulo: str | None = Field(
         default=None,
         description="Título actual del borrador en el editor (utilizado por 'validador' para auditar su calidad o por 'plantillas' como referencia).",
         examples=["Emitir factura electrónica en módulo de ventas"]
     )
-    categoria: Optional[str] = Field(
+    categoria: str | None = Field(
         default=None,
         description="Categoría o módulo ERP asociado al artículo (ej. 'Ventas', 'Contabilidad'), útil para auditar coherencia conceptual en 'validador'.",
         examples=["Ventas"]
     )
-    tags: Optional[List[str]] = Field(
+    tags: list[str] | None = Field(
         default=None,
         description="Lista de etiquetas o tags del artículo, utilizada por 'validador' para auditar coherencia técnica.",
         examples=[["facturacion", "soluciones"]]
@@ -101,7 +103,7 @@ class ChatResponse(BaseModel):
         ...,
         description="Respuesta textual devuelta por el agente (artículo formateado en markdown según la plantilla elegida, dictamen de validación o respuesta conversacional)."
     )
-    texto_corregido: Optional[str] = Field(
+    texto_corregido: str | None = Field(
         default=None,
         description="Texto completo corregido delimitado por el auditor semántico, o None si no corresponde o no hubo match."
     )

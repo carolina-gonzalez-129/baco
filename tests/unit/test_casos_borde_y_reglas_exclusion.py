@@ -1,11 +1,8 @@
-import pytest
-from baco.server.db.ingesta import generar_slug, normalizar_articulo, tag_id_sintetico
-from baco.server.services.embeddings import limpiar_suave, truncar_1000, FUNCIONES_LIMPIEZA_SUAVE
+from baco.server.db.ingesta import generar_slug, tag_id_sintetico
+from baco.server.services.embeddings import limpiar_suave, truncar_1000
 from baco.server.services.reglas_semanticas import (
-    detectar_jurisdiccion,
     son_semanticas_divergentes,
 )
-
 
 # ===========================================================================
 # 1. Casos borde de Normalización y Limpieza

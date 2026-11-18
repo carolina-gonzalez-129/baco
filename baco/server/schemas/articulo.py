@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,25 +11,27 @@ from baco.server.config_limites import (
 
 
 class Tag(BaseModel):
-    id: Optional[int] = None
+    id: int | None = None
     name: str
-    slug: Optional[str] = None
+    slug: str | None = None
 
 
 class ArticuloSchema(BaseModel):
     id: int
     titulo: str = Field(..., min_length=TITULO_MIN, max_length=TITULO_MAX)
-    categoria_id: Optional[int] = None
-    tags: List[Tag] = Field(default_factory=list)
-    url: Optional[str] = None
+    categoria_id: int | None = None
+    tags: list[Tag] = Field(default_factory=list)
+    url: str | None = None
     texto: str = Field(..., min_length=1)
-    actualizado: Optional[datetime] = None
-    raw_extra: Optional[dict] = Field(default_factory=dict)
+    actualizado: datetime | None = None
+    raw_extra: dict | None = Field(default_factory=dict)
 
     @field_validator("texto")
     @classmethod
     def validar_longitud_texto_efectivo(cls, v: str) -> str:
-        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+        from baco.server.services.orquestador.recursos_service import (
+            texto_efectivo_sin_marcadores,
+        )
 
         efectivo = texto_efectivo_sin_marcadores(v)
         if len(efectivo) < TEXTO_MIN:

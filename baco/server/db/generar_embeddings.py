@@ -12,16 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 from baco.server.db.config import get_conn
-
 from baco.server.services.embeddings import (
-    embedding_titulo,
-    embedding_texto,
-    get_model_titulo,
-    get_model_texto,
-    MODEL_TITULO_NAME,
+    DIM_TEXTO,
     DIM_TITULO,
     MODEL_TEXTO_NAME,
-    DIM_TEXTO,
+    MODEL_TITULO_NAME,
+    embedding_texto,
+    embedding_titulo,
+    get_model_texto,
+    get_model_titulo,
 )
 
 MAX_SEQ_LENGTH_TEXTO = 512

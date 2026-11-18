@@ -14,8 +14,8 @@ Este módulo NO ejecuta skills: las skills solo corren cuando la persona toca
 "Aplicar plantilla" o "Auditar" (handlers.py -> edicion.ejecutar_skill).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple, Union
 
 from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorResponse,
@@ -28,14 +28,12 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_FINALIZADO,
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
-    PREFIJO_ERROR_CONFORMIDAD,
     PREFIJO_METADATOS_REGISTRADOS,
     msg_confirmar_metadatos_cargados,
     msg_pedir_metadatos,
     msg_pedir_plantilla,
 )
 from baco.server.services.orquestador.sesion import SesionChat
-from baco.server.services.validar_articulo import sanitizar_borrador
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     combinar_tags,
@@ -44,14 +42,15 @@ from baco.server.services.orquestador.validaciones import (
     validar_borrador,
     verificar_compuerta_avance,
 )
+from baco.server.services.validar_articulo import sanitizar_borrador
 
 
 @dataclass(frozen=True)
 class ReglaContinuar:
     """Representa una regla declarada de avance en el troncal del flujo."""
-    estado_destino: Union[EstadoFlujo, Callable[[SesionChat], EstadoFlujo]]
+    estado_destino: EstadoFlujo | Callable[[SesionChat], EstadoFlujo]
     avanzar: Callable[[SesionChat], None]
-    construir_respuesta: Callable[[SesionChat, str, Optional[str]], ChatOrquestadorResponse]
+    construir_respuesta: Callable[[SesionChat, str, str | None], ChatOrquestadorResponse]
 
 
 # ==============================================================================
@@ -75,7 +74,7 @@ def _avanzar_paso_plantilla(sesion: SesionChat) -> None:
 
 
 def _resp_paso_plantilla(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
     return construir_respuesta(
         sesion,
@@ -107,7 +106,7 @@ def _cargar_metadatos_heredados(sesion: SesionChat) -> None:
 
 
 def _resp_metadatos_heredados(
-        sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+        sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
    
     _cargar_metadatos_heredados(sesion)
@@ -157,7 +156,7 @@ def _avanzar_paso_revision_intermedia(sesion: SesionChat) -> None:
 
 
 def _resp_paso_revision_intermedia(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
     msg, ops = validar_borrador(sesion, prefijo)
     return construir_respuesta(sesion, msg, ops, aviso_privacidad=aviso_privacidad)
@@ -197,7 +196,7 @@ def _avanzar_paso_metadatos(sesion: SesionChat) -> None:
 
 
 def _resp_paso_metadatos(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
     b = sesion.borrador
     if sesion.estado == EstadoFlujo.ESPERANDO_METADATOS:
@@ -232,7 +231,7 @@ def _avanzar_paso_revision_final(sesion: SesionChat) -> None:
 
 
 def _resp_paso_revision_final(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
     pref = prefijo or PREFIJO_METADATOS_REGISTRADOS
     msg, ops = validar_borrador(sesion, pref)
@@ -250,9 +249,12 @@ def _avanzar_paso_edicion_final(sesion: SesionChat) -> None:
 
 
 def _resp_paso_edicion_final(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
-    from baco.server.services.orquestador.mensajes import MSG_EDICION_FINAL, OPCIONES_EDICION_FINAL
+    from baco.server.services.orquestador.mensajes import (
+        MSG_EDICION_FINAL,
+        OPCIONES_EDICION_FINAL,
+    )
     msg = f"{prefijo}{MSG_EDICION_FINAL}".strip()
     return construir_respuesta(sesion, msg, OPCIONES_EDICION_FINAL, aviso_privacidad=aviso_privacidad)
 
@@ -290,7 +292,7 @@ def _avanzar_paso_finalizado(sesion: SesionChat) -> None:
 
 
 def _resp_paso_finalizado(
-    sesion: SesionChat, prefijo: str = "", aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, prefijo: str = "", aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
     aviso_priv = aviso_privacidad or getattr(sesion, "_aviso_privacidad_final", None)
     return construir_respuesta(
@@ -301,7 +303,7 @@ def _resp_paso_finalizado(
     )
 
 
-def _verificar_obligatorios_finalizar(sesion: SesionChat) -> Optional[ChatOrquestadorResponse]:
+def _verificar_obligatorios_finalizar(sesion: SesionChat) -> ChatOrquestadorResponse | None:
     """Parte 3: al tocar Finalizar reutiliza la validación de obligatorios del flujo.
     Si falta algo, queda en EDICION_FINAL con un aviso accionable y OPCIONES_EDICION_FINAL.
     """
@@ -352,7 +354,7 @@ def _registrar_finalizado(sesion: SesionChat) -> ChatOrquestadorResponse:
 
 def gestionar_metadatos_heredados(
     sesion: SesionChat, opcion: str
-) -> Optional[ChatOrquestadorResponse]:
+) -> ChatOrquestadorResponse | None:
     """
     Resuelve aceptar_metadatos / rechazar_metadatos (enriquecer o actualizar) en el
     paso de tags y categoría. Conserva el tipo de plantilla elegido en el paso 1.
@@ -370,7 +372,6 @@ def gestionar_metadatos_heredados(
     b.metadatos_heredados_revisados = True
     sesion.metadatos_heredados_revisados = True
     plantilla = b.tipo_plantilla or sesion.tipo_plantilla
-    ant = b.metadatos_anteriores
     if acepta:
         _cargar_metadatos_heredados(sesion)
         prefijo = "Se confirmaron los metadatos de la versión anterior. "
@@ -396,7 +397,7 @@ def gestionar_metadatos_heredados(
 # Tabla declarada de avance por (estado, variante)
 # ==============================================================================
 
-TABLA_CONTINUAR: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaContinuar] = {
+TABLA_CONTINUAR: dict[tuple[EstadoFlujo, str | None], ReglaContinuar] = {
     # Inicio del troncal desde texto (nuevo o enriquecimiento)
     (EstadoFlujo.ESPERANDO_TEXTO, None): ReglaContinuar(
         estado_destino=_destino_paso_plantilla,
@@ -452,9 +453,9 @@ TABLA_CONTINUAR: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaContinuar] = {
 
 def continuar(
     sesion: SesionChat,
-    opcion: Optional[str] = None,
+    opcion: str | None = None,
     prefijo: str = "",
-    aviso_privacidad: Optional[str] = None,
+    aviso_privacidad: str | None = None,
 ) -> ChatOrquestadorResponse:
     """
     Punto de entrada único para avanzar en el flujo consultando TABLA_CONTINUAR.

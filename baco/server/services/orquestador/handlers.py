@@ -1,5 +1,5 @@
 import re
-from typing import Callable, Coroutine, Dict, Optional, Tuple
+from collections.abc import Callable, Coroutine
 
 from starlette.concurrency import run_in_threadpool
 
@@ -16,41 +16,56 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
+from baco.server.services.orquestador.continuar import (
+    _registrar_finalizado,
+    _resp_metadatos_heredados,
+    continuar,
+    continuar_desde_revision,
+)
+from baco.server.services.orquestador.edicion import (
+    _sanitizar_tags_tematicos,
+    adoptar_resultado_skill_pendiente,
+    aplicar_edicion_campos,
+    categoria_difiere,
+    plantilla_difiere,
+    tags_difiere,
+    texto_difiere,
+    titulo_difiere,
+)
 from baco.server.services.orquestador.mensajes import (
+    MSG_CONFIRMAR_RECHAZO,
     MSG_DESCARTAR_COINCIDENCIA_TITULO,
     MSG_ELEGIR_PLANTILLA,
     MSG_OPERACION_CANCELADA,
     MSG_PEDIR_EDICION,
     MSG_RECHAZADO,
-    msg_cambios_guardados,
     MSG_SIN_COINCIDENCIAS_TEXTO,
     MSG_SIN_COINCIDENCIAS_TITULO,
     MSG_TEXTO_EN_EDICION,
+    OPCIONES_CONFIRMAR_METADATOS,
+    OPCIONES_CONFIRMAR_RECHAZO,
     OPCIONES_ENRIQUECER_CONTINUAR,
     OPCIONES_ENRIQUECER_DESCARTAR,
-    OPCIONES_SERIE_DECISION,
     OPCIONES_PLANTILLAS,
     OPCIONES_REINICIAR,
     OPCIONES_REVISION_BLOQUEANTE,
     OPCIONES_REVISION_VALIDO,
-    OPCIONES_CONFIRMAR_RECHAZO,
-    MSG_CONFIRMAR_RECHAZO,
+    OPCIONES_SERIE_DECISION,
     PREFIJO_BORRADOR_ACTUALIZADO,
     PREFIJO_CONTINUAR_PROPIO,
     PREFIJO_METADATOS_REGISTRADOS,
-    OPCIONES_CONFIRMAR_METADATOS,
-    msg_confirmar_metadatos,
-    PREFIJO_SIN_DUPLICADOS,
     msg_actualizar_serie_cargado,
     msg_articulo_muy_largo,
+    msg_cambios_guardados,
+    msg_categoria_ambigua,
+    msg_categoria_no_encontrada,
     msg_coincidencia,
+    msg_confirmar_metadatos,
     msg_enriquecer_cargado,
     msg_error_longitud_maxima,
     msg_error_longitud_minima,
     msg_opcion_invalida,
     msg_pedir_categoria,
-    msg_categoria_ambigua,
-    msg_categoria_no_encontrada,
     msg_pedir_tag_adicional,
     msg_pedir_tags_y_categoria,
     msg_texto_vacio,
@@ -68,12 +83,6 @@ from baco.server.services.orquestador.retroceso import (
     retroceder,
 )
 from baco.server.services.orquestador.sesion import SesionChat, clave_busqueda
-from baco.server.services.orquestador.continuar import (
-    _registrar_finalizado,
-    _resp_metadatos_heredados,
-    continuar,
-    continuar_desde_revision,
-)
 from baco.server.services.orquestador.validaciones import (
     DICCIONARIO_OFICIAL_CATEGORIAS,
     actualizar_metadatos_sesion,
@@ -90,17 +99,6 @@ from baco.server.services.orquestador.validaciones import (
     validar_longitud_maxima,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
-from baco.server.services.orquestador.edicion import (
-    _sanitizar_tags_tematicos,
-    adoptar_resultado_skill_pendiente,
-    aplicar_edicion_campos,
-    categoria_difiere,
-    plantilla_difiere,
-    tags_difiere,
-    texto_difiere,
-    tiene_resultado_skill_visible,
-    titulo_difiere,
-)
 
 
 async def handle_esperando_titulo(
@@ -179,12 +177,12 @@ async def handle_esperando_titulo(
 
 def _consolidar_bloques_y_recursos_enriquecimiento(
     bloques_base: list[str],
-    recs_base: Dict[str, object],
+    recs_base: dict[str, object],
     texto_aporte_raw: str,
     ultimo_id: int = 0,
     validar_marcadores_existentes: bool = True,
     forzar_preservar_base: bool = False,
-) -> Tuple[list[str], Dict[str, object], Optional[str], Optional[str]]:
+) -> tuple[list[str], dict[str, object], str | None, str | None]:
 
     texto_base_limpio = "\n\n".join(bloques_base).strip()
     raw = (texto_aporte_raw or "").strip()
@@ -1103,7 +1101,7 @@ async def handle_esperando_plantilla(
 
 
 def _resp_confirmar_metadatos_chat(
-    sesion: SesionChat, aviso_privacidad: Optional[str] = None
+    sesion: SesionChat, aviso_privacidad: str | None = None
 ) -> ChatOrquestadorResponse:
     """Metadatos completos cargados por chat: no se avanza hasta que la persona confirme."""
     b = sesion.borrador
@@ -1195,7 +1193,7 @@ async def handle_esperando_metadatos(
             cat_invalida = True
 
     tit_guardado = (b.titulo if b else sesion.titulo) or ""
-    tiene_skill_vis = tiene_resultado_skill_visible(b)
+
     # Con resultado de skill visible, req.texto es el de la Vista previa: se compara contra él.
     txt_guardado = (b.texto_limpio if b else (sesion.texto_limpio or sesion.texto)) or ""
     edita_txt_req = texto_difiere(req.texto, txt_guardado, titulo_contexto=tit_guardado)
@@ -1313,7 +1311,7 @@ async def handle_esperando_metadatos(
 
 def _resolver_flujo_rechazo(
     sesion: SesionChat, opcion: str, hubo_cambios: bool = False
-) -> Optional[ChatOrquestadorResponse]:
+) -> ChatOrquestadorResponse | None:
     """Encapsula la guarda y el cambio a EstadoFlujo.RECHAZADO cuando sesion.confirmando_rechazo está activo."""
     if not getattr(sesion, "confirmando_rechazo", False):
         return None
@@ -1348,7 +1346,7 @@ def _resolver_flujo_rechazo(
 def _aplicar_mutaciones_borrador(
     sesion: SesionChat,
     req: ChatOrquestadorRequest,
-    texto_edicion: Optional[str] = None,
+    texto_edicion: str | None = None,
 ) -> ChatOrquestadorResponse:
     """Aísla el parseo y actualización de título, texto, tags y categoría cuando hubo_cambios es True."""
     b = sesion.borrador
@@ -1565,7 +1563,7 @@ async def handle_revision_metadatos(
 
 async def gestionar_cambio_plantilla_pendiente(
     sesion: SesionChat, req: ChatOrquestadorRequest, opcion: str
-) -> Tuple[Optional[ChatOrquestadorResponse], ChatOrquestadorRequest]:
+) -> tuple[ChatOrquestadorResponse | None, ChatOrquestadorRequest]:
     """Parte 4: en EDICION_FINAL el cambio de tipo de plantilla requiere confirmación del backend.
     Devuelve (respuesta, req). Si respuesta no es None, el turno termina ahí.
     """
@@ -1704,7 +1702,9 @@ async def handle_edicion_final(
                 req_edicion = req.model_copy(update={"texto": texto_edicion})
             res_edicion = aplicar_edicion_campos(sesion, req_edicion)
             if not res_edicion.ok:
-                from baco.server.services.orquestador.mensajes import OPCIONES_EDICION_FINAL
+                from baco.server.services.orquestador.mensajes import (
+                    OPCIONES_EDICION_FINAL,
+                )
                 return construir_respuesta(sesion, res_edicion.error or "", OPCIONES_EDICION_FINAL)
 
     # 3. El cambio de tipo de plantilla se resuelve antes, con confirmación explícita
@@ -1717,7 +1717,10 @@ async def handle_edicion_final(
 
     # 5. Edición u otra interacción en EDICION_FINAL:
     # Botones: solo "Finalizar" (sin volver, ver contrato.py). Mensajes en mensajes.py.
-    from baco.server.services.orquestador.mensajes import MSG_SEGUIR_EDICION_FINAL, OPCIONES_EDICION_FINAL
+    from baco.server.services.orquestador.mensajes import (
+        MSG_SEGUIR_EDICION_FINAL,
+        OPCIONES_EDICION_FINAL,
+    )
     aviso_priv = res_edicion.aviso_privacidad if res_edicion else None
     # R9: la explicación completa (MSG_EDICION_FINAL) ya se mostró al entrar al estado.
     mensaje = (res_edicion.aviso if res_edicion and res_edicion.aviso else MSG_SEGUIR_EDICION_FINAL)
@@ -1729,7 +1732,7 @@ EstadoHandler = Callable[
     Coroutine[None, None, ChatOrquestadorResponse],
 ]
 
-STATE_HANDLERS: Dict[EstadoFlujo, EstadoHandler] = {
+STATE_HANDLERS: dict[EstadoFlujo, EstadoHandler] = {
     EstadoFlujo.ESPERANDO_TITULO: handle_esperando_titulo,
     EstadoFlujo.DECISION_TITULO: handle_decision_titulo,
     EstadoFlujo.ESPERANDO_TEXTO: handle_esperando_texto,

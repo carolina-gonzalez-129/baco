@@ -1,6 +1,7 @@
 import os
-import pytest
+
 import psycopg
+import pytest
 
 # Los tests nunca usan la caché de skills (data/cache_skills.json): con caché activa
 # se puentea el mock del agente y las corridas ensucian el repo. Se fuerza antes de
@@ -16,6 +17,7 @@ if not os.getenv("DISCOURSE_API_USERNAME"):
     os.environ["DISCOURSE_API_USERNAME"] = "system"
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Asegurar credenciales de solo lectura para entorno de tests si no están definidas
@@ -24,8 +26,9 @@ if not os.getenv("DB_RO_USER"):
 if not os.getenv("DB_RO_PASSWORD"):
     os.environ["DB_RO_PASSWORD"] = "baco_readonly_pass"
 
-from baco.server.db.config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
 from pathlib import Path
+
+from baco.server.db.config import DB_HOST, DB_PASSWORD, DB_PORT, DB_USER
 
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "baco" / "server" / "db" / "schema_completo.sql"
 DDL_SCHEMA = SCHEMA_FILE.read_text(encoding="utf-8")

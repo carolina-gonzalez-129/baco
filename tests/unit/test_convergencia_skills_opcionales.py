@@ -14,7 +14,6 @@ from baco.server.services.orquestador.continuar import _registrar_finalizado, co
 from baco.server.services.orquestador.coordinador import manejar_turno
 from baco.server.services.orquestador.sesion import SesionChat, gestor_sesiones
 
-
 TEXTO = (
     "### Pasos de Configuración\n\n"
     "1. Abrir el menú principal de Ventas y seleccionar Facturación.\n"

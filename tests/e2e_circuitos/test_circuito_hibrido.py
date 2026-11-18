@@ -1,8 +1,5 @@
-import json
 import httpx
-import pytest
 import respx
-from datetime import datetime, timezone
 
 from baco.server.db.ingesta import normalizar_articulo, upsert_articulos
 from baco.server.services.embeddings import embedding_titulo

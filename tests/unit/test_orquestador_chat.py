@@ -1,15 +1,29 @@
 from unittest.mock import MagicMock, patch
-import pytest
-from pydantic import ValidationError
-from fastapi.testclient import TestClient
 
-from baco.server.app.api import get_buscador_duplicados, get_baco_agent
+import pytest
+from fastapi.testclient import TestClient
+from flujo_helpers import avanzar_hasta
+from pydantic import ValidationError
+
+from baco.server.app.api import get_baco_agent, get_buscador_duplicados
 from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
+from baco.server.config_limites import (
+    TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
+    TITULO_MAX,
+)
+from baco.server.schemas.articulo import ArticuloSchema
+from baco.server.schemas.chat_orquestado import (
+    BorradorSesion,
+    ChatOrquestadorRequest,
+    EstadoFlujo,
+)
+from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador import (
+    actualizar_borrador_texto,
     manejar_turno,
     obtener_borrador_conforme,
-    actualizar_borrador_texto,
 )
 from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
@@ -18,22 +32,9 @@ from baco.server.services.orquestador.mensajes import (
     msg_articulo_muy_largo,
 )
 from baco.server.services.orquestador.sesion import SESIONES, SesionChat
-from baco.server.services.orquestador.validaciones import validar_borrador as _validar_borrador
-from baco.server.config_limites import (
-    TEXTO_MAX,
-    TEXTO_MAX_PERCENTIL_99,
-    TEXTO_MIN,
-    TITULO_MAX,
-    TITULO_MIN,
+from baco.server.services.orquestador.validaciones import (
+    validar_borrador as _validar_borrador,
 )
-from baco.server.schemas.articulo import ArticuloSchema
-from flujo_helpers import avanzar_hasta
-from baco.server.schemas.chat_orquestado import (
-    BorradorSesion,
-    ChatOrquestadorRequest,
-    EstadoFlujo,
-)
-from baco.server.services.buscar_duplicados import BuscadorDuplicados
 
 TEXTO_VALIDO = (
     "Para configurar el punto de venta electrónico en el sistema Finnegans ERP es necesario ingresar "
@@ -970,7 +971,9 @@ def test_cache_en_memoria_reutiliza_catalogos_sin_consultar_db(client, mock_busc
 
 
 def test_catalogo_curado_opcion_a_y_resolucion_nombres(client, mock_buscador):
-    from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos, DICCIONARIO_OFICIAL_CATEGORIAS
+    from baco.server.services.orquestador.validaciones import (
+        limpiar_cache_catalogos,
+    )
     limpiar_cache_catalogos()
 
     # Simular lectura de BD completa con 15 registros de 'Categoría {id}'

@@ -23,11 +23,11 @@ import hashlib
 import logging
 import os
 import re
+import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterable
-
-import unicodedata
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class ResumenIngesta:
     tags_sinteticos_creados: int = 0
     ids_omitidos: list[int] = field(default_factory=list)
 
-    def sumar(self, otro: "ResumenIngesta") -> None:
+    def sumar(self, otro: ResumenIngesta) -> None:
         self.insertados += otro.insertados
         self.actualizados += otro.actualizados
         self.sin_cambios += otro.sin_cambios

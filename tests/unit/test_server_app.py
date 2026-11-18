@@ -1,13 +1,13 @@
-import asyncio
 from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
-from baco.server.app.main import app
 from baco.server.app.api import get_buscador_duplicados
-from baco.server.app.middleware import API_KEY, DOCS_USER, DOCS_PASSWORD
-from baco.server.services.buscar_duplicados import BuscadorDuplicados
+from baco.server.app.main import app
+from baco.server.app.middleware import API_KEY, DOCS_PASSWORD, DOCS_USER
 from baco.server.schemas.chat_orquestado import EstadoFlujo
+from baco.server.services.buscar_duplicados import BuscadorDuplicados
 
 
 @pytest.fixture(scope="module")

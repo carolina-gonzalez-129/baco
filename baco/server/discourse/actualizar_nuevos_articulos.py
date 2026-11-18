@@ -20,9 +20,9 @@ Uso:
 import argparse
 import json
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 # Asegurar codificación utf-8 en terminal de Windows
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -31,8 +31,9 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-import httpx
 from datetime import datetime
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -43,17 +44,12 @@ from baco.server.db.config import DB_NAME, get_conn
 from baco.server.db.ingesta import (
     ResumenIngesta,
     discourse_base_url,
-    normalizar_articulo,
-    parsear_fecha,
     upsert_articulos,
 )
-from baco.server.services.embeddings import embedding_titulo, embedding_texto
-
 from baco.server.discourse.common import (
-    ErrorAPIDiscourse,
     HEADERS,
-    MAX_INTENTOS,
     PAUSA_ENTRE_REQUESTS,
+    ErrorAPIDiscourse,
     RecursoNoDisponible,
     actualizar_embeddings_articulo,
     descargar_articulo,

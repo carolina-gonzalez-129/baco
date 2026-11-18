@@ -1,13 +1,15 @@
 import math
-import pytest
+
 import numpy as np
+import pytest
+
 from baco.server.services.embeddings import (
-    embedding_titulo,
-    embedding_texto,
-    get_model_titulo,
-    get_model_texto,
-    DIM_TITULO,
     DIM_TEXTO,
+    DIM_TITULO,
+    embedding_texto,
+    embedding_titulo,
+    get_model_texto,
+    get_model_titulo,
 )
 
 

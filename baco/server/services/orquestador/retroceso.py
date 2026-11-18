@@ -6,8 +6,8 @@ la acción "volver" según el par (estado, modo), preservando exactamente
 el comportamiento actual del flujo.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple, Union
 
 from baco.server.schemas.chat_orquestado import (
     ChatOrquestadorResponse,
@@ -35,21 +35,20 @@ from baco.server.services.orquestador.validaciones import (
     validar_borrador,
 )
 
-
 PREFIJO_VOLVER_REVISION = "Volvemos a la revisión del borrador. "
 
 
 @dataclass(frozen=True)
 class ReglaRetroceso:
     """Representa una entrada en la tabla de retroceso para (estado, modo)."""
-    estado_destino: Union[EstadoFlujo, Callable[[SesionChat], EstadoFlujo]]
+    estado_destino: EstadoFlujo | Callable[[SesionChat], EstadoFlujo]
     restaurar: Callable[[SesionChat], None]
     construir_respuesta: Callable[[SesionChat], ChatOrquestadorResponse]
 
 def resetear_enriquecimiento_descartado(
     sesion: SesionChat,
     agregar_a_descartados: bool = False,
-    texto_extra: Optional[str] = None,
+    texto_extra: str | None = None,
 ) -> str:
     """
     Restaura el estado de la sesión al descartar o volver tras haber cargado
@@ -274,7 +273,7 @@ def _resp_revision_metadatos(sesion: SesionChat) -> ChatOrquestadorResponse:
 # Tabla de retroceso por (estado, modo)
 # ==============================================================================
 
-TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
+TABLA_RETROCESO: dict[tuple[EstadoFlujo, str | None], ReglaRetroceso] = {
     # DECISION_TITULO: vuelve a ESPERANDO_TITULO
     (EstadoFlujo.DECISION_TITULO, None): ReglaRetroceso(
         estado_destino=EstadoFlujo.ESPERANDO_TITULO,
@@ -355,7 +354,7 @@ TABLA_RETROCESO: Dict[Tuple[EstadoFlujo, Optional[str]], ReglaRetroceso] = {
 # Etiqueta del botón Volver (dice a dónde lleva)
 # ==============================================================================
 
-ETIQUETAS_VOLVER: Dict[EstadoFlujo, str] = {
+ETIQUETAS_VOLVER: dict[EstadoFlujo, str] = {
     EstadoFlujo.ESPERANDO_TITULO: "Cambiar el título",
     EstadoFlujo.DECISION_TITULO: "Volver a los artículos similares",
     EstadoFlujo.DECISION_TEXTO: "Volver a los artículos similares",

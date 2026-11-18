@@ -13,7 +13,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from baco.server.app.main import app  # noqa: E402
+from baco.server.app.main import app
 
 DESTINO = RAIZ / "frontend" / "openapi.json"
 

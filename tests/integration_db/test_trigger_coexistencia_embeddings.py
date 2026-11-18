@@ -1,5 +1,6 @@
 import pytest
-from baco.server.db.ingesta import upsert_articulos, ResumenIngesta
+
+from baco.server.db.ingesta import upsert_articulos
 
 SQL_TRIGGER_FUNCTION = """
 CREATE OR REPLACE FUNCTION fn_invalidar_embeddings_articulos()

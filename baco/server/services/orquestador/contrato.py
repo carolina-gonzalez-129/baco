@@ -14,7 +14,6 @@ estado (ACCIONES_PANEL_POR_ESTADO). Un campo fuera de
 Paso 5: EDICION_FINAL (sin volver), FINALIZADO (terminal; "ver_articulo_final" va en
 navegación) y RECHAZADO (terminal) también rigen por este contrato.
 """
-from typing import List, Optional, Tuple
 
 from baco.server.schemas.chat_orquestado import ChatOrquestadorRequest, EstadoFlujo
 
@@ -116,7 +115,7 @@ def auditado(sesion) -> bool:
     return bool(b is not None and (b.skill_aplicada or "").lower() == "auditor")
 
 
-def campos_editables(sesion) -> List[str]:
+def campos_editables(sesion) -> list[str]:
     e = sesion.estado
     if e == EstadoFlujo.ESPERANDO_TITULO:
         return ["titulo"]
@@ -142,7 +141,7 @@ def campos_editables(sesion) -> List[str]:
     return []
 
 
-def navegacion(sesion, opciones: List[str]) -> List[str]:
+def navegacion(sesion, opciones: list[str]) -> list[str]:
     """Navegación del estado. Fuera del contrato se respeta lo que venía en opciones."""
     e = sesion.estado
     if e not in ESTADOS_CONTRATO:
@@ -165,7 +164,7 @@ def navegacion(sesion, opciones: List[str]) -> List[str]:
     return ["volver"]
 
 
-def separar_opciones(sesion, opciones: List[str]) -> Tuple[List[str], List[str]]:
+def separar_opciones(sesion, opciones: list[str]) -> tuple[list[str], list[str]]:
     """Separa los botones del chat de la navegación.
     La acción principal del panel (accion_panel) no se repite como botón del chat: el del
     panel es el que envía los campos del formulario (sigue permitida por ACCIONES_PANEL_POR_ESTADO).
@@ -215,7 +214,7 @@ def _motivo_descarte(sesion, campo: str) -> str:
 
 def filtrar_campos_no_editables(
     sesion, req: ChatOrquestadorRequest
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Quita del request tipo, categoría y etiquetas si el estado no los acepta.
     Devuelve los descartes (solo los que cambiaban algo) para avisar en el chat.
     Título y texto siguen resueltos por cada handler (ver campos_editables).
@@ -235,7 +234,7 @@ def filtrar_campos_no_editables(
     plantilla_act = (b.tipo_plantilla if b else sesion.tipo_plantilla) or extraer_tipo_plantilla(tags_act)
     cat_act = b.categoria_id if b else sesion.categoria_id
 
-    descartes: List[Tuple[str, str]] = []
+    descartes: list[tuple[str, str]] = []
     for campo in CAMPOS_FILTRADOS:
         valor = getattr(req, campo, None)
         if valor is None or campo in editables:
@@ -255,7 +254,7 @@ def filtrar_campos_no_editables(
     return descartes
 
 
-def guardan_campos(sesion, opciones: List[str], navegacion_: List[str]) -> List[str]:
+def guardan_campos(sesion, opciones: list[str], navegacion_: list[str]) -> list[str]:
     """Acciones disponibles en el turno que viajan con los campos del panel.
     "reaplicar" solo figura si hay un resultado de skill pendiente (el Editor es su entrada).
     """
@@ -278,7 +277,7 @@ def guardan_campos(sesion, opciones: List[str], navegacion_: List[str]) -> List[
     return [o for o in dict.fromkeys(disponibles) if o in declaradas]
 
 
-def accion_panel(sesion) -> Optional[dict]:
+def accion_panel(sesion) -> dict | None:
     par = _ACCION_PANEL.get(sesion.estado)
     if par is None:
         return None
@@ -286,7 +285,7 @@ def accion_panel(sesion) -> Optional[dict]:
     return {"accion": accion, "label": label, "campos": campos_editables(sesion)}
 
 
-def estado_skills(sesion, habilitadas: bool, motivo: Optional[str]) -> dict:
+def estado_skills(sesion, habilitadas: bool, motivo: str | None) -> dict:
     """Disponibilidad de cada skill. `habilitadas`/`motivo`: límite de largo del borrador."""
     b = sesion.borrador
     v = getattr(sesion, "validacion", None)

@@ -3,7 +3,10 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from baco.server.services.orquestador import EstadoInvalidoError, SesionNoEncontradaError
+from baco.server.services.orquestador import (
+    EstadoInvalidoError,
+    SesionNoEncontradaError,
+)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

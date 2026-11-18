@@ -1,4 +1,5 @@
 import pytest
+
 from baco.server.services.reglas_semanticas import son_semanticas_divergentes
 
 

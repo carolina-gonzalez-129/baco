@@ -1,16 +1,14 @@
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch, ANY
-import pytest
+from unittest.mock import ANY, MagicMock, patch
 
-from baco.server.discourse.actualizar_nuevos_articulos import (
-    obtener_ids_existentes,
-    descargar_articulo,
-    actualizar_embeddings_articulo,
-    sincronizar_articulos,
-    listar_temas,
-)
 from baco.server.db.ingesta import ResumenIngesta
+from baco.server.discourse.actualizar_nuevos_articulos import (
+    actualizar_embeddings_articulo,
+    descargar_articulo,
+    obtener_ids_existentes,
+    sincronizar_articulos,
+)
 
 
 def _mock_conn_cur(cur_mock):

@@ -1,5 +1,4 @@
 """Tests para los ajustes específicos de PII: emails, credenciales de 3 niveles, URLs y CUITs."""
-import pytest
 from baco.server.services.validar_articulo import sanitizar_borrador
 
 

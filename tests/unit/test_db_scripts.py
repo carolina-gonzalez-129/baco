@@ -1,5 +1,4 @@
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -130,7 +129,13 @@ def test_reconstruir_db_recalcular_embeddings_con_articulos():
 
 def test_schema_completo_sql_valida_embeddings_meta():
     from pathlib import Path
-    from baco.server.services.embeddings import MODEL_TITULO_NAME, DIM_TITULO, MODEL_TEXTO_NAME, DIM_TEXTO
+
+    from baco.server.services.embeddings import (
+        DIM_TEXTO,
+        DIM_TITULO,
+        MODEL_TEXTO_NAME,
+        MODEL_TITULO_NAME,
+    )
     sql_path = Path(__file__).resolve().parents[2] / 'baco' / 'server' / 'db' / 'schema_completo.sql'
     assert sql_path.exists()
     sql_content = sql_path.read_text(encoding='utf-8')

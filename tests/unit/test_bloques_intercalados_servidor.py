@@ -14,9 +14,6 @@ from baco.server.app.middleware import API_KEY
 from baco.server.config_limites import (
     MAX_BLOQUES_TEXTO,
     MAX_RECURSOS_POR_SESION,
-    TEXTO_MAX,
-    TEXTO_MAX_PERCENTIL_99,
-    TEXTO_MIN,
 )
 from baco.server.schemas.chat_orquestado import BorradorSesion, EstadoFlujo
 from baco.server.schemas.recurso import BloqueItem, ConfirmarBloquesRequest, Recurso
@@ -25,7 +22,11 @@ from baco.server.services.embeddings import limpiar_suave, truncar_1000
 from baco.server.services.orquestador.recursos_service import (
     extraer_recursos_y_bloques_texto,
 )
-from baco.server.services.orquestador.sesion import SESIONES, SesionChat, gestor_sesiones
+from baco.server.services.orquestador.sesion import (
+    SESIONES,
+    SesionChat,
+    gestor_sesiones,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -456,10 +457,9 @@ def test_req7_cotas_y_maximo_de_bloques():
 
 import io
 import json
-from baco.server.schemas.recurso import RecursoBloqueInput, sanitizar_url_recurso
+
 from baco.server.services.orquestador.recursos_service import (
     DIR_TEMP_SESIONES,
-    derivar_desde_bloques,
     limpiar_archivos_temporales_sesion,
     obtener_ruta_fisica_recurso,
 )

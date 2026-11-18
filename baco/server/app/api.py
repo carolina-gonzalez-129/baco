@@ -1,11 +1,23 @@
 import json
 from pathlib import Path
-from typing import Annotated, List, Literal, Optional, Tuple, Union
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Cookie, Depends, File, Form, Header, HTTPException, Path as PathParam, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
-from baco.server.app.dependencies import get_buscador_duplicados, get_baco_agent
+from baco.server.app.dependencies import get_baco_agent, get_buscador_duplicados
 from baco.server.config_limites import (
     PERMITIR_SUBIDA_RECURSOS,
     RECURSO_MAX_BYTES,
@@ -38,8 +50,8 @@ from baco.server.services.agente_service import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador import (
-    EstadoInvalidoError,
     TTL_SEGUNDOS,
+    EstadoInvalidoError,
     gestor_sesiones,
     manejar_turno,
     obtener_borrador_sesion_validado,
@@ -65,16 +77,16 @@ router = APIRouter(tags=["API REST"])
 
 
 def extraer_session_id(
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
-) -> Optional[str]:
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+) -> str | None:
     return baco_session or x_session_id
 
 
 def resolver_sesion_y_borrador(
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
-) -> Tuple[str, BorradorSesion]:
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+) -> tuple[str, BorradorSesion]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
         raise HTTPException(
@@ -86,9 +98,9 @@ def resolver_sesion_y_borrador(
 
 
 def resolver_sesion_y_borrador_para_skills(
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
-) -> Tuple[str, BorradorSesion]:
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+) -> tuple[str, BorradorSesion]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
         raise HTTPException(
@@ -113,9 +125,9 @@ def _exigir_estado_skill(sid: str, skill: str) -> None:
 
 
 def resolver_sesion_activa(
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
-) -> Tuple[str, SesionChat]:
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+) -> tuple[str, SesionChat]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
         raise HTTPException(
@@ -137,7 +149,7 @@ _MSG_ESTADO_TERMINAL = {
 }
 
 
-def _rechazar_si_finalizado(sesion: Optional[SesionChat]) -> None:
+def _rechazar_si_finalizado(sesion: SesionChat | None) -> None:
     """FINALIZADO y RECHAZADO son terminales: no se aceptan mutaciones del borrador por REST."""
     if sesion is not None and sesion.estado in _MSG_ESTADO_TERMINAL:
         raise HTTPException(
@@ -147,16 +159,16 @@ def _rechazar_si_finalizado(sesion: Optional[SesionChat]) -> None:
 
 
 def resolver_sesion_activa_editable(
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
-) -> Tuple[str, SesionChat]:
+    sesion_activa: tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+) -> tuple[str, SesionChat]:
     _rechazar_si_finalizado(sesion_activa[1])
     return sesion_activa
 
 
 def resolver_sesion_con_borrador(
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
-) -> Tuple[str, BorradorSesion]:
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+) -> tuple[str, BorradorSesion]:
     sid = extraer_session_id(baco_session, x_session_id)
     if not sid:
         raise HTTPException(
@@ -183,31 +195,31 @@ def resolver_sesion_con_borrador(
 
 
 def resolver_sesion_con_borrador_editable(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
-) -> Tuple[str, BorradorSesion]:
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+) -> tuple[str, BorradorSesion]:
     _rechazar_si_finalizado(gestor_sesiones.obtener_sesion(sesion_valida[0]))
     return sesion_valida
 
 
 class ReordenarMultimediaRequest(BaseModel):
-    id: Optional[str] = Field(default=None, description="ID del recurso a mover a un nuevo (posicion, orden)")
-    recurso_id: Optional[str] = Field(default=None, description="Alias de id del recurso a mover a un nuevo (posicion, orden)")
-    posicion: Optional[int] = Field(default=None, description="Nuevo índice del bloque de texto tras el cual va (-1 para el inicio)")
-    orden: Optional[int] = Field(default=None, description="Nuevo orden del recurso")
-    from_index: Optional[int] = Field(default=None, description="Índice origen para mover elemento")
-    to_index: Optional[int] = Field(default=None, description="Índice destino para mover elemento")
-    orden_ids: Optional[List[str]] = Field(default=None, description="Vector de IDs en el nuevo orden")
-    orden_indices: Optional[List[int]] = Field(default=None, description="Vector de índices numéricos en el nuevo orden")
+    id: str | None = Field(default=None, description="ID del recurso a mover a un nuevo (posicion, orden)")
+    recurso_id: str | None = Field(default=None, description="Alias de id del recurso a mover a un nuevo (posicion, orden)")
+    posicion: int | None = Field(default=None, description="Nuevo índice del bloque de texto tras el cual va (-1 para el inicio)")
+    orden: int | None = Field(default=None, description="Nuevo orden del recurso")
+    from_index: int | None = Field(default=None, description="Índice origen para mover elemento")
+    to_index: int | None = Field(default=None, description="Índice destino para mover elemento")
+    orden_ids: list[str] | None = Field(default=None, description="Vector de IDs en el nuevo orden")
+    orden_indices: list[int] | None = Field(default=None, description="Vector de índices numéricos en el nuevo orden")
 
 
 class AgregarRecursoRequest(BaseModel):
     referencia: str = Field(..., min_length=1, max_length=2048, description="URL (http/https) del recurso")
-    nombre: Optional[str] = Field(default=None, max_length=200, description="Nombre visible; si falta se deriva de la URL")
-    tipo: Optional[Literal["imagen", "video", "audio", "documento"]] = Field(
+    nombre: str | None = Field(default=None, max_length=200, description="Nombre visible; si falta se deriva de la URL")
+    tipo: Literal["imagen", "video", "audio", "documento"] | None = Field(
         default=None,
         description="Opcional. El tipo se detecta de la URL; este valor solo se usa si la detección no es concluyente.",
     )
-    posicion: Optional[int] = Field(default=None, description="Posición donde insertar; si falta, va al final")
+    posicion: int | None = Field(default=None, description="Posición donde insertar; si falta, va al final")
 
 
 class AgregarContenidoAdicionalRequest(BaseModel):
@@ -216,7 +228,7 @@ class AgregarContenidoAdicionalRequest(BaseModel):
 
 
 class ReordenarContenidoAdicionalRequest(BaseModel):
-    orden_ids: List[str] = Field(..., description="Lista ordenada con los IDs de los ítems de contenido adicional.")
+    orden_ids: list[str] = Field(..., description="Lista ordenada con los IDs de los ítems de contenido adicional.")
 
 
 class EliminarContenidoAdicionalResponse(BaseModel):
@@ -226,7 +238,7 @@ class EliminarContenidoAdicionalResponse(BaseModel):
 
 class ModificarContenidoAdicionalRequest(BaseModel):
     contenido: str = Field(..., min_length=1, description="Nuevo contenido del ítem.")
-    tipo: Optional[str] = Field(default=None, description="Nuevo tipo opcional.")
+    tipo: str | None = Field(default=None, description="Nuevo tipo opcional.")
 
 
 @router.post(
@@ -238,8 +250,8 @@ async def chat_orquestado(
     http_request: Request,
     request: ChatOrquestadorRequest,
     response: Response,
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
     buscador: BuscadorDuplicados = Depends(get_buscador_duplicados)
 ) -> ChatOrquestadorResponse:
     request.session_id = extraer_session_id(baco_session, x_session_id)
@@ -272,7 +284,7 @@ async def chat_orquestado(
     summary="Obtiene el borrador de sesión validado y finalizado de la sesión activa"
 )
 def obtener_borrador_de_sesion(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador),
 ) -> BorradorSesion:
     _, borrador = sesion_valida
     return borrador
@@ -284,7 +296,7 @@ def obtener_borrador_de_sesion(
     summary="Aplica la skill 'plantillas' para estructurar el borrador en su formato oficial"
 )
 def aplicar_plantilla(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     sid, borrador = sesion_valida
@@ -309,7 +321,7 @@ def aplicar_plantilla(
     summary="Aplica la skill 'validador' para auditar la coherencia semántica y estilo del artículo"
 )
 def auditar_semantica(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
     baco=Depends(get_baco_agent),
 ) -> ChatResponse:
     sid, borrador = sesion_valida
@@ -348,7 +360,7 @@ def auditar_semantica(
     summary="Revalida el borrador de sesión tras la aplicación de skills en silencio",
 )
 def revalidar_post_skill(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_y_borrador_para_skills),
 ) -> ValidarFormatoResponse:
     sid, _ = sesion_valida
     sesion = gestor_sesiones.obtener_sesion(sid)
@@ -368,8 +380,8 @@ def revalidar_post_skill(
 )
 def confirmar_bloques(
     body: ConfirmarBloquesRequest,
-    baco_session: Optional[str] = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
+    baco_session: str | None = Cookie(default=None, description="ID de sesión FSM (cookie que fija el back en POST /chat). Alternativa a X-Session-ID."),
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID", description="ID de sesión FSM por cabecera, para clientes sin cookies. Alternativa a la cookie baco_session."),
 ) -> ConfirmarBloquesResponse:
     # No se loguea el body para preservar datos sensibles
     sid = body.session_id or extraer_session_id(baco_session, x_session_id)
@@ -500,7 +512,7 @@ def construir_estado_recursos(sid: str) -> EstadoRecursosResponse:
     )
 
 
-def _parsear_bloques_texto_form(bloques_raw: Optional[List[str]]) -> Optional[List[str]]:
+def _parsear_bloques_texto_form(bloques_raw: list[str] | None) -> list[str] | None:
     if bloques_raw is None:
         return None
     if len(bloques_raw) == 1 and isinstance(bloques_raw[0], str):
@@ -522,7 +534,7 @@ def _parsear_bloques_texto_form(bloques_raw: Optional[List[str]]) -> Optional[Li
     summary="Devuelve el estado unificado de bloques_texto y recursos del borrador de la sesión activa"
 )
 def listar_recursos(
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador),
 ) -> EstadoRecursosResponse:
     sid, _ = sesion_valida
     return construir_estado_recursos(sid)
@@ -535,10 +547,10 @@ def listar_recursos(
 )
 def eliminar_recurso(
     recurso_id: str = PathParam(..., description="ID del recurso multimedia a eliminar."),
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
-    target: Union[str, int] = recurso_id
+    target: str | int = recurso_id
     if recurso_id.isdigit() and recurso_id not in borrador.recursos:
         target = int(recurso_id)
     eliminado = gestor_sesiones.eliminar_recurso_multimedia(sid, target)
@@ -557,7 +569,7 @@ def eliminar_recurso(
 )
 def reordenar_recursos_multimedia(
     body: ReordenarMultimediaRequest,
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, _ = sesion_valida
     try:
@@ -583,7 +595,7 @@ def reordenar_recursos_multimedia(
 )
 def agregar_recurso_multimedia(
     body: AgregarRecursoRequest,
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     try:
@@ -609,9 +621,9 @@ def agregar_recurso_multimedia(
 )
 async def subir_recurso(
     file: UploadFile = File(..., description="Archivo multimedia a subir."),
-    posicion: Optional[int] = Form(default=None, description="Índice del bloque de texto tras el cual va el recurso (-1 para el inicio); si se omite, va al final."),
-    bloques_texto: Optional[List[str]] = Form(default=None, description="Opcional. Bloques de texto que reemplazan a los del borrador (p. ej. al partir un bloque para insertar el recurso)."),
-    sesion_valida: Tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
+    posicion: int | None = Form(default=None, description="Índice del bloque de texto tras el cual va el recurso (-1 para el inicio); si se omite, va al final."),
+    bloques_texto: list[str] | None = Form(default=None, description="Opcional. Bloques de texto que reemplazan a los del borrador (p. ej. al partir un bloque para insertar el recurso)."),
+    sesion_valida: tuple[str, BorradorSesion] = Depends(resolver_sesion_con_borrador_editable),
 ) -> EstadoRecursosResponse:
     sid, borrador = sesion_valida
     if not PERMITIR_SUBIDA_RECURSOS:
@@ -622,10 +634,10 @@ async def subir_recurso(
 
     sesion = gestor_sesiones.obtener_sesion(sid)
     borrador_backup = borrador.model_copy(deep=True)
-    archivo_creado: Optional[Path] = None
+    archivo_creado: Path | None = None
 
     try:
-        bloques_nuevos_sanitizados: Optional[List[str]] = None
+        bloques_nuevos_sanitizados: list[str] | None = None
         if bloques_texto is not None:
             bloques_parsed = _parsear_bloques_texto_form(bloques_texto)
             base_api = borrador.texto_base_limpio if borrador.modo == "enriquecimiento" else None
@@ -709,12 +721,12 @@ async def subir_recurso(
 
 @router.get(
     "/chat/contenido-adicional",
-    response_model=List[ItemContenidoAdicional],
+    response_model=list[ItemContenidoAdicional],
     summary="Lista los ítems de contenido adicional del borrador de la sesión activa"
 )
 def listar_contenido_adicional(
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa),
-) -> List[ItemContenidoAdicional]:
+    sesion_activa: tuple[str, SesionChat] = Depends(resolver_sesion_activa),
+) -> list[ItemContenidoAdicional]:
     sid, _ = sesion_activa
     return gestor_sesiones.obtener_contenido_adicional(sid)
 
@@ -726,7 +738,7 @@ def listar_contenido_adicional(
 )
 def agregar_contenido_adicional(
     body: AgregarContenidoAdicionalRequest,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
+    sesion_activa: tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> ItemContenidoAdicional:
     sid, sesion = sesion_activa
     if not sesion.borrador:
@@ -759,7 +771,7 @@ def agregar_contenido_adicional(
 )
 def eliminar_contenido_adicional(
     item_id: str = PathParam(..., description="ID del ítem de contenido adicional a eliminar."),
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
+    sesion_activa: tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> dict:
     sid, _ = sesion_activa
     try:
@@ -776,13 +788,13 @@ def eliminar_contenido_adicional(
 
 @router.put(
     "/chat/contenido-adicional/reordenar",
-    response_model=List[ItemContenidoAdicional],
+    response_model=list[ItemContenidoAdicional],
     summary="Reordena los ítems de la sección de contenido adicional del borrador"
 )
 def reordenar_contenido_adicional(
     body: ReordenarContenidoAdicionalRequest,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
-) -> List[ItemContenidoAdicional]:
+    sesion_activa: tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
+) -> list[ItemContenidoAdicional]:
     sid, _ = sesion_activa
     try:
         return gestor_sesiones.reordenar_contenido_adicional(sid, body.orden_ids)
@@ -803,7 +815,7 @@ def reordenar_contenido_adicional(
 def modificar_contenido_adicional(
     item_id: Annotated[str, PathParam(description="ID del ítem de contenido adicional a modificar.")],
     body: ModificarContenidoAdicionalRequest,
-    sesion_activa: Tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
+    sesion_activa: tuple[str, SesionChat] = Depends(resolver_sesion_activa_editable),
 ) -> ItemContenidoAdicional:
     sid, _ = sesion_activa
     try:

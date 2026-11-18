@@ -4,14 +4,13 @@ from __future__ import annotations
 import os
 import time
 
-
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from baco.server.db.ingesta import discourse_base_url, normalizar_articulo
-from baco.server.services.embeddings import embedding_titulo, embedding_texto
+from baco.server.services.embeddings import embedding_texto, embedding_titulo
 
 DISCOURSE_API_KEY = os.getenv("DISCOURSE_API_KEY", "")
 DISCOURSE_API_USERNAME = os.getenv("DISCOURSE_API_USERNAME", "system")

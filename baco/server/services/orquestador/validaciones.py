@@ -1,9 +1,11 @@
 import difflib
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Literal
+
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
+
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -16,22 +18,15 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.schemas.validacion import ValidarFormatoResponse
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.services.validar_articulo import (
-    sanitizar_borrador,
-    validar_metadatos,
-    validar_texto_y_estructura_post_duplicados,
-)
 from baco.server.services.orquestador.mensajes import (
-    MSG_ANTES_DE_FINALIZAR,
-    PREFIJO_ERROR_CONFORMIDAD,
     MSG_ANTES_DE_CONTINUAR,
-    OPCIONES_PLANTILLAS,
+    MSG_ANTES_DE_FINALIZAR,
     OPCIONES_REVISION_BLOQUEANTE,
     OPCIONES_REVISION_INTERMEDIA_VALIDO,
     OPCIONES_REVISION_VALIDO,
+    PREFIJO_ERROR_CONFORMIDAD,
     msg_error_longitud_maxima,
     msg_error_longitud_minima,
-    msg_pedir_plantilla,
 )
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
@@ -40,8 +35,13 @@ from baco.server.services.orquestador.recursos_service import (
     texto_efectivo_sin_marcadores,
 )
 from baco.server.services.orquestador.sesion import SesionChat, multimedia_habilitada
+from baco.server.services.validar_articulo import (
+    sanitizar_borrador,
+    validar_metadatos,
+    validar_texto_y_estructura_post_duplicados,
+)
 
-ETAPAS_FLUJO: List[str] = [
+ETAPAS_FLUJO: list[str] = [
     "Título y duplicados",
     "Contenido",
     "Plantilla y etiquetas",
@@ -49,7 +49,7 @@ ETAPAS_FLUJO: List[str] = [
     "Conformidad",
 ]
 
-MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
+MAPA_ESTADO_ETAPA: dict[EstadoFlujo, tuple[int, str]] = {
     EstadoFlujo.ESPERANDO_TITULO: (1, "Título y duplicados"),
     EstadoFlujo.DECISION_TITULO: (1, "Título y duplicados"),
     EstadoFlujo.ESPERANDO_TEXTO: (2, "Contenido"),
@@ -65,7 +65,7 @@ MAPA_ESTADO_ETAPA: dict[EstadoFlujo, Tuple[int, str]] = {
 
 
 def obtener_etapa_flujo(
-    estado: EstadoFlujo, sesion: Optional[SesionChat] = None
+    estado: EstadoFlujo, sesion: SesionChat | None = None
 ) -> EtapaFlujo:
     actual, nombre = MAPA_ESTADO_ETAPA.get(estado, (1, ETAPAS_FLUJO[0]))
     if sesion and sesion.borrador:
@@ -80,14 +80,14 @@ def obtener_etapa_flujo(
     )
 
 
-def obtener_tags_acumulados(sesion: SesionChat) -> List[str]:
+def obtener_tags_acumulados(sesion: SesionChat) -> list[str]:
     if sesion.borrador is not None:
         return combinar_tags(sesion.borrador.tipo_plantilla, sesion.borrador.tags, sesion.tags)
     plantilla = extraer_tipo_plantilla(sesion.tags)
     return combinar_tags(plantilla, sesion.tags)
 
 
-DICCIONARIO_OFICIAL_CATEGORIAS: Dict[int, str] = {
+DICCIONARIO_OFICIAL_CATEGORIAS: dict[int, str] = {
     1: "Sin categoría",
     2: "Finnegans",
     4: "Staff",
@@ -212,7 +212,7 @@ DICCIONARIO_OFICIAL_CATEGORIAS: Dict[int, str] = {
     165: "Novedades de Tecnología",
 }
 
-CATEGORIAS_CURADAS_OPCION_A: List[CategoriaOpcion] = [
+CATEGORIAS_CURADAS_OPCION_A: list[CategoriaOpcion] = [
     CategoriaOpcion(id=37, nombre="Agro"),
     CategoriaOpcion(id=25, nombre="App Builder"),
     CategoriaOpcion(id=94, nombre="Comercializadoras"),
@@ -237,15 +237,15 @@ CATEGORIAS_CURADAS_OPCION_A: List[CategoriaOpcion] = [
 ]
 
 
-CATALOGO_OFICIAL_165_CATEGORIAS: List[CategoriaOpcion] = [
+CATALOGO_OFICIAL_165_CATEGORIAS: list[CategoriaOpcion] = [
     CategoriaOpcion(id=cid, nombre=DICCIONARIO_OFICIAL_CATEGORIAS.get(cid, f"Categoría {cid}"))
     for cid in range(1, 166)
 ]
 
 
-def _consultar_categorias_y_tags_sync(cur: Any) -> Tuple[List[CategoriaOpcion], List[str]]:
-    categorias: List[CategoriaOpcion] = []
-    tags: List[str] = []
+def _consultar_categorias_y_tags_sync(cur: Any) -> tuple[list[CategoriaOpcion], list[str]]:
+    categorias: list[CategoriaOpcion] = []
+    tags: list[str] = []
     if cur is None:
         return list(CATALOGO_OFICIAL_165_CATEGORIAS), tags
 
@@ -332,11 +332,11 @@ def _consultar_categorias_y_tags_sync(cur: Any) -> Tuple[List[CategoriaOpcion], 
     return categorias, tags
 
 
-_CACHE_CATEGORIAS: List[CategoriaOpcion] = []
-_CACHE_TAGS: List[str] = []
+_CACHE_CATEGORIAS: list[CategoriaOpcion] = []
+_CACHE_TAGS: list[str] = []
 
 
-def obtener_cache_catalogos() -> Tuple[List[CategoriaOpcion], List[str]]:
+def obtener_cache_catalogos() -> tuple[list[CategoriaOpcion], list[str]]:
     return list(_CACHE_CATEGORIAS), list(_CACHE_TAGS)
 
 
@@ -355,7 +355,7 @@ def precargar_catalogos_cache_sync(cur: Any) -> None:
         _CACHE_TAGS = tags
 
 
-async def cargar_catalogos_sesion(sesion: SesionChat, buscador: Optional[BuscadorDuplicados]) -> None:
+async def cargar_catalogos_sesion(sesion: SesionChat, buscador: BuscadorDuplicados | None) -> None:
     global _CACHE_CATEGORIAS, _CACHE_TAGS
     if _CACHE_CATEGORIAS and _CACHE_TAGS:
         if not sesion.categorias_disponibles:
@@ -396,7 +396,7 @@ async def cargar_catalogos_sesion(sesion: SesionChat, buscador: Optional[Buscado
             sesion.categorias_disponibles.append(CategoriaOpcion(id=cat_actual, nombre=nombre_extra))
 
 
-def validar_longitud(texto: str, min_c: int, max_c: int, campo: str) -> Optional[str]:
+def validar_longitud(texto: str, min_c: int, max_c: int, campo: str) -> str | None:
     l = (
         len(texto_efectivo_sin_marcadores(texto))
         if campo == "texto"
@@ -409,7 +409,7 @@ def validar_longitud(texto: str, min_c: int, max_c: int, campo: str) -> Optional
     return None
 
 
-def validar_longitud_maxima(texto: str, max_c: int, campo: str) -> Optional[str]:
+def validar_longitud_maxima(texto: str, max_c: int, campo: str) -> str | None:
     l = (
         len(texto_efectivo_sin_marcadores(texto))
         if campo == "texto"
@@ -422,7 +422,7 @@ def validar_longitud_maxima(texto: str, max_c: int, campo: str) -> Optional[str]
 
 def consolidar_texto_enriquecimiento(
     texto_base: str, texto_aporte_raw: str
-) -> Tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     """
     Sanitiza el aporte y lo consolida con el texto base del artículo existente.
     Preserva siempre el texto proveniente de la API (texto_base), aplicando la
@@ -521,7 +521,7 @@ def actualizar_metadatos_sesion(sesion: SesionChat, req: ChatOrquestadorRequest)
 
 async def cargar_datos_articulo(
     buscador: BuscadorDuplicados, articulo_id: int
-) -> Tuple[str, Optional[int], List[str]]:
+) -> tuple[str, int | None, list[str]]:
     """Carga el contenido y metadatos de un artículo existente para enriquecimiento.
 
     Prioridad:
@@ -529,8 +529,9 @@ async def cargar_datos_articulo(
     2. Si no existe en producción (404, error de red o tema borrado), hace fallback al texto guardado en la DB local.
     CERO persistencia: la consulta no almacena nada en disco ni en base de datos.
     """
-    from baco.server.services.discourse_media import consultar_articulo_bc_publico
     import unittest.mock
+
+    from baco.server.services.discourse_media import consultar_articulo_bc_publico
 
     is_bc_mocked = isinstance(consultar_articulo_bc_publico, (unittest.mock.MagicMock, unittest.mock.AsyncMock))
     is_buscador_mocked = isinstance(getattr(buscador, "obtener_articulo", None), (unittest.mock.MagicMock, unittest.mock.AsyncMock))
@@ -561,7 +562,7 @@ async def cargar_datos_articulo(
     return "", None, []
 
 
-def extraer_tipo_plantilla(tags: List[str], texto_opcion: str = "") -> Optional[Literal["instructivo", "soluciones"]]:
+def extraer_tipo_plantilla(tags: list[str], texto_opcion: str = "") -> Literal["instructivo", "soluciones"] | None:
     candidatos = [texto_opcion.strip().lower()] + [t.strip().lower() for t in (tags or [])]
     for c in candidatos:
         if c in ("instructivo", "instructivos"):
@@ -571,8 +572,8 @@ def extraer_tipo_plantilla(tags: List[str], texto_opcion: str = "") -> Optional[
     return None
 
 
-def combinar_tags(plantilla: Optional[str], *listas_tags: List[str]) -> List[str]:
-    resultado: List[str] = []
+def combinar_tags(plantilla: str | None, *listas_tags: list[str]) -> list[str]:
+    resultado: list[str] = []
     vistos: set[str] = set()
     if plantilla:
         resultado.append(plantilla)
@@ -591,7 +592,7 @@ def combinar_tags(plantilla: Optional[str], *listas_tags: List[str]) -> List[str
     return resultado
 
 
-def extraer_score(fila: Any, mensaje: str = "") -> Optional[float]:
+def extraer_score(fila: Any, mensaje: str = "") -> float | None:
     if isinstance(fila, dict):
         for k in ("score_total", "score", "similarity", "sim_texto"):
             if k in fila and fila[k] is not None:
@@ -624,8 +625,8 @@ def extraer_score(fila: Any, mensaje: str = "") -> Optional[float]:
 
 
 def normalizar_coincidencias(
-    filas: list, mensaje: str = "", texto_original: Optional[str] = None, tipo_coincidencia: Optional[str] = None
-) -> List[CoincidenciaArticulo]:
+    filas: list, mensaje: str = "", texto_original: str | None = None, tipo_coincidencia: str | None = None
+) -> list[CoincidenciaArticulo]:
     if not filas:
         return []
     f = filas[0]
@@ -675,20 +676,20 @@ def normalizar_texto_categoria(texto: str) -> str:
 
 @dataclass
 class ResultadoCategoria:
-    categoria_id: Optional[int]
-    categoria_nombre: Optional[str]
-    candidatos: List[CategoriaOpcion] = field(default_factory=list)
+    categoria_id: int | None
+    categoria_nombre: str | None
+    candidatos: list[CategoriaOpcion] = field(default_factory=list)
     estado: Literal["asignado", "ambiguo", "no_encontrado", "vacio"] = "vacio"
 
 
 def resolver_categoria(
-    entrada: Union[str, int, None],
-    categorias_disponibles: Optional[List[CategoriaOpcion]] = None,
+    entrada: str | int | None,
+    categorias_disponibles: list[CategoriaOpcion] | None = None,
 ) -> ResultadoCategoria:
     if entrada is None:
         return ResultadoCategoria(categoria_id=None, categoria_nombre=None, estado="vacio")
 
-    catalogo: List[CategoriaOpcion] = list(categorias_disponibles or CATALOGO_OFICIAL_165_CATEGORIAS)
+    catalogo: list[CategoriaOpcion] = list(categorias_disponibles or CATALOGO_OFICIAL_165_CATEGORIAS)
 
     # 1. Entrada numérica (id directo)
     es_digito = isinstance(entrada, int) or (isinstance(entrada, str) and str(entrada).strip().isdigit())
@@ -714,7 +715,7 @@ def resolver_categoria(
         return ResultadoCategoria(categoria_id=None, categoria_nombre=None, estado="vacio")
 
     # Mapeo y deduplicación de categorías válidas (sin dummies sintéticos sin nombre real)
-    mapa_unicos: Dict[str, CategoriaOpcion] = {}
+    mapa_unicos: dict[str, CategoriaOpcion] = {}
     for c in catalogo:
         nom = (c.nombre or "").strip()
         if not nom:
@@ -775,14 +776,14 @@ def resolver_categoria(
 
 
 def parsear_metadatos_mensaje(
-    mensaje: Optional[str],
-    tags_req: Optional[List[str]],
-    cat_req: Optional[int],
-    texto_fallback: Optional[str] = None,
-    categorias_disponibles: Optional[List[CategoriaOpcion]] = None,
-    tags_disponibles: Optional[List[str]] = None,
-) -> Tuple[List[str], Optional[int], Optional[str]]:
-    nuevos_tags: List[str] = list(tags_req or [])
+    mensaje: str | None,
+    tags_req: list[str] | None,
+    cat_req: int | None,
+    texto_fallback: str | None = None,
+    categorias_disponibles: list[CategoriaOpcion] | None = None,
+    tags_disponibles: list[str] | None = None,
+) -> tuple[list[str], int | None, str | None]:
+    nuevos_tags: list[str] = list(tags_req or [])
     cat_res = cat_req
     cat_nom = None
     if cat_res is not None:
@@ -865,7 +866,7 @@ def interpretar_opcion(req: ChatOrquestadorRequest) -> str:
     return mapa.get(bruto, bruto)
 
 
-def obtener_aviso_metadatos_heredados(borrador: Optional[BorradorSesion]) -> Optional[str]:
+def obtener_aviso_metadatos_heredados(borrador: BorradorSesion | None) -> str | None:
     if not borrador or not borrador.metadatos_anteriores or borrador.metadatos_heredados_revisados:
         return None
     ant = borrador.metadatos_anteriores
@@ -880,9 +881,9 @@ def obtener_aviso_metadatos_heredados(borrador: Optional[BorradorSesion]) -> Opt
 def construir_respuesta(
     sesion: SesionChat,
     mensaje: str,
-    opciones: List[str],
-    aviso_privacidad: Optional[str] = None,
-    aviso_metadatos_heredados: Optional[str] = None,
+    opciones: list[str],
+    aviso_privacidad: str | None = None,
+    aviso_metadatos_heredados: str | None = None,
 ) -> ChatOrquestadorResponse:
     txt_titulo_actual = (
         sesion.borrador.titulo
@@ -937,7 +938,9 @@ def construir_respuesta(
         skills_mot = sesion.borrador.skills_motivo
     else:
         from baco.server.config_limites import TEXTO_MAX
-        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+        from baco.server.services.orquestador.recursos_service import (
+            texto_efectivo_sin_marcadores,
+        )
 
         largo = len(texto_efectivo_sin_marcadores(txt_limpio_actual or ""))
         if largo > TEXTO_MAX:
@@ -1006,7 +1009,7 @@ def construir_respuesta(
 
 def validar_borrador(
     sesion: SesionChat, prefijo: str = "", reingreso: bool = False
-) -> Tuple[str, List[str]]:
+) -> tuple[str, list[str]]:
     """reingreso=True (R9): la persona ya leyó la invitación del paso (cancelar descarte,
     guardar cambios); se omite la introducción y el aviso de plantilla, se conservan
     los hallazgos y la línea de botones."""
@@ -1155,7 +1158,7 @@ def validar_borrador(
 
 def verificar_compuerta_avance(
     sesion: SesionChat, prefijo_error: str = PREFIJO_ERROR_CONFORMIDAD
-) -> Optional[ChatOrquestadorResponse]:
+) -> ChatOrquestadorResponse | None:
     """
     Compuerta de validación previa a avanzar (validar_borrador + bloqueantes).
     Evalúa la conformidad del borrador. Si no es válido o tiene bloqueantes,

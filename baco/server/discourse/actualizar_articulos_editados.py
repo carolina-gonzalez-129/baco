@@ -21,7 +21,6 @@ import sys
 import time
 from datetime import datetime
 
-
 # Asegurar codificación utf-8 en terminal de Windows
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
@@ -41,13 +40,10 @@ from baco.server.db.ingesta import (
     parsear_fecha,
     upsert_articulos,
 )
-from baco.server.services.embeddings import embedding_titulo, embedding_texto
-
 from baco.server.discourse.common import (
-    ErrorAPIDiscourse,
     HEADERS,
-    MAX_INTENTOS,
     PAUSA_ENTRE_REQUESTS,
+    ErrorAPIDiscourse,
     actualizar_embeddings_articulo,
     descargar_articulo,
     pedir,

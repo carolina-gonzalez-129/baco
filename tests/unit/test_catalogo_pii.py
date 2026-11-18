@@ -1,5 +1,4 @@
 """Tests para el catálogo de PII y autosanitización en validar_articulo."""
-import pytest
 from baco.server.services.validar_articulo import sanitizar_borrador
 
 

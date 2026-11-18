@@ -4,6 +4,11 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
+from baco.server.services.orquestador.contrato import (
+    es_accion,
+    filtrar_campos_no_editables,
+    opcion_permitida,
+)
 from baco.server.services.orquestador.edicion import (
     ESTADOS_EDICION_LIBRE,
     adoptar_resultado_skill_pendiente,
@@ -13,7 +18,6 @@ from baco.server.services.orquestador.edicion import (
     plantilla_difiere,
     tags_difiere,
 )
-from baco.server.services.orquestador.validaciones import extraer_tipo_plantilla
 from baco.server.services.orquestador.handlers import (
     STATE_HANDLERS,
     gestionar_cambio_plantilla_pendiente,
@@ -22,23 +26,19 @@ from baco.server.services.orquestador.mensajes import (
     MENSAJE_BIENVENIDA,
     MSG_BORRADOR_FINALIZADO,
     MSG_CAMBIO_PLANTILLA_DESCARTADO,
-    OPCIONES_FINALIZADO,
-    MSG_SESION_EXPIRADA,
     MSG_OPCION_NO_DISPONIBLE,
+    MSG_SESION_EXPIRADA,
+    OPCIONES_FINALIZADO,
     OPCIONES_REINICIAR,
     msg_cambios_guardados,
     msg_sesion_finalizada,
     obtener_ayuda_contextual,
 )
 from baco.server.services.orquestador.sesion import gestor_sesiones
-from baco.server.services.orquestador.contrato import (
-    es_accion,
-    filtrar_campos_no_editables,
-    opcion_permitida,
-)
 from baco.server.services.orquestador.validaciones import (
     cargar_catalogos_sesion,
     construir_respuesta,
+    extraer_tipo_plantilla,
     interpretar_opcion,
     validar_borrador,
 )

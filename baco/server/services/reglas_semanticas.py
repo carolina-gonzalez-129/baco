@@ -10,9 +10,8 @@ fases de proyecto distitno
 """
 
 import re
-from typing import Optional, Set, Dict, List, Tuple, Union
 
-JURISDICCIONES: Dict[str, Set[str]] = {
+JURISDICCIONES: dict[str, set[str]] = {
     "AR": {"argentina", "afip", "arba", "agip", "iibb", "cuit", "cae"},
     "PE": {"peru", "perú", "sunat", "ple", "detracciones", "detraccion", "detracción", "ruc"},
     "CO": {"colombia", "dian", "exogena", "exógena"},
@@ -27,12 +26,12 @@ JURISDICCIONES: Dict[str, Set[str]] = {
 
 # Siglas de organismos que coinciden con palabras comunes ("sin", "set").
 # Solo cuentan en el texto original y en MAYÚSCULAS (SIN = Bolivia, SET = Paraguay).
-SIGLAS_AMBIGUAS: Dict[str, Set[str]] = {
+SIGLAS_AMBIGUAS: dict[str, set[str]] = {
     "BO": {"SIN"},
     "PY": {"SET"},
 }
 
-CIRCUITOS_OPUESTOS: List[Tuple[Set[str], Set[str]]] = [
+CIRCUITOS_OPUESTOS: list[tuple[set[str], set[str]]] = [
     ({"compras", "compra", "proveedor", "proveedores"}, {"ventas", "venta", "cliente", "clientes"}),
     ({"cobro", "cobros", "ingreso", "ingresos"}, {"pago", "pagos", "egreso", "egresos"}),
     ({"transaccion", "transacciones", "transacción"}, {"informe", "informes", "reporte", "reportes"}),
@@ -42,12 +41,12 @@ CIRCUITOS_OPUESTOS: List[Tuple[Set[str], Set[str]]] = [
     ({"retencion", "retenciones", "retención"}, {"percepcion", "percepciones", "percepción"}),
 ]
 
-FASES_PROYECTO: Set[str] = {
+FASES_PROYECTO: set[str] = {
     "diseno", "diseño", "proyecto start", "start", "ejecucion", "ejecución",
     "cierre", "alcance", "planificacion", "planificación", "capacitacion", "capacitación"
 }
 
-PREFIJOS_FORMATO: Set[str] = {
+PREFIJOS_FORMATO: set[str] = {
     "webinar", "capacitacion", "capacitación", "grabacion", "grabación",
     "taller", "meetup", "video", "readme", "modulo", "módulo"
 }
@@ -63,12 +62,12 @@ def normalizar_con_postgres(cur, texto: str) -> str:
     return (row[0] if isinstance(row, (tuple, list)) else row.get("normalizar_texto", "")) or ""
 
 
-def _tokenizar(texto: str) -> Set[str]:
+def _tokenizar(texto: str) -> set[str]:
     """Tokeniza ignorando puntuación (ej. "afip?" -> "afip")."""
     return set(re.findall(r"\w+", texto.lower())) if texto else set()
 
 
-def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]], texto_raw: str = "") -> Optional[str]:
+def detectar_jurisdiccion(tokens_o_texto: str | set[str], texto_raw: str = "") -> str | None:
     if isinstance(tokens_o_texto, set):
         tokens = {t.lower() for t in tokens_o_texto}
     else:
@@ -87,7 +86,7 @@ def detectar_jurisdiccion(tokens_o_texto: Union[str, Set[str]], texto_raw: str =
     return None
 
 
-def detectar_jurisdicciones(tokens_o_texto: Union[str, Set[str]], texto_raw: str = "") -> Set[str]:
+def detectar_jurisdicciones(tokens_o_texto: str | set[str], texto_raw: str = "") -> set[str]:
     """Como detectar_jurisdiccion, pero devuelve TODOS los países mencionados
     (ej. "Localización Brasil: diferencias con Argentina" -> {"BR", "AR"})."""
     if isinstance(tokens_o_texto, set):

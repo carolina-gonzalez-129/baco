@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 import mimetypes
 import os
-from pathlib import Path, PurePosixPath
 import re
 import shutil
-from urllib.parse import urlsplit, urlunsplit
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from collections.abc import Iterable
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 from baco.server.config_limites import (
     MAX_BLOQUES_TEXTO,
@@ -18,7 +18,6 @@ from baco.server.config_limites import (
 )
 from baco.server.schemas.recurso import (
     BloqueItem,
-    OrigenRecurso,
     Recurso,
     TipoRecurso,
     sanitizar_url_recurso,
@@ -56,12 +55,10 @@ MIMES_PERMITIDOS = {
 
 class SubidaRecursosDeshabilitadaError(Exception):
     """Lanzada cuando se intenta subir un recurso y la bandera está desactivada."""
-    pass
 
 
 class RecursoInvalidoError(Exception):
     """Lanzada cuando un recurso no pasa las validaciones de tamaño, tipo o cantidad."""
-    pass
 
 
 class RecursoDuplicadoError(RecursoInvalidoError):
@@ -73,7 +70,7 @@ class RecursoNoEncontradoEnSesionError(RecursoInvalidoError):
 
 
 def clasificar_tipo_recurso(
-    url_o_path: str, nombre: str = "", mime: Optional[str] = None
+    url_o_path: str, nombre: str = "", mime: str | None = None
 ) -> TipoRecurso:
     """Clasifica el recurso en imagen, video, audio, documento u otro."""
     u = (url_o_path or "").lower()
@@ -153,7 +150,7 @@ def _extraer_attr_html(tag_html: str, attr: str) -> str:
     return (m.group(1) or m.group(2) or m.group(3) or "").strip()
 
 
-def _max_num_recurso(recursos: Optional[Dict[str, Recurso]], ultimo_id: int = 0) -> int:
+def _max_num_recurso(recursos: dict[str, Recurso] | None, ultimo_id: int = 0) -> int:
     max_num = max(0, int(ultimo_id or 0))
     for rid in (recursos or {}):
         m = re.fullmatch(r"rec_(\d+)", str(rid))
@@ -164,8 +161,8 @@ def _max_num_recurso(recursos: Optional[Dict[str, Recurso]], ultimo_id: int = 0)
 
 def _limpiar_segmento_texto(
     seg: str,
-    bloques_codigo_inline: List[str],
-    bloques_codigo_cercados: List[str],
+    bloques_codigo_inline: list[str],
+    bloques_codigo_cercados: list[str],
 ) -> str:
     """Normaliza espacios y párrafos de un segmento de texto y restaura bloques de código."""
     if not seg:
@@ -187,9 +184,9 @@ def _limpiar_segmento_texto(
 
 def extraer_recursos_y_bloques_texto(
     texto: str,
-    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    recursos_previos: dict[str, Recurso] | None = None,
     ultimo_id: int = 0,
-) -> Tuple[List[str], Dict[str, Recurso]]:
+) -> tuple[list[str], dict[str, Recurso]]:
     """Separa el contenido recibido en:
 
     1. bloques_texto: lista ordenada de bloques de texto puros (SIN marcadores [[recurso:...]]
@@ -201,11 +198,11 @@ def extraer_recursos_y_bloques_texto(
     if not texto:
         return [], {}
 
-    recursos: Dict[str, Recurso] = {}
+    recursos: dict[str, Recurso] = {}
     contador = _max_num_recurso(recursos_previos, ultimo_id) + 1
-    urls_registradas: Dict[str, str] = {}
+    urls_registradas: dict[str, str] = {}
 
-    prev_por_url: Dict[str, Recurso] = {}
+    prev_por_url: dict[str, Recurso] = {}
     if recursos_previos:
         for r in recursos_previos.values():
             if r.referencia:
@@ -218,8 +215,8 @@ def extraer_recursos_y_bloques_texto(
     resultado = str(texto)
 
     # 1. Enmascarar bloques de código cercados e inline para preservar ejemplos de código
-    bloques_codigo_cercados: List[str] = []
-    bloques_codigo_inline: List[str] = []
+    bloques_codigo_cercados: list[str] = []
+    bloques_codigo_inline: list[str] = []
 
     def _mask_fenced(m: re.Match) -> str:
         idx = len(bloques_codigo_cercados)
@@ -249,7 +246,7 @@ def extraer_recursos_y_bloques_texto(
 
         resultado = re.sub(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", _sub_marcador_previo, resultado)
 
-    def _registrar(url_raw: str, tipo: TipoRecurso, nombre_raw: str = "", fallback_prefix: str = "Recurso") -> Optional[str]:
+    def _registrar(url_raw: str, tipo: TipoRecurso, nombre_raw: str = "", fallback_prefix: str = "Recurso") -> str | None:
         nonlocal contador
         try:
             url_limpia = sanitizar_url_recurso(url_raw)
@@ -425,7 +422,7 @@ def extraer_recursos_y_bloques_texto(
 
     # 4. Partir por tokens de recurso para construir bloques_texto y asignar posicion/orden
     partes = re.split(r"\x00BACO_SPLIT_REC:([a-zA-Z0-9_\-]+)\x00", resultado)
-    bloques_texto: List[str] = []
+    bloques_texto: list[str] = []
     vistos: set[str] = set()
     orden_idx = 0
 
@@ -460,9 +457,9 @@ def extraer_recursos_y_bloques_texto(
 
 def extraer_recursos_y_texto_limpio(
     texto: str,
-    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    recursos_previos: dict[str, Recurso] | None = None,
     ultimo_id: int = 0,
-) -> Tuple[str, Dict[str, Recurso]]:
+) -> tuple[str, dict[str, Recurso]]:
     """Separa el contenido recibido en:
 
     1. texto_limpio: texto de los bloques de texto unidos SIN marcadores [[recurso:...]]
@@ -476,7 +473,7 @@ def extraer_recursos_y_texto_limpio(
     return texto_limpio, recursos
 
 
-def sincronizar_orden_recursos_desde_texto(texto: str, recursos: Dict[str, Recurso]) -> List[Recurso]:
+def sincronizar_orden_recursos_desde_texto(texto: str, recursos: dict[str, Recurso]) -> list[Recurso]:
     """Sincroniza r.orden según los marcadores presentes en el texto (si los hubiera)
     o por (r.posicion, r.orden). Los IDs permanecen estables."""
     marcadores = re.findall(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", texto or "")
@@ -502,11 +499,11 @@ def sincronizar_orden_recursos_desde_texto(texto: str, recursos: Dict[str, Recur
 
 
 def derivar_bloques_y_recursos(
-    bloques: List[BloqueItem],
-    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    bloques: list[BloqueItem],
+    recursos_previos: dict[str, Recurso] | None = None,
     ultimo_id: int = 0,
-    session_id: Optional[str] = None,
-) -> Tuple[List[str], Dict[str, Recurso], Optional[str]]:
+    session_id: str | None = None,
+) -> tuple[list[str], dict[str, Recurso], str | None]:
     """Función pura que deriva `bloques_texto` (sin marcadores [[recurso:...]]) y el
     diccionario de recursos con su `posicion` (índice del bloque de texto previo) y `orden`.
     Conserva origen="subido", tamano_bytes y mime_type desde recursos_previos.
@@ -514,9 +511,9 @@ def derivar_bloques_y_recursos(
     if not bloques:
         return [], {}, None
 
-    bloques_texto: List[str] = []
-    recursos: Dict[str, Recurso] = {}
-    conteo_tipos: Dict[str, int] = {}
+    bloques_texto: list[str] = []
+    recursos: dict[str, Recurso] = {}
+    conteo_tipos: dict[str, int] = {}
     rec_counter = max(_max_num_recurso(recursos_previos, ultimo_id), int(ultimo_id or 0)) + 1
 
     # Si no se pasó session_id explícito pero todos los recursos previos temporales pertenecen a una misma sesión, inferirla
@@ -532,7 +529,7 @@ def derivar_bloques_y_recursos(
         if len(sids_detectados) == 1:
             sid_efectivo = next(iter(sids_detectados))
 
-    prev_por_url: Dict[str, Recurso] = {}
+    prev_por_url: dict[str, Recurso] = {}
     if recursos_previos:
         for r in recursos_previos.values():
             if r.referencia:
@@ -674,11 +671,11 @@ def derivar_bloques_y_recursos(
 
 
 def derivar_desde_bloques(
-    bloques: List[BloqueItem],
-    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    bloques: list[BloqueItem],
+    recursos_previos: dict[str, Recurso] | None = None,
     ultimo_id: int = 0,
-    session_id: Optional[str] = None,
-) -> Tuple[str, Dict[str, Recurso], Optional[str]]:
+    session_id: str | None = None,
+) -> tuple[str, dict[str, Recurso], str | None]:
     """Función pura que deriva texto_limpio (SIN marcadores [[recurso:...]]) y
     el diccionario de recursos con `posicion` y `orden` correlativos.
     """
@@ -707,7 +704,7 @@ def reindexar_marcadores_tras_eliminar(texto: str, orden_eliminado: int) -> str:
     return "\n\n".join(b for b in bloques if b).strip()
 
 
-def reindexar_marcadores_tras_reordenar(texto: str, mapa_orden: Dict[int, int]) -> str:
+def reindexar_marcadores_tras_reordenar(texto: str, mapa_orden: dict[int, int]) -> str:
     """Actualiza los marcadores [[R{n}]] en el texto según el nuevo orden (0-indexed)."""
     if not texto or not mapa_orden:
         return texto
@@ -724,7 +721,7 @@ def reindexar_marcadores_tras_reordenar(texto: str, mapa_orden: Dict[int, int]) 
 SECCION_RECURSOS_TITULO = "## Recursos"
 
 
-def _recursos_ordenados(recursos: Union[Dict[str, Recurso], Iterable[Recurso], None]) -> List[Recurso]:
+def _recursos_ordenados(recursos: dict[str, Recurso] | Iterable[Recurso] | None) -> list[Recurso]:
     if not recursos:
         return []
     valores = recursos.values() if isinstance(recursos, dict) else recursos
@@ -746,13 +743,13 @@ def _recurso_a_markdown(rec: Recurso) -> str:
 
 
 def componer_texto_publicable(
-    texto_o_bloques: Union[str, List[str]],
-    recursos: Union[Dict[str, Recurso], Iterable[Recurso], None],
+    texto_o_bloques: str | list[str],
+    recursos: dict[str, Recurso] | Iterable[Recurso] | None,
 ) -> str:
     """Compone el texto alineado a Discourse intercalando los bloques de texto y
     el Markdown de cada recurso según su (posicion, orden), sin sección ## Recursos.
     """
-    recs_map: Dict[str, Recurso] = {}
+    recs_map: dict[str, Recurso] = {}
     if recursos:
         if isinstance(recursos, dict):
             recs_map = dict(recursos)
@@ -767,7 +764,7 @@ def componer_texto_publicable(
         if not bloques:
             return "\n\n".join(_recurso_a_markdown(r) for r in items_ordenados)
 
-        partes: List[str] = []
+        partes: list[str] = []
         # Recursos antes del primer bloque (posicion < 0)
         for r in items_ordenados:
             if getattr(r, "posicion", 0) < 0:
@@ -822,18 +819,18 @@ def componer_texto_publicable(
 
 
 def reconstruir_texto_con_recursos(
-    texto_limpio: Union[str, List[str]], recursos: Union[Dict[str, Recurso], Iterable[Recurso], None]
+    texto_limpio: str | list[str], recursos: dict[str, Recurso] | Iterable[Recurso] | None
 ) -> str:
     """Compatibilidad: compone el texto para publicación/vista previa a partir de texto_limpio/bloques y recursos."""
     return componer_texto_publicable(texto_limpio, recursos)
 
 
 def verificar_y_restaurar_marcadores(
-    texto: str, recursos: Dict[str, Recurso]
-) -> Tuple[str, List[str]]:
+    texto: str, recursos: dict[str, Recurso]
+) -> tuple[str, list[str]]:
     """Verifica determinísticamente que todos los marcadores de recursos existan en el texto.
     Si falta alguno, lo restaura al final del texto y genera una advertencia."""
-    advertencias: List[str] = []
+    advertencias: list[str] = []
     texto_res = texto or ""
     for r in sorted(recursos.values(), key=lambda x: x.orden):
         marcador = f"[[recurso:{r.id}]]"
@@ -846,7 +843,7 @@ def verificar_y_restaurar_marcadores(
 
 
 def generar_id_recurso_libre(
-    recursos: Optional[Dict[str, Recurso]], ultimo_id: int = 0
+    recursos: dict[str, Recurso] | None, ultimo_id: int = 0
 ) -> str:
     """Devuelve el primer `rec_N` que no esté en uso (nunca pisa un recurso existente ni IDs ya usados)."""
     usados = set(recursos or {})
@@ -863,9 +860,9 @@ def _ruta_sin_query(url: str) -> str:
 
 def crear_recurso_desde_url(
     url: str,
-    recursos_actuales: Dict[str, Recurso],
-    nombre: Optional[str] = None,
-    tipo_sugerido: Optional[TipoRecurso] = None,
+    recursos_actuales: dict[str, Recurso],
+    nombre: str | None = None,
+    tipo_sugerido: TipoRecurso | None = None,
     ultimo_id: int = 0,
 ) -> Recurso:
     """Crea un recurso multimedia a partir de una URL pegada en el mini panel.
@@ -909,8 +906,8 @@ def crear_recurso_desde_url(
 
 
 def obtener_ruta_fisica_recurso(
-    recurso: Recurso, session_id: Optional[str] = None
-) -> Optional[Path]:
+    recurso: Recurso, session_id: str | None = None
+) -> Path | None:
     """Compone la ruta física en disco a partir del directorio base DIR_TEMP_SESIONES,
     session_id y el nombre de archivo interno.
     Garantiza paridad en Windows y Docker, sin exponer ni almacenar rutas absolutas.
@@ -933,8 +930,8 @@ def obtener_ruta_fisica_recurso(
 
 
 def eliminar_recurso_borrador(
-    recursos: Dict[str, Recurso], recurso_id: str
-) -> Tuple[Dict[str, Recurso], bool]:
+    recursos: dict[str, Recurso], recurso_id: str
+) -> tuple[dict[str, Recurso], bool]:
     """Elimina el recurso del diccionario de recursos del borrador.
 
     No lee ni modifica texto_limpio: los recursos multimedia viven siempre aparte.
@@ -967,8 +964,8 @@ def guardar_recurso_temporal_sesion(
     session_id: str,
     filename: str,
     contenido_bytes: bytes,
-    content_type_declarado: Optional[str],
-    recursos_actuales: Dict[str, Recurso],
+    content_type_declarado: str | None,
+    recursos_actuales: dict[str, Recurso],
     ultimo_id: int = 0,
 ) -> Recurso:
     """Valida y guarda un recurso subido por el usuario en el almacenamiento temporal de sesión.
@@ -1075,8 +1072,8 @@ def texto_efectivo_sin_marcadores(texto: str) -> str:
 
 
 def _normalizar_invariantes_recursos(
-    recursos: Dict[str, Recurso], num_bloques: Optional[int] = None
-) -> Dict[str, Recurso]:
+    recursos: dict[str, Recurso], num_bloques: int | None = None
+) -> dict[str, Recurso]:
     """Garantiza invariantes sobre el diccionario de recursos:
     - posicion en [-1, num_bloques - 1] (si num_bloques se especifica)
     - ordenados por (posicion, orden)
@@ -1085,11 +1082,10 @@ def _normalizar_invariantes_recursos(
     if not recursos:
         return {}
     max_pos = (num_bloques - 1) if num_bloques is not None else None
-    ajustados: List[Recurso] = []
+    ajustados: list[Recurso] = []
     for r in recursos.values():
         pos = getattr(r, "posicion", 0)
-        if pos < -1:
-            pos = -1
+        pos = max(pos, -1)
         if max_pos is not None and pos > max_pos:
             pos = max_pos
         if pos != getattr(r, "posicion", 0):
@@ -1097,7 +1093,7 @@ def _normalizar_invariantes_recursos(
         ajustados.append(r)
 
     ordenados = sorted(ajustados, key=lambda x: (x.posicion, x.orden))
-    resultado: Dict[str, Recurso] = {}
+    resultado: dict[str, Recurso] = {}
     for idx, r in enumerate(ordenados):
         if r.orden != idx:
             r = r.model_copy(update={"orden": idx})
@@ -1106,21 +1102,21 @@ def _normalizar_invariantes_recursos(
 
 
 def fusionar_bloques_y_recursos_sin_colision(
-    bloques_texto: List[str],
-    recursos_base: Optional[Dict[str, Recurso]],
-    recursos_nuevos: Optional[Dict[str, Recurso]],
+    bloques_texto: list[str],
+    recursos_base: dict[str, Recurso] | None,
+    recursos_nuevos: dict[str, Recurso] | None,
     ultimo_id: int = 0,
-) -> Tuple[List[str], Dict[str, Recurso]]:
+) -> tuple[list[str], dict[str, Recurso]]:
     """Fusiona recursos_nuevos dentro de recursos_base sin colisiones de ID,
     conservando recursos existentes y manteniendo invariantes de (posicion, orden).
     """
-    recs_resultado: Dict[str, Recurso] = {
+    recs_resultado: dict[str, Recurso] = {
         k: v.model_copy() for k, v in (recursos_base or {}).items()
     }
     if not recursos_nuevos:
         return list(bloques_texto), _normalizar_invariantes_recursos(recs_resultado, len(bloques_texto))
 
-    referencias_existentes: Dict[str, str] = {}
+    referencias_existentes: dict[str, str] = {}
     for r in recs_resultado.values():
         if r.referencia:
             referencias_existentes[r.referencia] = r.id
@@ -1180,11 +1176,11 @@ def fusionar_bloques_y_recursos_sin_colision(
 
 def procesar_recursos_y_bloques(
     texto: str,
-    recursos_previos: Optional[Dict[str, Recurso]] = None,
+    recursos_previos: dict[str, Recurso] | None = None,
     ultimo_id: int = 0,
     validar_marcadores_existentes: bool = True,
-    mensaje_error_custom: Optional[str] = None,
-) -> Tuple[List[str], Dict[str, Recurso], Optional[str]]:
+    mensaje_error_custom: str | None = None,
+) -> tuple[list[str], dict[str, Recurso], str | None]:
     """Procesa el texto de entrada y devuelve (bloques_texto, recursos, error).
     1. Valida marcadores manuales no permitidos ([[R1]] o [[recurso:X]] inexistente).
     2. Extrae bloques de texto (sin marcadores) y recursos con su (posicion, orden).

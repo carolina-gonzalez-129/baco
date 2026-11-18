@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -8,7 +9,6 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.coordinador import manejar_turno
-from baco.server.services.orquestador.continuar import continuar_desde_revision
 from baco.server.services.orquestador.mensajes import (
     MSG_EDICION_FINAL,
     MSG_OPCION_NO_DISPONIBLE,

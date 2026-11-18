@@ -1,9 +1,10 @@
 import pytest
+
 from baco.server.schemas.chat_orquestado import BorradorSesion
 from baco.server.schemas.recurso import Recurso
 from baco.server.services.orquestador.recursos_service import (
-    extraer_recursos_y_texto_limpio,
     eliminar_recurso_borrador,
+    extraer_recursos_y_texto_limpio,
     sincronizar_orden_recursos_desde_texto,
 )
 
@@ -149,7 +150,9 @@ def test_marcador_valido_referenciando_recurso_existente_es_preservado():
 
 def test_borrador_texto_siempre_coincide_con_composicion_de_texto_limpio_y_recursos():
     """Riesgo 4: borrador.texto_alineado_discourse coincide siempre con componer_texto_publicable y es de solo lectura."""
-    from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+    from baco.server.services.orquestador.recursos_service import (
+        componer_texto_publicable,
+    )
 
     r1 = Recurso(id="rec_1", tipo="imagen", nombre="captura.png", referencia="https://bc.finneg.com/c.png", orden=0)
     texto = "Configuración del sistema:\n\n[[recurso:rec_1]]\n\nFin del proceso."
@@ -174,6 +177,7 @@ def test_skill_plantillas_con_recursos_envia_solo_el_texto_al_modelo():
     """Skills y recursos ya no son excluyentes: la skill corre sobre texto_limpio y los
     recursos (con sus referencias) no viajan en el prompt."""
     from unittest.mock import MagicMock, patch
+
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
     texto_original = "Paso 1: Configurar cuenta.\n\nPaso 2: Verificar saldos."
@@ -203,6 +207,7 @@ def test_skill_plantillas_con_recursos_envia_solo_el_texto_al_modelo():
 def test_skill_plantillas_acepta_texto_puro_sin_recursos():
     """Si el borrador no contiene recursos ni marcadores, la skill procesa el texto puro normalmente."""
     from unittest.mock import MagicMock, patch
+
     from baco.server.services.agente_service import ejecutar_skill_plantillas
 
     texto_original = "Paso 1: Configuración inicial.\n\nPaso 2: Finalización del proceso."
@@ -229,7 +234,6 @@ def test_componer_texto_publicable_sustituye_marcadores_inline_sin_seccion_final
     en la posición exacta, sin sección ## Recursos al final.
     """
     from baco.server.services.orquestador.recursos_service import (
-        componer_texto_publicable,
         extraer_recursos_y_texto_limpio,
     )
 

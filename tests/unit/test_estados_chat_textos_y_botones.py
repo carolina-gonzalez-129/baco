@@ -1,10 +1,11 @@
 from unittest.mock import MagicMock, patch
+
 import pytest
 from starlette.testclient import TestClient
 
 from baco.server.app.api import get_buscador_duplicados
-from baco.server.app.dependencies import get_baco_agent
 from baco.server.app.main import app
+from baco.server.app.middleware import API_KEY
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.mensajes import (
@@ -12,8 +13,6 @@ from baco.server.services.orquestador.mensajes import (
     MSG_OPCION_NO_DISPONIBLE,
     MSG_PLANTILLA_VALIDADA,
 )
-
-from baco.server.app.middleware import API_KEY
 
 TEXTO_VALIDO = """
 ### Pasos de Configuración

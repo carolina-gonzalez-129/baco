@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
 import httpx
+import pytest
+
 from baco.server.services.discourse_media import (
     consultar_articulo_bc_publico,
     cooked_a_markdown_con_medios,

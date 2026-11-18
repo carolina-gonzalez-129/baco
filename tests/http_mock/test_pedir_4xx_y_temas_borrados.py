@@ -43,9 +43,8 @@ def test_pedir_otros_4xx_no_reintentan_y_no_son_recurso_no_disponible(status):
 @respx.mock
 def test_pedir_5xx_sigue_reintentando():
     route = respx.get(f"{BASE}/y").respond(500)
-    with httpx.Client(base_url=BASE) as client:
-        with pytest.raises(ErrorAPIDiscourse):
-            pedir(client, "/y")
+    with httpx.Client(base_url=BASE) as client, pytest.raises(ErrorAPIDiscourse):
+        pedir(client, "/y")
     assert route.call_count == 5
 
 

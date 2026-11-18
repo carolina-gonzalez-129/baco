@@ -1,5 +1,5 @@
-import pytest
 from unittest.mock import MagicMock
+
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 
 

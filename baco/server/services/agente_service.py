@@ -1,12 +1,11 @@
 import os
 import re
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
-from typing import  Optional, Tuple
+
 from fastapi import HTTPException
 
 from baco.server.config_limites import (
-    BUFFER_CARACTERES_PROMPT_XML,
     TEXTO_MAX,
     TEXTO_MIN,
 )
@@ -68,8 +67,8 @@ _DIR_REFERENCIAS_PLANTILLAS = Path(__file__).resolve().parents[2] / "skills" / "
 _PLANTILLAS_CON_REFERENCIA = {"instructivo", "soluciones"}
 
 
-@lru_cache(maxsize=None)
-def plantilla_de_referencia(tipo_plantilla: Optional[str]) -> Optional[str]:
+@cache
+def plantilla_de_referencia(tipo_plantilla: str | None) -> str | None:
     """Devuelve el cuerpo de references/plantilla-<tipo>.md (sin la cabecera interna) para inyectarlo
     en el prompt. El modelo no lee references/ por sí mismo, así que el servidor se lo pasa."""
     tipo = (tipo_plantilla or "").strip().lower()
@@ -88,7 +87,7 @@ def plantilla_de_referencia(tipo_plantilla: Optional[str]) -> Optional[str]:
     return cuerpo or None
 
 
-def _bloque_plantilla_referencia(tipo_plantilla: Optional[str]) -> str:
+def _bloque_plantilla_referencia(tipo_plantilla: str | None) -> str:
     cuerpo = plantilla_de_referencia(tipo_plantilla)
     if not cuerpo:
         return ""
@@ -118,7 +117,7 @@ def _clave_cache(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
-def _leer_cache_skill(prompt: str) -> Optional[str]:
+def _leer_cache_skill(prompt: str) -> str | None:
     if not _cache_skills_activa():
         return None
     try:
@@ -220,7 +219,7 @@ RE_VERSION_CORREGIDA = re.compile(
 )
 
 
-def ejecutar_skill_validador(borrador: BorradorSesion, baco) -> Tuple[str, Optional[str]]:
+def ejecutar_skill_validador(borrador: BorradorSesion, baco) -> tuple[str, str | None]:
     tags_str = ", ".join(_campo_linea_prompt(t) for t in borrador.tags) if borrador.tags else "Ninguno"
     texto_entrada = _obtener_texto_limpio_estricto(borrador)
     texto_seguro = _escapar_delimitadores_xml(_sanitizar_para_prompt(texto_entrada))

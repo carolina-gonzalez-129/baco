@@ -1,10 +1,10 @@
 import pytest
+
 from baco.server.config_limites import TEXTO_MIN
 from baco.server.schemas.articulo import ArticuloSchema, Tag
 from baco.server.services.validar_articulo import (
     validar_texto_y_estructura_post_duplicados,
 )
-
 
 # ==============================================================================
 # TESTS FASE 2: validar_texto_y_estructura_post_duplicados

@@ -1,5 +1,7 @@
-import pytest
 from datetime import datetime, timezone
+
+import pytest
+
 from baco.server.db.ingesta import upsert_articulos
 
 

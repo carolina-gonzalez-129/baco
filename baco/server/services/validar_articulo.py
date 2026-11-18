@@ -1,14 +1,16 @@
 import re
 from typing import Any
-from baco.server.schemas.articulo import ArticuloSchema
+
 from baco.server.config_limites import (
+    TAGS_MIN,
+    TAGS_PLANTILLAS_PERMITIDAS,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
     TITULO_MAX,
     TITULO_MIN,
-    TAGS_MIN,
-    TAGS_PLANTILLAS_PERMITIDAS,
 )
+from baco.server.schemas.articulo import ArticuloSchema
+
 
 def _finding(severity: str, field: str, description: str, action: str) -> dict[str, str]:
     return {
@@ -701,7 +703,9 @@ def validar_texto_y_estructura_post_duplicados(articulo: ArticuloSchema) -> dict
     texto_sanitizado = datos_sanitizados["texto_sanitizado"]
     titulo_sanitizado = datos_sanitizados["titulo_sanitizado"]
 
-    from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+    from baco.server.services.orquestador.recursos_service import (
+        texto_efectivo_sin_marcadores,
+    )
 
     articulo.texto = texto_sanitizado
     articulo.titulo = titulo_sanitizado

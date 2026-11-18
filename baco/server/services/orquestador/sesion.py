@@ -1,8 +1,8 @@
 import hashlib
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-import secrets
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
@@ -20,10 +20,12 @@ from baco.server.services.orquestador.excepciones import (
 from baco.server.services.orquestador.recursos_service import (
     _max_num_recurso,
     _normalizar_invariantes_recursos,
-    eliminar_recurso_borrador as servicio_eliminar_recurso,
     componer_texto_publicable,
     extraer_recursos_y_bloques_texto,
     limpiar_archivos_temporales_sesion,
+)
+from baco.server.services.orquestador.recursos_service import (
+    eliminar_recurso_borrador as servicio_eliminar_recurso,
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
 
@@ -33,11 +35,11 @@ def clave_busqueda(tipo: str, texto: str) -> tuple[str, str]:
 
 
 def calcular_huella_contenido(
-    titulo: Optional[str] = None,
-    texto_limpio: Optional[str] = None,
+    titulo: str | None = None,
+    texto_limpio: str | None = None,
     categoria: Any = None,
-    tags: Optional[List[str]] = None,
-    contenido_adicional: Optional[List[Any]] = None,
+    tags: list[str] | None = None,
+    contenido_adicional: list[Any] | None = None,
 ) -> str:
     tit = (titulo or "").strip()
     txt = (texto_limpio or "").strip()
@@ -79,45 +81,45 @@ class SesionChat:
     titulo: str = ""
     texto: str = ""
     texto_limpio: str = ""
-    bloques_texto: List[str] = field(default_factory=list)
+    bloques_texto: list[str] = field(default_factory=list)
     texto_en_edicion: str = ""
-    texto_editor: Optional[str] = None
-    texto_original: Optional[str] = None
-    skill_aplicada: Optional[str] = None
+    texto_editor: str | None = None
+    texto_original: str | None = None
+    skill_aplicada: str | None = None
     # Parte 4: tipo de plantilla pedido en EDICION_FINAL, a la espera de confirmación explícita.
-    plantilla_pendiente: Optional[str] = None
-    recursos: Dict[str, Recurso] = field(default_factory=dict)
+    plantilla_pendiente: str | None = None
+    recursos: dict[str, Recurso] = field(default_factory=dict)
     ultimo_id_recurso: int = 0
-    orden_multimedia: List[int] = field(default_factory=list)
-    posiciones: List[int] = field(default_factory=list)
-    contenido_adicional: List[ItemContenidoAdicional] = field(default_factory=list)
-    categoria_id: Optional[int] = None
-    categoria_nombre: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    tipo_plantilla: Optional[str] = None
-    metadatos_anteriores: Optional[Dict[str, Any]] = None
+    orden_multimedia: list[int] = field(default_factory=list)
+    posiciones: list[int] = field(default_factory=list)
+    contenido_adicional: list[ItemContenidoAdicional] = field(default_factory=list)
+    categoria_id: int | None = None
+    categoria_nombre: str | None = None
+    tags: list[str] = field(default_factory=list)
+    tipo_plantilla: str | None = None
+    metadatos_anteriores: dict[str, Any] | None = None
     metadatos_heredados_revisados: bool = False
-    coincidencias: List[CoincidenciaArticulo] = field(default_factory=list)
-    borrador: Optional[BorradorSesion] = None
-    validacion: Optional[ValidarFormatoResponse] = None
-    categorias_disponibles: List[CategoriaOpcion] = field(default_factory=list)
-    tags_disponibles: List[str] = field(default_factory=list)
+    coincidencias: list[CoincidenciaArticulo] = field(default_factory=list)
+    borrador: BorradorSesion | None = None
+    validacion: ValidarFormatoResponse | None = None
+    categorias_disponibles: list[CategoriaOpcion] = field(default_factory=list)
+    tags_disponibles: list[str] = field(default_factory=list)
     intentos_correccion: int = 0
-    intentos_fallidos_por_estado: Dict[str, int] = field(default_factory=dict)
+    intentos_fallidos_por_estado: dict[str, int] = field(default_factory=dict)
     confirmando_rechazo: bool = False
-    articulos_descartados_ids: List[int] = field(default_factory=list)
+    articulos_descartados_ids: list[int] = field(default_factory=list)
     descarto_serie: bool = False
-    busquedas_descartadas: Set[Tuple[str, str]] = field(default_factory=set)
-    huella_validacion: Optional[str] = None
-    ultimas_opciones: List[str] = field(default_factory=list)
-    ultima_navegacion: List[str] = field(default_factory=list)
+    busquedas_descartadas: set[tuple[str, str]] = field(default_factory=set)
+    huella_validacion: str | None = None
+    ultimas_opciones: list[str] = field(default_factory=list)
+    ultima_navegacion: list[str] = field(default_factory=list)
 
     @property
-    def huella(self) -> Optional[str]:
+    def huella(self) -> str | None:
         return self.huella_validacion
 
     @huella.setter
-    def huella(self, valor: Optional[str]) -> None:
+    def huella(self, valor: str | None) -> None:
         self.huella_validacion = valor
 
     def calcular_huella(self) -> str:
@@ -143,11 +145,11 @@ class SesionChat:
     def calcular_huella_con(
         self,
         *,
-        titulo: Optional[str] = None,
-        texto: Optional[str] = None,
-        categoria_id: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        contenido_adicional: Optional[List[Any]] = None,
+        titulo: str | None = None,
+        texto: str | None = None,
+        categoria_id: int | None = None,
+        tags: list[str] | None = None,
+        contenido_adicional: list[Any] | None = None,
     ) -> str:
         b = getattr(self, "borrador", None)
         tit_act = (b.titulo if b else getattr(self, "titulo", "")) or ""
@@ -173,11 +175,11 @@ class SesionChat:
     def huella_difiere(
         self,
         *,
-        titulo: Optional[str] = None,
-        texto: Optional[str] = None,
-        categoria_id: Optional[int] = None,
-        tags: Optional[List[str]] = None,
-        contenido_adicional: Optional[List[Any]] = None,
+        titulo: str | None = None,
+        texto: str | None = None,
+        categoria_id: int | None = None,
+        tags: list[str] | None = None,
+        contenido_adicional: list[Any] | None = None,
     ) -> bool:
         if self.huella_validacion is None:
             b = getattr(self, "borrador", None)
@@ -208,44 +210,40 @@ class SesionChat:
         super().__setattr__(name, value)
         if not getattr(self, "_initialized", False):
             return
-        if name == "validacion" and value is not None:
-            super().__setattr__("huella_validacion", self.calcular_huella())
-        elif name == "estado" and value == EstadoFlujo.FINALIZADO:
-            super().__setattr__("huella_validacion", self.calcular_huella())
-        elif name == "borrador" and value is not None and getattr(value, "finalizado", False):
+        if name == "validacion" and value is not None or name == "estado" and value == EstadoFlujo.FINALIZADO or name == "borrador" and value is not None and getattr(value, "finalizado", False):
             super().__setattr__("huella_validacion", self.calcular_huella())
 
-    def registrar_fallo(self, estado_clave: Optional[str] = None) -> int:
+    def registrar_fallo(self, estado_clave: str | None = None) -> int:
         clave = estado_clave or self.estado.value
         actual = self.intentos_fallidos_por_estado.get(clave, 0)
         self.intentos_fallidos_por_estado[clave] = actual + 1
         return actual
 
-    def limpiar_fallos(self, estado_clave: Optional[str] = None) -> None:
+    def limpiar_fallos(self, estado_clave: str | None = None) -> None:
         clave = estado_clave or self.estado.value
         self.intentos_fallidos_por_estado.pop(clave, None)
 
     def actualizar_contenido_borrador(
         self,
         *,
-        bloques_texto: Optional[List[str]] = None,
-        texto_limpio: Optional[str] = None,
-        recursos: Optional[Dict[str, Recurso]] = None,
-        ultimo_id_recurso: Optional[int] = None,
-        texto: Optional[str] = None,
-        texto_base_limpio: Optional[str] = None,
-        texto_en_edicion: Optional[str] = None,
-        texto_editor: Optional[str] = None,
-        texto_original: Optional[str] = None,
-        skill_aplicada: Optional[str] = None,
-        titulo: Optional[str] = None,
-        categoria_id: Optional[int] = None,
-        categoria_nombre: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        tipo_plantilla: Optional[str] = None,
-        resultado_skill_desactualizado: Optional[bool] = None,
-        resultado_skill_pendiente: Optional[bool] = None,
-        skill_pendiente: Optional[str] = None,
+        bloques_texto: list[str] | None = None,
+        texto_limpio: str | None = None,
+        recursos: dict[str, Recurso] | None = None,
+        ultimo_id_recurso: int | None = None,
+        texto: str | None = None,
+        texto_base_limpio: str | None = None,
+        texto_en_edicion: str | None = None,
+        texto_editor: str | None = None,
+        texto_original: str | None = None,
+        skill_aplicada: str | None = None,
+        titulo: str | None = None,
+        categoria_id: int | None = None,
+        categoria_nombre: str | None = None,
+        tags: list[str] | None = None,
+        tipo_plantilla: str | None = None,
+        resultado_skill_desactualizado: bool | None = None,
+        resultado_skill_pendiente: bool | None = None,
+        skill_pendiente: str | None = None,
     ) -> None:
         """Sincroniza atómicamente los bloques de texto, recursos y metadatos entre la sesión y su borrador."""
         if titulo is not None:
@@ -367,7 +365,7 @@ _ESTADOS_PREVIOS_A_DEDUPLICACION = frozenset({
 })
 
 
-def multimedia_habilitada(sesion: Optional[SesionChat]) -> bool:
+def multimedia_habilitada(sesion: SesionChat | None) -> bool:
     """Criterio único: el mini panel multimedia está operativo una vez superada buscar_duplicados.
 
     Cubre las tres ramas (sin coincidencias, coincidencias descartadas y enriquecer/actualizar),
@@ -380,7 +378,7 @@ def multimedia_habilitada(sesion: Optional[SesionChat]) -> bool:
     )
 
 
-def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: Optional[SesionChat] = None) -> BorradorSesion:
+def _sanitizar_y_clonar_borrador(borrador: BorradorSesion, sesion: SesionChat | None = None) -> BorradorSesion:
     ultimo_id = max(
         borrador.ultimo_id_recurso,
         _max_num_recurso(borrador.recursos),
@@ -418,14 +416,14 @@ def _invalidar_finalizado(sesion: SesionChat) -> None:
 class GestorSesiones:
     def __init__(self, ttl_minutos: int = 340) -> None:
         self.ttl = timedelta(minutes=ttl_minutos)
-        self._sesiones: Dict[str, SesionChat] = {}
+        self._sesiones: dict[str, SesionChat] = {}
 
     @property
     def ttl_segundos(self) -> int:
         return int(self.ttl.total_seconds())
 
     @property
-    def sesiones(self) -> Dict[str, SesionChat]:
+    def sesiones(self) -> dict[str, SesionChat]:
         return self._sesiones
 
     def limpiar_expiradas(self, ahora: datetime) -> None:
@@ -434,7 +432,7 @@ class GestorSesiones:
             limpiar_archivos_temporales_sesion(sid)
             self._sesiones.pop(sid, None)
 
-    def obtener_o_crear(self, session_id: Optional[str]) -> Tuple[SesionChat, bool, bool]:
+    def obtener_o_crear(self, session_id: str | None) -> tuple[SesionChat, bool, bool]:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
 
@@ -453,7 +451,7 @@ class GestorSesiones:
         limpiar_archivos_temporales_sesion(session_id)
         self._sesiones.pop(session_id, None)
 
-    def obtener_sesion(self, session_id: Optional[str]) -> Optional[SesionChat]:
+    def obtener_sesion(self, session_id: str | None) -> SesionChat | None:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
         if not session_id or session_id not in self._sesiones:
@@ -462,7 +460,7 @@ class GestorSesiones:
         sesion.updated_at = ahora
         return sesion
 
-    def obtener_borrador_conforme(self, session_id: Optional[str]) -> Optional[BorradorSesion]:
+    def obtener_borrador_conforme(self, session_id: str | None) -> BorradorSesion | None:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
 
@@ -544,7 +542,7 @@ class GestorSesiones:
             return True
         return False
 
-    def obtener_recursos_borrador(self, session_id: str) -> List[Recurso]:
+    def obtener_recursos_borrador(self, session_id: str) -> list[Recurso]:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
         if not session_id or session_id not in self._sesiones:
@@ -554,7 +552,7 @@ class GestorSesiones:
         recursos_dict = (sesion.borrador.recursos if sesion.borrador else sesion.recursos) or {}
         return sorted(recursos_dict.values(), key=lambda r: (r.posicion, r.orden))
 
-    def _sincronizar_sesion_desde_borrador(self, sesion: SesionChat) -> List[Recurso]:
+    def _sincronizar_sesion_desde_borrador(self, sesion: SesionChat) -> list[Recurso]:
         b = sesion.borrador
         if b is None:
             items = sorted(sesion.recursos.values(), key=lambda r: (r.posicion, r.orden))
@@ -576,7 +574,7 @@ class GestorSesiones:
         _invalidar_finalizado(sesion)
         return b.multimedia
 
-    def _aplicar_cambio_multimedia(self, sesion: SesionChat, items_ordenados: List[Recurso]) -> List[Recurso]:
+    def _aplicar_cambio_multimedia(self, sesion: SesionChat, items_ordenados: list[Recurso]) -> list[Recurso]:
         """Persiste un nuevo estado de la lista multimedia en sesión y borrador."""
         b = sesion.borrador
         if b:
@@ -604,11 +602,11 @@ class GestorSesiones:
         return sesion
 
     @staticmethod
-    def _recursos_actuales(sesion: SesionChat) -> Dict[str, Recurso]:
+    def _recursos_actuales(sesion: SesionChat) -> dict[str, Recurso]:
         return (sesion.borrador.recursos if sesion.borrador else sesion.recursos) or {}
 
     def eliminar_recurso_multimedia(
-        self, session_id: str, recurso_id_or_index: Union[str, int]
+        self, session_id: str, recurso_id_or_index: str | int
     ) -> bool:
         """Elimina un recurso por ID o por índice y aplica la fusión condicional de bloques."""
         sesion = self._obtener_sesion_activa(session_id)
@@ -660,8 +658,8 @@ class GestorSesiones:
         self,
         session_id: str,
         recurso: Recurso,
-        posicion: Optional[int] = None,
-        orden: Optional[int] = None,
+        posicion: int | None = None,
+        orden: int | None = None,
     ) -> Recurso:
         """Agrega o inserta un recurso en cualquier flujo respetando (posicion, orden)."""
         sesion = self._obtener_sesion_activa(session_id)
@@ -686,21 +684,21 @@ class GestorSesiones:
         self,
         session_id: str,
         recurso: Recurso,
-        posicion: Optional[int] = None,
-        orden: Optional[int] = None,
+        posicion: int | None = None,
+        orden: int | None = None,
     ) -> Recurso:
         return self.agregar_recurso_multimedia(session_id, recurso, posicion=posicion, orden=orden)
 
     def reordenar_multimedia(
         self,
         session_id: str,
-        from_index: Optional[int] = None,
-        to_index: Optional[int] = None,
-        nuevo_orden: Optional[Union[List[int], List[str]]] = None,
-        recurso_id: Optional[str] = None,
-        posicion: Optional[int] = None,
-        orden: Optional[int] = None,
-    ) -> List[Recurso]:
+        from_index: int | None = None,
+        to_index: int | None = None,
+        nuevo_orden: list[int] | list[str] | None = None,
+        recurso_id: str | None = None,
+        posicion: int | None = None,
+        orden: int | None = None,
+    ) -> list[Recurso]:
         """Reordena recursos manteniendo los invariantes de (posicion, orden)."""
         sesion = self._obtener_sesion_activa(session_id)
         items = sorted(self._recursos_actuales(sesion).values(), key=lambda r: (r.posicion, r.orden))
@@ -832,8 +830,8 @@ class GestorSesiones:
         return True
 
     def reordenar_contenido_adicional(
-        self, session_id: str, orden_ids: List[str]
-    ) -> List[ItemContenidoAdicional]:
+        self, session_id: str, orden_ids: list[str]
+    ) -> list[ItemContenidoAdicional]:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
         if not session_id or session_id not in self._sesiones:
@@ -845,7 +843,7 @@ class GestorSesiones:
             raise EstadoInvalidoError("No existe un borrador activo en la sesión.")
 
         items_map = {it.id: it for it in sesion.borrador.contenido_adicional}
-        nuevos_items: List[ItemContenidoAdicional] = []
+        nuevos_items: list[ItemContenidoAdicional] = []
         for id_item in orden_ids:
             if id_item in items_map:
                 nuevos_items.append(items_map.pop(id_item))
@@ -863,7 +861,7 @@ class GestorSesiones:
 
         return nuevos_items
 
-    def obtener_contenido_adicional(self, session_id: str) -> List[ItemContenidoAdicional]:
+    def obtener_contenido_adicional(self, session_id: str) -> list[ItemContenidoAdicional]:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)
         if not session_id or session_id not in self._sesiones:
@@ -874,7 +872,7 @@ class GestorSesiones:
         return sorted(items, key=lambda x: x.posicion)
 
     def modificar_item_contenido_adicional(
-        self, session_id: str, item_id: str, nuevo_contenido: str, nuevo_tipo: Optional[str] = None
+        self, session_id: str, item_id: str, nuevo_contenido: str, nuevo_tipo: str | None = None
     ) -> ItemContenidoAdicional:
         ahora = datetime.now(timezone.utc)
         self.limpiar_expiradas(ahora)

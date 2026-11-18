@@ -1,7 +1,4 @@
-import io
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-from fastapi import HTTPException
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +9,6 @@ from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
 from baco.server.config_limites import (
     MAX_RECURSOS_POR_SESION,
-    MAX_RECURSOS_TOTAL_BYTES,
     RECURSO_MAX_BYTES,
 )
 from baco.server.schemas.chat_orquestado import (
@@ -22,8 +18,6 @@ from baco.server.schemas.chat_orquestado import (
 from baco.server.schemas.recurso import (
     BloqueItem,
     ConfirmarBloquesRequest,
-    ConfirmarBloquesResponse,
-    Recurso,
     RecursoBloqueInput,
     sanitizar_url_recurso,
 )
@@ -39,9 +33,7 @@ from baco.server.services.orquestador.recursos_service import (
 )
 from baco.server.services.orquestador.sesion import (
     SESIONES,
-    GestorSesiones,
     SesionChat,
-    gestor_sesiones,
 )
 
 

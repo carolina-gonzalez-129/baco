@@ -6,17 +6,17 @@ existe; los heredados se precargan en ESPERANDO_METADATOS y se confirman con Env
 """
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
-from baco.server.app.api import get_buscador_duplicados, get_baco_agent
+from baco.server.app.api import get_baco_agent, get_buscador_duplicados
 from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
 from baco.server.services.orquestador.sesion import SESIONES
-
+from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
 
 TEXTO_BASE_EXISTENTE = (
     "Este es un texto instructivo completo con pasos claros para configurar el sistema.\n\n"

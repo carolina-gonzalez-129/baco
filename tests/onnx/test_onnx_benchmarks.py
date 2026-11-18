@@ -1,10 +1,10 @@
 import math
-import pytest
+
 from baco.server.services.embeddings import (
-    embedding_titulo,
-    embedding_texto,
-    DIM_TITULO,
     DIM_TEXTO,
+    DIM_TITULO,
+    embedding_texto,
+    embedding_titulo,
 )
 
 

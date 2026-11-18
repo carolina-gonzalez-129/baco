@@ -1,8 +1,9 @@
 import importlib.util
 import sys
 from pathlib import Path
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -205,8 +206,9 @@ def test_limpiar_suave_headers_markdown_con_tags_html():
 
 
 def test_paridad_limpiar_suave_crudo_vs_texto_sin_headers():
-    from baco.server.services.embeddings import limpiar_suave
     import re
+
+    from baco.server.services.embeddings import limpiar_suave
 
     # Simular la lógica de limpiar_headers en SQL (Postgres (?n) es multiline newline-sensitive)
     def mock_limpiar_headers(t: str) -> str:

@@ -189,9 +189,15 @@ def test_panel_no_depende_del_modo(client, mock_buscador):
 
 import io
 
-from baco.server.config_limites import MAX_RECURSOS_POR_SESION, PERMITIR_SUBIDA_RECURSOS, RECURSO_MAX_BYTES
+from baco.server.config_limites import (
+    MAX_RECURSOS_POR_SESION,
+    PERMITIR_SUBIDA_RECURSOS,
+    RECURSO_MAX_BYTES,
+)
 from baco.server.schemas.recurso import Recurso
-from baco.server.services.orquestador.recursos_service import limpiar_archivos_temporales_sesion
+from baco.server.services.orquestador.recursos_service import (
+    limpiar_archivos_temporales_sesion,
+)
 
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
 

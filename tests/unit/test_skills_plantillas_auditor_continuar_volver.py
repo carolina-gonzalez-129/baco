@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+
 import pytest
 
 from baco.server.schemas.chat_orquestado import (
@@ -8,10 +9,8 @@ from baco.server.schemas.chat_orquestado import (
 )
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.coordinador import manejar_turno
-from baco.server.services.orquestador.edicion import ejecutar_skill
 from baco.server.services.orquestador.sesion import SesionChat, gestor_sesiones
 from baco.server.services.orquestador.validaciones import validar_borrador
-
 
 TEXTO_ORIGINAL_USUARIO = (
     "### Pasos de Configuración\n\n"

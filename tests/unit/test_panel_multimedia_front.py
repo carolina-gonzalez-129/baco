@@ -29,7 +29,7 @@ def test_componente_cargado_y_contenedor_en_index():
 
 def test_panel_no_depende_del_modo_ni_del_texto():
     # El código del componente (sin comentarios) no mira modo / enriquecimiento / articulo_original_id
-    codigo_panel = re.sub(r"/\*.*?\*/", "", PANEL_JS, flags=re.S)
+    codigo_panel = re.sub(r"/\*.*?\*/", "", PANEL_JS, flags=re.DOTALL)
     for prohibido in ("enriquecimiento", "actualizar", "articulo_original_id", ".modo"):
         assert prohibido not in codigo_panel
     # Ni extrae recursos desde el texto
@@ -162,9 +162,9 @@ def test_aplicar_turno_vuelca_texto_enriquecer_automaticamente():
 def test_confirmar_texto_en_panel_izquierdo_y_no_en_companion():
     # Back: en ESPERANDO_TEXTO "Confirmar texto" es la acción del panel (accion_panel) y
     # separar_opciones la saca de los botones del chat (Companion).
+    from baco.server.schemas.chat_orquestado import EstadoFlujo
     from baco.server.services.orquestador.contrato import accion_panel, separar_opciones
     from baco.server.services.orquestador.sesion import SesionChat
-    from baco.server.schemas.chat_orquestado import EstadoFlujo
 
     sesion = SesionChat(session_id="t", estado=EstadoFlujo.ESPERANDO_TEXTO)
     panel = accion_panel(sesion)

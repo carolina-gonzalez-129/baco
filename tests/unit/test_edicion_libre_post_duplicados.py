@@ -1,11 +1,11 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from baco.server.config_limites import (
     TEXTO_MAX,
     TEXTO_MAX_PERCENTIL_99,
     TEXTO_MIN,
-    TITULO_MAX,
     TITULO_MIN,
 )
 from baco.server.schemas.chat_orquestado import (
@@ -23,7 +23,6 @@ from baco.server.services.orquestador.edicion import (
 )
 from baco.server.services.orquestador.sesion import SESIONES, SesionChat
 from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
-
 
 TITULO_VALIDO = "Cómo configurar el punto de venta electrónico AFIP"
 TEXTO_VALIDO = (
@@ -527,8 +526,9 @@ async def test_reaplicar_sin_skill_pendiente_no_hace_nada():
 
 def test_aplicar_plantilla_sin_edicion_previa_resultado_identico():
     from starlette.testclient import TestClient
-    from baco.server.app.main import app
+
     from baco.server.app.dependencies import get_baco_agent, get_buscador_duplicados
+    from baco.server.app.main import app
     from baco.server.app.middleware import API_KEY
 
     sid = "test-plantilla-sin-edicion"
@@ -561,8 +561,9 @@ def test_aplicar_plantilla_sin_edicion_previa_resultado_identico():
 
 def test_auditar_semantica_sin_edicion_previa_resultado_identico():
     from starlette.testclient import TestClient
-    from baco.server.app.main import app
+
     from baco.server.app.dependencies import get_baco_agent, get_buscador_duplicados
+    from baco.server.app.main import app
     from baco.server.app.middleware import API_KEY
 
     sid = "test-auditor-sin-edicion"
@@ -851,7 +852,6 @@ async def test_validacion_post_duplicados_compara_cinco_campos_sin_cambios_en_si
         procesar_edicion_categoria,
         procesar_edicion_tags,
         procesar_edicion_texto,
-        procesar_edicion_titulo,
     )
     from baco.server.services.orquestador.validaciones import validar_borrador
 
@@ -903,7 +903,6 @@ async def test_validacion_post_duplicados_solo_valida_y_pide_accion_sobre_campo_
         procesar_edicion_categoria,
         procesar_edicion_tags,
         procesar_edicion_texto,
-        procesar_edicion_titulo,
     )
 
     buscador = MagicMock(spec=BuscadorDuplicados)

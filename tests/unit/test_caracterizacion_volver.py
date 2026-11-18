@@ -6,6 +6,7 @@ Cubre los 7 puntos en handlers.py y el procesamiento desde coordinador.py en CON
 """
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from baco.server.schemas.chat_orquestado import (
@@ -27,10 +28,9 @@ from baco.server.services.orquestador.mensajes import (
     OPCIONES_ENRIQUECER_DESCARTAR,
     OPCIONES_PLANTILLAS,
 )
-from baco.server.services.orquestador.sesion import SESIONES, SesionChat
 from baco.server.services.orquestador.retroceso import PREFIJO_VOLVER_REVISION
+from baco.server.services.orquestador.sesion import SESIONES, SesionChat
 from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
-
 
 TEXTO_VALIDO = (
     "Para configurar el punto de venta electrónico en el sistema Finnegans ERP es necesario ingresar "

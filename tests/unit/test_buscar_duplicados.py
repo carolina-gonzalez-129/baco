@@ -1,9 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from baco.server.services.buscar_duplicados import (
     BuscadorDuplicados,
 )
-
 
 # ==============================================================================
 # 1. Tests del Helper _extraer_url
@@ -203,8 +204,9 @@ def test_evaluar_coincidencias_evalua_texto_si_titulo_no_coincide():
 # ==============================================================================
 
 def test_get_buscador_duplicados_injects_db():
-    from baco.server.app.dependencies import get_buscador_duplicados
     from psycopg.rows import dict_row
+
+    from baco.server.app.dependencies import get_buscador_duplicados
     mock_cur = MagicMock()
     mock_conn = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur

@@ -1,6 +1,7 @@
 import pytest
+
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.services.embeddings import embedding_titulo, embedding_texto
+from baco.server.services.embeddings import embedding_texto, embedding_titulo
 
 
 @pytest.mark.integration
@@ -33,8 +34,8 @@ def test_mismo_titulo_con_distinta_capitalizacion_o_acentos_es_duplicado_exacto(
         assert "exactamente este título" in resultado["mensaje"]
 
         # Pausa para inspeccionar en Docker Desktop
-        import time
         import os
+        import time
         segundos = int(os.getenv("PAUSA_DOCKER", "45"))
         if segundos > 0:
             print("\n\n" + "=" * 70)

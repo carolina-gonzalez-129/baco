@@ -1,13 +1,14 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 from fastapi import HTTPException
 
 from baco.server.schemas.chat_orquestado import BorradorSesion
 from baco.server.schemas.recurso import Recurso
 from baco.server.services.agente_service import (
+    _obtener_texto_limpio_estricto,
     ejecutar_skill_plantillas,
     ejecutar_skill_validador,
-    _obtener_texto_limpio_estricto,
 )
 from baco.server.services.orquestador.sesion import gestor_sesiones
 
@@ -94,7 +95,9 @@ def test_agente_corta_con_error_claro_si_no_hay_texto():
 
 def test_borrador_texto_no_es_asignable_y_coincide_siempre_con_componer_texto_publicable():
     """Riesgo 4: borrador.texto_alineado_discourse no se puede asignar directamente y se deriva de bloques_texto y recursos."""
-    from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+    from baco.server.services.orquestador.recursos_service import (
+        componer_texto_publicable,
+    )
 
     borrador = BorradorSesion(
         modo="nuevo",
@@ -136,10 +139,10 @@ def test_escapar_delimitadores_xml_no_recorta_y_el_largo_se_valida_antes():
     """_escapar_delimitadores_xml ya no recorta (mandaba al LLM texto truncado sin avisar):
     el largo máximo se rechaza antes, en _obtener_texto_limpio_estricto (422)."""
     from fastapi import HTTPException
+
     from baco.server.config_limites import TEXTO_MAX
     from baco.server.services.agente_service import (
         _escapar_delimitadores_xml,
-        _obtener_texto_limpio_estricto,
     )
 
     texto_muy_largo = "A" * (TEXTO_MAX + 800)

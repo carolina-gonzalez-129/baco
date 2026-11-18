@@ -12,14 +12,20 @@ async def lifespan(app: FastAPI):
     app.state.db_ro_pool = pool
     try:
         try:
-            with pool.connection() as conn:
-                with conn.cursor() as cur:
-                    from baco.server.services.orquestador.validaciones import precargar_catalogos_cache_sync
-                    precargar_catalogos_cache_sync(cur)
+            with pool.connection() as conn, conn.cursor() as cur:
+                from baco.server.services.orquestador.validaciones import (
+                    precargar_catalogos_cache_sync,
+                )
+                precargar_catalogos_cache_sync(cur)
         except Exception:
             pass
 
-        from baco.server.services.embeddings import get_model_titulo, get_model_texto, embedding_titulo, embedding_texto
+        from baco.server.services.embeddings import (
+            embedding_texto,
+            embedding_titulo,
+            get_model_texto,
+            get_model_titulo,
+        )
         get_model_titulo()
         get_model_texto()
         embedding_titulo("Calentamiento inicial de grafos y kernels ONNX para titulo")

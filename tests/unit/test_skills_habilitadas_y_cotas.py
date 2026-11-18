@@ -1,15 +1,15 @@
 from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 
 from baco.server.app.api import get_baco_agent, get_buscador_duplicados
 from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
-from baco.server.config_limites import TEXTO_MAX, TEXTO_MAX_PERCENTIL_99, TEXTO_MIN
+from baco.server.config_limites import TEXTO_MAX, TEXTO_MAX_PERCENTIL_99
 from baco.server.schemas.chat_orquestado import (
     BorradorSesion,
     ChatOrquestadorRequest,
-    ChatOrquestadorResponse,
     EstadoFlujo,
 )
 from baco.server.schemas.recurso import Recurso

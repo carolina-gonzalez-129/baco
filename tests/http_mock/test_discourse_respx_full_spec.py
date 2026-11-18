@@ -1,10 +1,10 @@
-import pytest
-import respx
-import httpx
-from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from baco.server.discourse.actualizar_articulos_editados import pedir, ErrorAPIDiscourse
+import httpx
+import pytest
+import respx
+
+from baco.server.discourse.actualizar_articulos_editados import ErrorAPIDiscourse, pedir
 from baco.server.discourse.actualizar_nuevos_articulos import sincronizar_articulos
 
 BASE_URL = "https://bc-dev.finneg.com"

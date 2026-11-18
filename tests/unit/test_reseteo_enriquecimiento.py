@@ -6,7 +6,9 @@ from baco.server.schemas.chat_orquestado import (
     EstadoFlujo,
     Recurso,
 )
-from baco.server.services.orquestador.retroceso import resetear_enriquecimiento_descartado
+from baco.server.services.orquestador.retroceso import (
+    resetear_enriquecimiento_descartado,
+)
 from baco.server.services.orquestador.sesion import SESIONES, SesionChat
 from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
 

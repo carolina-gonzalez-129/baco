@@ -1,6 +1,7 @@
-import pytest
 from baco.server.schemas.articulo import ArticuloSchema, Tag
-from baco.server.services.validar_articulo import validar_texto_y_estructura_post_duplicados
+from baco.server.services.validar_articulo import (
+    validar_texto_y_estructura_post_duplicados,
+)
 
 TEXTO_VALIDO = (
     "Para configurar el punto de venta de facturación electrónica en Finnegans, "

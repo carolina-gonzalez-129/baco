@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -49,8 +49,8 @@ _RE_PARAM_SENSIBLE = re.compile(
 
 def sanitizar_url_recurso(
     url: str,
-    session_id: Optional[str] = None,
-    recursos_actuales: Optional[Dict[str, Any]] = None,
+    session_id: str | None = None,
+    recursos_actuales: dict[str, Any] | None = None,
 ) -> str:
     """Sanitiza una URL externa http(s) eliminando credenciales embebidas, fragmento
     y parámetros sensibles de la query. Solo permite esquemas http:// y https://.
@@ -99,12 +99,12 @@ class Recurso(BaseModel):
     tipo: TipoRecurso = Field(..., description="Tipo de recurso multimedia (imagen, video, audio, documento, otro)")
     nombre: str = Field(..., description="Nombre descriptivo o nombre del archivo")
     origen: OrigenRecurso = Field(default="existente", description="Origen del recurso: 'existente' (Discourse/externo) o 'subido' (temporal de sesión)")
-    tamano_bytes: Optional[int] = Field(default=None, description="Tamaño del archivo en bytes si está disponible")
-    mime_type: Optional[str] = Field(default=None, description="Tipo MIME verificado del recurso")
+    tamano_bytes: int | None = Field(default=None, description="Tamaño del archivo en bytes si está disponible")
+    mime_type: str | None = Field(default=None, description="Tipo MIME verificado del recurso")
     referencia: str = Field(default="", description="URL externa del recurso o URL lógica de previsualización (/api/recursos-temp/{session_id}/{archivo})")
     posicion: int = Field(default=0, description="Índice del bloque de texto tras el cual se ubica (-1 si va antes del primer bloque)")
     orden: int = Field(default=0, description="Posición ordinal global única y contigua 0..N-1")
-    archivo_disco: Optional[str] = Field(
+    archivo_disco: str | None = Field(
         default=None,
         exclude=True,
         description="Nombre de archivo guardado en almacenamiento temporal de la sesión (excluido de la serialización hacia el front y respuestas API).",
@@ -120,12 +120,12 @@ class Recurso(BaseModel):
 class RecursoBloqueInput(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True, extra="forbid")
 
-    id: Optional[str] = Field(default=None, max_length=100, description="ID del recurso subido en la sesión.")
-    url: Optional[str] = Field(default=None, max_length=2048, description="URL o enlace del recurso externo.")
-    nombre: Optional[str] = Field(default=None, max_length=255, description="Nombre descriptivo.")
-    tipo: Optional[TipoRecurso] = Field(default=None, description="Tipo sugerido de recurso.")
-    mime_type: Optional[str] = Field(default=None, max_length=100, description="Tipo MIME del recurso.")
-    tamano_bytes: Optional[int] = Field(default=None, ge=0, description="Tamaño en bytes.")
+    id: str | None = Field(default=None, max_length=100, description="ID del recurso subido en la sesión.")
+    url: str | None = Field(default=None, max_length=2048, description="URL o enlace del recurso externo.")
+    nombre: str | None = Field(default=None, max_length=255, description="Nombre descriptivo.")
+    tipo: TipoRecurso | None = Field(default=None, description="Tipo sugerido de recurso.")
+    mime_type: str | None = Field(default=None, max_length=100, description="Tipo MIME del recurso.")
+    tamano_bytes: int | None = Field(default=None, ge=0, description="Tamaño en bytes.")
 
     @model_validator(mode="after")
     def validar_recurso(self) -> "RecursoBloqueInput":
@@ -151,8 +151,8 @@ class BloqueItem(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True, extra="forbid")
 
     tipo: Literal["texto", "recurso"] = Field(..., description="Tipo de bloque: 'texto' o 'recurso' (multimedia).")
-    contenido: Optional[str] = Field(default=None, description="Texto si tipo=='texto', o ID/URL si tipo=='recurso'.")
-    recurso: Optional[RecursoBloqueInput] = Field(default=None, description="Objeto de recurso si tipo=='recurso'.")
+    contenido: str | None = Field(default=None, description="Texto si tipo=='texto', o ID/URL si tipo=='recurso'.")
+    recurso: RecursoBloqueInput | None = Field(default=None, description="Objeto de recurso si tipo=='recurso'.")
 
     @model_validator(mode="after")
     def validar_cruzado(self) -> "BloqueItem":
@@ -182,8 +182,8 @@ class BloqueItem(BaseModel):
 class ConfirmarBloquesRequest(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True, extra="forbid")
 
-    session_id: Optional[str] = Field(default=None, description="ID de sesión.")
-    bloques: List[BloqueItem] = Field(..., min_length=1, description="Lista ordenada de bloques.")
+    session_id: str | None = Field(default=None, description="ID de sesión.")
+    bloques: list[BloqueItem] = Field(..., min_length=1, description="Lista ordenada de bloques.")
 
     @model_validator(mode="after")
     def validar_recursos_unicos_y_limites(self) -> "ConfirmarBloquesRequest":
@@ -220,21 +220,21 @@ class ConfirmarBloquesRequest(BaseModel):
 
 class ConfirmarBloquesResponse(BaseModel):
     session_id: str = Field(..., description="ID de la sesión a la que se aplicaron los bloques.")
-    bloques_texto: List[str] = Field(default_factory=list, description="Bloques de texto limpio resultantes, en orden.")
+    bloques_texto: list[str] = Field(default_factory=list, description="Bloques de texto limpio resultantes, en orden.")
     texto_limpio: str = Field(..., description="Texto limpio completo (bloques unidos), sin marcadores de recurso.")
-    recursos: List[Recurso] = Field(..., description="Recursos multimedia del borrador tras confirmar los bloques.")
-    aviso: Optional[str] = Field(default=None, description="Aviso para mostrar a la persona (p. ej. anonimización de datos o ajustes sobre recursos).")
-    borrador: Optional[Any] = Field(default=None, description="Borrador completo de la sesión (BorradorSesion) tras confirmar los bloques.")
+    recursos: list[Recurso] = Field(..., description="Recursos multimedia del borrador tras confirmar los bloques.")
+    aviso: str | None = Field(default=None, description="Aviso para mostrar a la persona (p. ej. anonimización de datos o ajustes sobre recursos).")
+    borrador: Any | None = Field(default=None, description="Borrador completo de la sesión (BorradorSesion) tras confirmar los bloques.")
 
 
 class EstadoRecursosResponse(BaseModel):
-    bloques_texto: List[str] = Field(default_factory=list, description="Bloques de texto limpio del borrador, en orden.")
-    recursos: List[Recurso] = Field(default_factory=list, description="Recursos multimedia del borrador, en orden.")
+    bloques_texto: list[str] = Field(default_factory=list, description="Bloques de texto limpio del borrador, en orden.")
+    recursos: list[Recurso] = Field(default_factory=list, description="Recursos multimedia del borrador, en orden.")
     texto_limpio: str = Field(default="", description="Texto limpio completo (bloques unidos), sin marcadores de recurso.")
     multimedia_habilitada: bool = Field(default=False, description="True si el panel multimedia está operativo en el estado actual.")
     skills_habilitadas: bool = Field(default=True, description="Indica si las skills están habilitadas para el borrador actual.")
-    skills_motivo: Optional[str] = Field(default=None, description="Motivo por el que las skills están deshabilitadas, si lo están.")
-    estado: Optional[str] = Field(default=None, description="Estado actual del flujo (EstadoFlujo) de la sesión.")
-    borrador: Optional[Any] = Field(default=None, description="Borrador completo de la sesión (BorradorSesion) tras la operación.")
+    skills_motivo: str | None = Field(default=None, description="Motivo por el que las skills están deshabilitadas, si lo están.")
+    estado: str | None = Field(default=None, description="Estado actual del flujo (EstadoFlujo) de la sesión.")
+    borrador: Any | None = Field(default=None, description="Borrador completo de la sesión (BorradorSesion) tras la operación.")
 
 

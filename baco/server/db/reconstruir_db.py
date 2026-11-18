@@ -9,7 +9,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import json
 import os
-from baco.server.db.config import get_conn, DB_RO_PASSWORD, DB_RO_USER
+
+from baco.server.db.config import DB_RO_PASSWORD, DB_RO_USER, get_conn
 from baco.server.db.ingesta import normalizar_articulo, upsert_articulos
 
 DATA_DIR = Path(os.getenv("DATA_DIR", PROJECT_ROOT / "data"))
@@ -22,12 +23,12 @@ def leer_articulos_json(ruta: Path = RUTA_JSON) -> list[dict]:
     return [a for a in (normalizar_articulo(item) for item in data) if a]
 
 from baco.server.services.embeddings import (
-    embedding_titulo,
-    embedding_texto,
-    get_model_titulo,
-    get_model_texto,
-    DIM_TITULO,
     DIM_TEXTO,
+    DIM_TITULO,
+    embedding_texto,
+    embedding_titulo,
+    get_model_texto,
+    get_model_titulo,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -89,6 +90,7 @@ def descargar_desde_api() -> Path:
     """Corre descargar_articulos (Discourse) y devuelve la ruta del JSON generado.
     Aborta sin tocar la base si la descarga termina con errores."""
     import subprocess
+
     from baco.server.discourse.descargar_articulos import SALIDA
 
     print("\n" + "=" * 75)

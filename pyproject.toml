@@ -43,3 +43,5 @@ markers = [
     "integration: tests that exercise external services or real ML models",
     "slow: marks tests as slow (ONNX model parity, heavy models, etc.)",
 ]
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body"]

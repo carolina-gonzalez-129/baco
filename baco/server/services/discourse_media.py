@@ -11,7 +11,6 @@ RESTRICCIONES ESTRICTAS:
 from __future__ import annotations
 
 import logging
-from typing import Optional, List, Tuple
 import os
 
 import httpx
@@ -135,8 +134,8 @@ def cooked_a_markdown_con_medios(cooked_html: str, base_url: str = BC_PROD_URL) 
 
 
 def consultar_articulo_bc_publico(
-    articulo_id: int, client: Optional[httpx.Client] = None
-) -> Tuple[Optional[str], Optional[int], List[str]]:
+    articulo_id: int, client: httpx.Client | None = None
+) -> tuple[str | None, int | None, list[str]]:
     """Consulta en tiempo real a bc.finneg.com vía GET anónimo.
 
     Retorna: (texto_con_medios, categoria_id, tags_slugs)

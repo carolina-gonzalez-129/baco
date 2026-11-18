@@ -16,9 +16,8 @@ def get_buscador_duplicados(request: Request = None):
                 yield BuscadorDuplicados(cur)
     else:
         conn_fn = get_conn if get_conn is not get_ro_conn else get_ro_conn
-        with conn_fn() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                yield BuscadorDuplicados(cur)
+        with conn_fn() as conn, conn.cursor(row_factory=dict_row) as cur:
+            yield BuscadorDuplicados(cur)
 
 
 def get_baco_agent():

@@ -9,6 +9,7 @@
 """
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from baco.server.schemas.chat_orquestado import (
@@ -20,7 +21,6 @@ from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador import manejar_turno
 from baco.server.services.orquestador.sesion import SESIONES, SesionChat
 from baco.server.services.orquestador.validaciones import limpiar_cache_catalogos
-
 
 TEXTO_VALIDO = (
     "Para configurar el punto de venta electrónico en el sistema Finnegans ERP es necesario ingresar "

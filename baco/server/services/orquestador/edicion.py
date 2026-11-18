@@ -1,10 +1,11 @@
-from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
-import re
-from typing import Any, Dict, List, Optional, Tuple
-from starlette.concurrency import run_in_threadpool
 import asyncio
+import re
+from dataclasses import dataclass
+from functools import cache
+from pathlib import Path
+from typing import Any
+
+from starlette.concurrency import run_in_threadpool
 
 from baco.server.config_limites import (
     TAGS_MIN,
@@ -37,7 +38,6 @@ from baco.server.services.orquestador.validaciones import (
 )
 from baco.server.services.validar_articulo import sanitizar_borrador
 
-
 ESTADOS_EDICION_LIBRE = {
     EstadoFlujo.ESPERANDO_PLANTILLA,
     EstadoFlujo.ESPERANDO_METADATOS,
@@ -50,23 +50,23 @@ ESTADOS_EDICION_LIBRE = {
 @dataclass
 class ResultadoEdicion:
     ok: bool
-    error: Optional[str] = None
-    aviso: Optional[str] = None
-    aviso_privacidad: Optional[str] = None
-    aviso_skill_desactualizada: Optional[str] = None
-    opciones_sugeridas: Optional[List[str]] = None
-    titulo_nuevo: Optional[str] = None
-    bloques_nuevos: Optional[List[str]] = None
-    recursos_nuevos: Optional[Dict[str, Recurso]] = None
-    txt_nuevo_limpio: Optional[str] = None
-    ultimo_id_nuevo: Optional[int] = None
-    categoria_id_nueva: Optional[int] = None
-    categoria_nombre_nuevo: Optional[str] = None
-    tags_nuevos: Optional[List[str]] = None
-    tipo_plantilla_nueva: Optional[str] = None
+    error: str | None = None
+    aviso: str | None = None
+    aviso_privacidad: str | None = None
+    aviso_skill_desactualizada: str | None = None
+    opciones_sugeridas: list[str] | None = None
+    titulo_nuevo: str | None = None
+    bloques_nuevos: list[str] | None = None
+    recursos_nuevos: dict[str, Recurso] | None = None
+    txt_nuevo_limpio: str | None = None
+    ultimo_id_nuevo: int | None = None
+    categoria_id_nueva: int | None = None
+    categoria_nombre_nuevo: str | None = None
+    tags_nuevos: list[str] | None = None
+    tipo_plantilla_nueva: str | None = None
     # Resumen para el mensaje de guardado: (campo, detalle) aplicados y descartados con motivo.
-    cambios: Optional[List[Tuple[str, str]]] = None
-    descartes: Optional[List[Tuple[str, str]]] = None
+    cambios: list[tuple[str, str]] | None = None
+    descartes: list[tuple[str, str]] | None = None
 
 
 MSG_SKILL_DESACTUALIZADA = (
@@ -77,7 +77,7 @@ MSG_PLANTILLA_DESACTUALIZADA = (
 )
 
 
-def tiene_resultado_skill_visible(borrador: Optional[Any]) -> bool:
+def tiene_resultado_skill_visible(borrador: Any | None) -> bool:
     """Indica si el borrador tiene un resultado de skill visible en la Vista previa."""
     if not borrador:
         return False
@@ -88,7 +88,7 @@ def tiene_resultado_skill_visible(borrador: Optional[Any]) -> bool:
     )
 
 
-def procesar_edicion_titulo(titulo: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+def procesar_edicion_titulo(titulo: str) -> tuple[str | None, str | None, str | None]:
     """Valida y sanitiza el título provisto.
 
     Retorna: (titulo_sanitizado, aviso_privacidad, error)
@@ -106,8 +106,8 @@ def procesar_edicion_titulo(titulo: str) -> Tuple[Optional[str], Optional[str], 
 
 def procesar_edicion_categoria(
     categoria_id: int,
-    categorias_disponibles: Optional[List[CategoriaOpcion]] = None,
-) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    categorias_disponibles: list[CategoriaOpcion] | None = None,
+) -> tuple[int | None, str | None, str | None]:
     """Valida la categoría provista contra el catálogo oficial.
 
     Retorna: (categoria_id, categoria_nombre, error)
@@ -119,12 +119,12 @@ def procesar_edicion_categoria(
 
 
 def _sanitizar_tags_tematicos(
-    tags: List[str],
-    plantilla: Optional[str] = None,
-) -> Tuple[List[str], Optional[str]]:
+    tags: list[str],
+    plantilla: str | None = None,
+) -> tuple[list[str], str | None]:
     """Sanitiza PII en cada tag temático manteniendo la plantilla fija."""
-    tags_filtrados: List[str] = []
-    avisos_priv: List[str] = []
+    tags_filtrados: list[str] = []
+    avisos_priv: list[str] = []
     for t in tags:
         if not t or not t.strip():
             continue
@@ -145,9 +145,9 @@ def _sanitizar_tags_tematicos(
 
 
 def procesar_edicion_tags(
-    tags: List[str],
-    plantilla: Optional[str] = None,
-) -> Tuple[Optional[List[str]], Optional[str]]:
+    tags: list[str],
+    plantilla: str | None = None,
+) -> tuple[list[str] | None, str | None]:
     """Filtra, sanitiza y valida los tags provistos, preservando la plantilla fija y asegurando TAGS_MIN.
 
     Retorna: (tags_nuevos, error)
@@ -162,9 +162,9 @@ def procesar_edicion_tags(
 def revalidar_estructura_plantilla(
     sesion: SesionChat,
     texto: str,
-    titulo: Optional[str] = None,
-    plantilla: Optional[str] = None,
-) -> Optional[str]:
+    titulo: str | None = None,
+    plantilla: str | None = None,
+) -> str | None:
     """Revalida las secciones y estructura requeridas por la plantilla (si está definida)
     usando validar_texto_y_estructura_post_duplicados, exclusivamente como aviso no bloqueante.
     """
@@ -220,16 +220,16 @@ def revalidar_estructura_plantilla(
 def procesar_edicion_texto(
     texto: str,
     sesion: SesionChat,
-    titulo_contexto: Optional[str] = None,
-    det_req: Optional[str] = None,
-) -> Tuple[
-    Optional[List[str]],
-    Optional[Dict[str, Recurso]],
-    Optional[str],
-    Optional[int],
-    Optional[str],
-    Optional[str],
-    Optional[str],
+    titulo_contexto: str | None = None,
+    det_req: str | None = None,
+) -> tuple[
+    list[str] | None,
+    dict[str, Recurso] | None,
+    str | None,
+    int | None,
+    str | None,
+    str | None,
+    str | None,
 ]:
     """Valida marcadores, procesa recursos/bloques, sanitiza, valida longitud y
     revalida estructura de plantilla.
@@ -290,7 +290,7 @@ def procesar_edicion_texto(
     )
 
 
-def normalizar_texto_para_comparar(texto: Optional[str]) -> str:
+def normalizar_texto_para_comparar(texto: str | None) -> str:
     """Normaliza saltos de línea (CRLF a LF) y espacios en los extremos."""
     if not texto:
         return ""
@@ -298,9 +298,9 @@ def normalizar_texto_para_comparar(texto: Optional[str]) -> str:
 
 
 def texto_difiere(
-    texto_req: Optional[str],
-    texto_guardado: Optional[str],
-    titulo_contexto: Optional[str] = None,
+    texto_req: str | None,
+    texto_guardado: str | None,
+    titulo_contexto: str | None = None,
 ) -> bool:
     """Determina si el texto del request difiere efectivamente del texto guardado.
     Compara tanto en crudo normalizado (saltos de línea y extremos) como tras sanitizar
@@ -320,8 +320,8 @@ def texto_difiere(
 
 
 def titulo_difiere(
-    titulo_req: Optional[str],
-    titulo_guardado: Optional[str],
+    titulo_req: str | None,
+    titulo_guardado: str | None,
 ) -> bool:
     """Determina si el título del request difiere efectivamente del título guardado.
     Compara en crudo normalizado y tras sanitizar.
@@ -339,8 +339,8 @@ def titulo_difiere(
 
 
 def categoria_difiere(
-    categoria_req: Optional[int],
-    categoria_guardada: Optional[int],
+    categoria_req: int | None,
+    categoria_guardada: int | None,
 ) -> bool:
     """Determina si la categoría del request difiere efectivamente de la guardada."""
     if categoria_req is None:
@@ -349,8 +349,8 @@ def categoria_difiere(
 
 
 def plantilla_difiere(
-    plantilla_req: Optional[str],
-    plantilla_guardada: Optional[str],
+    plantilla_req: str | None,
+    plantilla_guardada: str | None,
 ) -> bool:
     """Determina si el tipo de plantilla del request difiere del guardado.
     Hay cambio solo si el valor no es None y difiere.
@@ -369,9 +369,9 @@ def plantilla_difiere(
 
 
 def tags_difiere(
-    tags_req: Optional[List[str]],
-    tags_guardados: Optional[List[str]],
-    plantilla: Optional[str] = None,
+    tags_req: list[str] | None,
+    tags_guardados: list[str] | None,
+    plantilla: str | None = None,
 ) -> bool:
     """Determina si los tags del request difieren de los guardados como conjunto (ignorando orden).
     Compara solo tags temáticos (tanto en crudo normalizado como tras sanitizar),
@@ -459,7 +459,7 @@ def aplicar_edicion_campos(
 
     plantilla_efectiva = tipo_plantilla_nueva or plantilla_guardada
 
-    descartes: List[Tuple[str, str]] = []
+    descartes: list[tuple[str, str]] = []
 
     # En ESPERANDO_PLANTILLA no se editan título ni texto (no hay botón para guardarlos):
     # se editan en el paso siguiente.
@@ -574,7 +574,7 @@ def aplicar_edicion_campos(
         if err_txt:
             return ResultadoEdicion(ok=False, error=err_txt)
 
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     if edita_plantilla and tipo_plantilla_nueva is not None:
         kwargs["tipo_plantilla"] = tipo_plantilla_nueva
         if tags_nuevos is None:
@@ -617,7 +617,7 @@ def aplicar_edicion_campos(
         partes_aviso_priv.append(det_req)
     aviso_priv_total = "\n".join(partes_aviso_priv) if partes_aviso_priv else None
 
-    cambios: List[Tuple[str, str]] = []
+    cambios: list[tuple[str, str]] = []
     if edita_titulo:
         cambios.append(("Título", f"«{titulo_nuevo}»"))
     if edita_texto:
@@ -686,8 +686,8 @@ def _norm_encabezado(linea: str) -> str:
     return linea.strip().lstrip("#").strip().strip("*").strip().rstrip(":").strip().lower()
 
 
-@lru_cache(maxsize=None)
-def _estructura_plantilla(plantilla: str) -> Tuple[frozenset, Tuple[str, ...], Tuple[str, ...], frozenset]:
+@cache
+def _estructura_plantilla(plantilla: str) -> tuple[frozenset, tuple[str, ...], tuple[str, ...], frozenset]:
     """Lee references/plantilla-<tipo>.md y devuelve, literal: (encabezados, etiquetas en negrita,
     placeholders, líneas de la plantilla). Se omite la cabecera interna (título y aclaración de metadatos)."""
     ruta = _DIR_REFERENCIAS_PLANTILLAS / f"plantilla-{(plantilla or '').strip().lower()}.md"
@@ -714,7 +714,7 @@ def _estructura_plantilla(plantilla: str) -> Tuple[frozenset, Tuple[str, ...], T
     )
 
 
-def texto_tiene_estructura_plantilla(texto: str, plantilla: Optional[str]) -> bool:
+def texto_tiene_estructura_plantilla(texto: str, plantilla: str | None) -> bool:
     """True si el texto trae encabezados o etiquetas literales de la plantilla indicada."""
     if not texto or not plantilla:
         return False
@@ -725,7 +725,7 @@ def texto_tiene_estructura_plantilla(texto: str, plantilla: Optional[str]) -> bo
     return any(e in texto for e in etiquetas)
 
 
-def limpiar_estructura_plantilla(texto: str, plantilla: Optional[str]) -> str:
+def limpiar_estructura_plantilla(texto: str, plantilla: str | None) -> str:
     """Quita de forma determinista la estructura de la plantilla anterior (encabezados, etiquetas en
     negrita y placeholders sin completar, tomados literalmente de references/plantilla-*.md),
     conservando todo lo que la persona escribió."""
@@ -734,7 +734,7 @@ def limpiar_estructura_plantilla(texto: str, plantilla: Optional[str]) -> str:
     encabezados, etiquetas, placeholders, lineas_tpl = _estructura_plantilla(plantilla)
     if not encabezados and not etiquetas:
         return texto
-    salida: List[str] = []
+    salida: list[str] = []
     for linea in texto.splitlines():
         crudo = linea.strip()
         if crudo in lineas_tpl and crudo:
@@ -774,7 +774,10 @@ async def ejecutar_skill(
 
     b = sesion.borrador
     if b is None:
-        from baco.server.services.orquestador.mensajes import MSG_RECHAZADO, OPCIONES_REINICIAR
+        from baco.server.services.orquestador.mensajes import (
+            MSG_RECHAZADO,
+            OPCIONES_REINICIAR,
+        )
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
     skill_norm = (skill or "plantilla").lower()
@@ -948,7 +951,10 @@ async def handle_reaplicar_skill(
     from baco.server.services.orquestador.validaciones import construir_respuesta
     b = sesion.borrador
     if b is None:
-        from baco.server.services.orquestador.mensajes import MSG_RECHAZADO, OPCIONES_REINICIAR
+        from baco.server.services.orquestador.mensajes import (
+            MSG_RECHAZADO,
+            OPCIONES_REINICIAR,
+        )
         return construir_respuesta(sesion, MSG_RECHAZADO, OPCIONES_REINICIAR)
 
     if not getattr(b, "resultado_skill_pendiente", False) or not getattr(b, "skill_pendiente", None):

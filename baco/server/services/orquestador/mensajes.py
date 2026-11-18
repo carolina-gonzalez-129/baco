@@ -1,7 +1,6 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from baco.server.schemas.chat_orquestado import EstadoFlujo
-
 
 MENSAJE_BIENVENIDA = (
     "🤖 ¡Hola! Soy BACO, tu asistente en la Base de Conocimiento de Finnegans.\n\n"
@@ -35,7 +34,7 @@ OPCIONES_FINALIZADO = ["ver_articulo_final"]
 OPCIONES_EDICION_FINAL = ["finalizar"]
 OPCIONES_CONFIRMAR_PLANTILLA = ["confirmar_plantilla", "cancelar_plantilla"]
 
-DESCRIPTORES_BOTONES: Dict[str, Dict[str, str]] = {
+DESCRIPTORES_BOTONES: dict[str, dict[str, str]] = {
     "volver": {"accion": "volver", "label": "Volver", "estilo": "btn-ghost"},
     "confirmar_texto": {"accion": "confirmar_texto", "label": "Confirmar texto", "estilo": "btn-primary"},
     "enriquecer": {"accion": "enriquecer", "label": "Enriquecer el existente", "estilo": "btn-dark"},
@@ -256,7 +255,7 @@ VARIANTES_CATEGORIA_FALTANTE = [
 OPCIONES_CONFIRMAR_METADATOS = ["volver"]
 
 
-def msg_confirmar_metadatos(categoria: str, tags: List[str]) -> str:
+def msg_confirmar_metadatos(categoria: str, tags: list[str]) -> str:
     """Carga por chat completa: se confirma con Enviar datos, igual que desde el panel."""
     tags_txt = ", ".join(tags) if tags else "sin etiquetas"
     txt_etiqueta = "las etiquetas temáticas" if len(tags) > 1 else "la etiqueta temática"
@@ -270,7 +269,7 @@ def msg_pedir_categoria(intento: int = 0) -> str:
     return VARIANTES_CATEGORIA_FALTANTE[intento % len(VARIANTES_CATEGORIA_FALTANTE)]
 
 
-def msg_categoria_no_encontrada(termino: str, sugerencias: Optional[List[str]] = None) -> str:
+def msg_categoria_no_encontrada(termino: str, sugerencias: list[str] | None = None) -> str:
     sug_txt = ""
     if sugerencias:
         if len(sugerencias) == 1:
@@ -282,7 +281,7 @@ def msg_categoria_no_encontrada(termino: str, sugerencias: Optional[List[str]] =
     )
 
 
-def msg_categoria_ambigua(termino: str, candidatos: List[str]) -> str:
+def msg_categoria_ambigua(termino: str, candidatos: list[str]) -> str:
     if not candidatos:
         return f"Encontré coincidencias ambiguas para '{termino}'. Por favor seleccioná la categoría desde el menú desplegable en la sección inferior del panel izquierdo."
     if len(candidatos) == 1:
@@ -317,7 +316,7 @@ def msg_pedir_metadatos(plantilla: str, prefijo: str = "") -> str:
     )
 
 
-def msg_confirmar_metadatos_cargados(categoria: Optional[str], tematicos: List[str], prefijo: str = "") -> str:
+def msg_confirmar_metadatos_cargados(categoria: str | None, tematicos: list[str], prefijo: str = "") -> str:
     """ESPERANDO_METADATOS con categoría y etiquetas ya cargadas (p. ej. al reingresar)."""
     etiquetas = ", ".join(tematicos) if tematicos else "sin etiquetas temáticas"
     return (
@@ -332,7 +331,7 @@ def msg_sesion_finalizada(estado_valor: str) -> str:
     return f"Este artículo ya fue {accion}. Para escribir uno nuevo, tocá **Empezar de nuevo**."
 
 
-def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
+def obtener_ayuda_contextual(sesion: Any) -> tuple[str, list[str]]:
     est = sesion.estado
 
 
@@ -402,7 +401,10 @@ def obtener_ayuda_contextual(sesion: Any) -> Tuple[str, List[str]]:
                 "⚠️ El borrador tiene observaciones **bloqueantes**. Corregilas en el panel izquierdo y guardá los cambios para continuar.",
                 list(OPCIONES_REVISION_BLOQUEANTE),
             )
-        from baco.server.services.orquestador.contrato import auditado, plantilla_aplicada
+        from baco.server.services.orquestador.contrato import (
+            auditado,
+            plantilla_aplicada,
+        )
 
         if (est == EstadoFlujo.REVISION_TIPO and plantilla_aplicada(sesion)) or (
             est == EstadoFlujo.REVISION_METADATOS and auditado(sesion)

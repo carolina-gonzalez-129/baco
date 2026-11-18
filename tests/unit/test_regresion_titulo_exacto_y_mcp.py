@@ -1,9 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-from fastapi.testclient import TestClient
-
-from baco.server.app.api import get_buscador_duplicados
-from baco.server.app.main import app
 from baco.server.services.buscar_duplicados import BuscadorDuplicados, extraer_url
 
 

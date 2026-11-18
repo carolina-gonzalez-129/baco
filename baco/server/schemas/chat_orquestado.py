@@ -1,25 +1,37 @@
-from enum import Enum
 import re
-from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field, ValidationInfo, computed_field, field_validator, model_validator
+from enum import Enum
+from typing import Any, Literal
 
-from baco.server.config_limites import MAX_BLOQUES_TEXTO, TEXTO_MAX, TEXTO_MAX_PERCENTIL_99, TITULO_MAX
-from baco.server.schemas.validacion import ValidarFormatoResponse
+from pydantic import (
+    BaseModel,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
+
+from baco.server.config_limites import (
+    MAX_BLOQUES_TEXTO,
+    TEXTO_MAX,
+    TEXTO_MAX_PERCENTIL_99,
+    TITULO_MAX,
+)
 from baco.server.schemas.recurso import Recurso
+from baco.server.schemas.validacion import ValidarFormatoResponse
 
 _RE_MARCADOR_LEGACY = re.compile(r"\[\[recurso:[a-zA-Z0-9_\-]+\]\]")
 _RE_CUALQUIER_MARCADOR = re.compile(r"\[\[(?:recurso:([a-zA-Z0-9_\-]+)|(R\d+))\]\]")
 
 
 def _sanitizar_y_validar_bloques(
-    bloques_raw: List[str],
-    recursos_dict: Optional[Dict[str, Any]] = None,
-    texto_base_limpio: Optional[str] = None,
-) -> List[str]:
+    bloques_raw: list[str],
+    recursos_dict: dict[str, Any] | None = None,
+    texto_base_limpio: str | None = None,
+) -> list[str]:
     """Valida que los bloques no contengan marcadores y aplica autosanitización PII/secretos."""
     from baco.server.services.validar_articulo import _limpiar_texto_sensible
 
-    bloques_limpios: List[str] = []
+    bloques_limpios: list[str] = []
     recs = recursos_dict if isinstance(recursos_dict, dict) else {}
     base = (texto_base_limpio or "").strip()
     parrafos_base = {p.strip() for p in re.split(r"\n\s*\n", base) if p.strip()} if base else set()
@@ -84,16 +96,16 @@ class EstadoFlujo(str, Enum):
 class CoincidenciaArticulo(BaseModel):
     id: int = Field(..., description="ID del artículo existente que coincide.")
     titulo: str = Field(..., description="Título del artículo existente que coincide.")
-    url: Optional[str] = Field(default=None, description="URL del artículo existente en la base de conocimiento.")
-    score: Optional[float] = Field(
+    url: str | None = Field(default=None, description="URL del artículo existente en la base de conocimiento.")
+    score: float | None = Field(
         default=None,
         description="Score de similitud (1.0 exacto, 0.70+ trigramas, 0.90+ embeddings)."
     )
-    texto_original: Optional[str] = Field(
+    texto_original: str | None = Field(
         default=None,
         description="Texto original del artículo coincidente."
     )
-    tipo_coincidencia: Optional[str] = Field(
+    tipo_coincidencia: str | None = Field(
         default=None,
         description="Tipo de coincidencia: 'exacto', 'serie', 'trigrama' o 'semantico'."
     )
@@ -108,12 +120,12 @@ class BotonOpcion(BaseModel):
 class AccionPanel(BaseModel):
     accion: str = Field(..., description="Acción del botón principal del panel: 'confirmar_texto', 'enviar_datos' o 'guardar'. 'guardar' no viaja como `accion`: el front envía solo los `campos`.")
     label: str = Field(..., description="Texto visible del botón principal del panel.")
-    campos: List[str] = Field(default_factory=list, description="Campos del panel que el botón envía (subconjunto de `editables`).")
+    campos: list[str] = Field(default_factory=list, description="Campos del panel que el botón envía (subconjunto de `editables`).")
 
 
 class SkillDisponibilidad(BaseModel):
     habilitada: bool = Field(default=False, description="True si la skill se puede ejecutar en el estado actual.")
-    motivo: Optional[str] = Field(default=None, description="Motivo por el que está deshabilitada (None si está habilitada).")
+    motivo: str | None = Field(default=None, description="Motivo por el que está deshabilitada (None si está habilitada).")
 
 
 class SkillsEstado(BaseModel):
@@ -130,7 +142,7 @@ class EtapaFlujo(BaseModel):
     actual: int = Field(..., ge=1, description="Número de etapa actual (n de N).")
     total: int = Field(default=5, ge=1, description="Cantidad total de etapas del flujo (N).")
     nombre: str = Field(..., description="Nombre descriptivo de la etapa actual.")
-    etapas: List[str] = Field(
+    etapas: list[str] = Field(
         default_factory=list,
         description="Lista ordenada de todas las etapas del flujo para el stepper."
     )
@@ -145,54 +157,54 @@ class ItemContenidoAdicional(BaseModel):
 
 class BorradorSesion(BaseModel):
     modo: Literal["nuevo", "enriquecimiento"] = Field(..., description="'nuevo' (artículo desde cero) o 'enriquecimiento' (actualiza o enriquece uno existente).")
-    articulo_original_id: Optional[int] = Field(default=None, description="ID del artículo existente que se enriquece o actualiza (solo en modo enriquecimiento).")
-    articulo_original_url: Optional[str] = Field(default=None, description="URL del artículo existente que se enriquece o actualiza.")
+    articulo_original_id: int | None = Field(default=None, description="ID del artículo existente que se enriquece o actualiza (solo en modo enriquecimiento).")
+    articulo_original_url: str | None = Field(default=None, description="URL del artículo existente que se enriquece o actualiza.")
     titulo: str = Field(..., description="Título del borrador.")
-    bloques_texto: List[str] = Field(
+    bloques_texto: list[str] = Field(
         default_factory=list,
         description="Fuente de verdad única del texto: lista ordenada de bloques de texto limpio (sin marcadores).",
     )
-    recursos: Dict[str, Recurso] = Field(default_factory=dict, description="Recursos multimedia del borrador, indexados por ID.")
+    recursos: dict[str, Recurso] = Field(default_factory=dict, description="Recursos multimedia del borrador, indexados por ID.")
     ultimo_id_recurso: int = Field(
         default=0,
         description="Contador monotónico por borrador que nunca reutiliza el ID de un recurso eliminado.",
     )
     texto_base_limpio: str = Field(default="", description="Texto base de referencia (en enriquecimiento, el del artículo original).")
     texto_en_edicion: str = Field(default="", description="Copia del texto limpio en edición; la fuente de verdad es bloques_texto.")
-    texto_editor: Optional[str] = Field(
+    texto_editor: str | None = Field(
         default=None,
         description="Texto escrito exclusivamente por la persona en el Editor, independiente de la Vista previa.",
     )
-    texto_original: Optional[str] = Field(
+    texto_original: str | None = Field(
         default=None,
         description="Texto original previo a la aplicación de una skill, destinado al Editor.",
     )
-    orden_multimedia: List[int] = Field(
+    orden_multimedia: list[int] = Field(
         default_factory=list,
         description="Vector numérico que guarda el orden explícito de los contenidos multimedia en el borrador."
     )
-    posiciones: List[int] = Field(
+    posiciones: list[int] = Field(
         default_factory=list,
         description="Vector numérico con las posiciones de bloque de los contenidos multimedia."
     )
-    contenido_adicional: List[ItemContenidoAdicional] = Field(
+    contenido_adicional: list[ItemContenidoAdicional] = Field(
         default_factory=list,
         description="Sección aparte de contenido adicional para flujos de enriquecer o actualizar, separada de texto_limpio."
     )
-    advertencias_recursos: List[str] = Field(default_factory=list, description="Advertencias sobre los recursos multimedia del borrador.")
+    advertencias_recursos: list[str] = Field(default_factory=list, description="Advertencias sobre los recursos multimedia del borrador.")
     finalizado: bool = Field(default=False, description="Indica si el usuario finalizó el borrador.")
-    tipo_plantilla: Optional[Literal["instructivo", "soluciones"]] = Field(default=None, description="Tipo de plantilla del artículo: 'instructivo' o 'soluciones'.")
-    categoria_id: Optional[int] = Field(default=None, description="ID de la categoría elegida (tabla 'categorias').")
-    categoria_nombre: Optional[str] = Field(
+    tipo_plantilla: Literal["instructivo", "soluciones"] | None = Field(default=None, description="Tipo de plantilla del artículo: 'instructivo' o 'soluciones'.")
+    categoria_id: int | None = Field(default=None, description="ID de la categoría elegida (tabla 'categorias').")
+    categoria_nombre: str | None = Field(
         default=None,
         description="Nombre legible de la categoría para visualización y resúmenes."
     )
-    tags: List[str] = Field(default_factory=list, description="Etiquetas elegidas para el artículo.")
-    metadatos_anteriores: Optional[Dict[str, Any]] = Field(
+    tags: list[str] = Field(default_factory=list, description="Etiquetas elegidas para el artículo.")
+    metadatos_anteriores: dict[str, Any] | None = Field(
         default=None,
         description="Metadatos heredados del artículo original: categoria_id, categoria_nombre, tags",
     )
-    texto_base_revision_final: Optional[str] = Field(
+    texto_base_revision_final: str | None = Field(
         default=None,
         description="Texto base revision final.",
     )
@@ -208,11 +220,11 @@ class BorradorSesion(BaseModel):
         default=False,
         description="Indica si el resultado de la skill en la Vista previa quedó desactualizado tras editar el texto del Editor.",
     )
-    skill_pendiente: Optional[str] = Field(
+    skill_pendiente: str | None = Field(
         default=None,
         description="Identifica la skill pendiente en la Vista previa ('plantilla' o 'auditor').",
     )
-    skill_aplicada: Optional[str] = Field(
+    skill_aplicada: str | None = Field(
         default=None,
         description="Identifica la última skill aplicada ('plantilla' o 'auditor').",
     )
@@ -269,7 +281,7 @@ class BorradorSesion(BaseModel):
                             )
                         # Convertir texto con marcadores válidos en bloques_texto limpios + posicion en recursos
                         partes = re.split(r"(\[\[recurso:[a-zA-Z0-9_\-]+\]\])", v)
-                        bloques_derivados: List[str] = []
+                        bloques_derivados: list[str] = []
                         orden_vista = 0
                         for parte in partes:
                             m_rec = re.fullmatch(r"\[\[recurso:([a-zA-Z0-9_\-]+)\]\]", parte.strip())
@@ -301,7 +313,9 @@ class BorradorSesion(BaseModel):
                         else:
                             data["bloques_texto"] = [s]
                 elif txt:
-                    from baco.server.services.orquestador.recursos_service import extraer_recursos_y_bloques_texto
+                    from baco.server.services.orquestador.recursos_service import (
+                        extraer_recursos_y_bloques_texto,
+                    )
                     bloques_ext, recs = extraer_recursos_y_bloques_texto(str(txt))
                     data["bloques_texto"] = bloques_ext
                     if recs and not data.get("recursos"):
@@ -312,7 +326,9 @@ class BorradorSesion(BaseModel):
             cid = data.get("categoria_id")
             if cid is not None and not data.get("categoria_nombre"):
                 try:
-                    from baco.server.services.orquestador.validaciones import DICCIONARIO_OFICIAL_CATEGORIAS
+                    from baco.server.services.orquestador.validaciones import (
+                        DICCIONARIO_OFICIAL_CATEGORIAS,
+                    )
                     if int(cid) in DICCIONARIO_OFICIAL_CATEGORIAS:
                         data["categoria_nombre"] = DICCIONARIO_OFICIAL_CATEGORIAS[int(cid)]
                 except Exception:
@@ -329,7 +345,9 @@ class BorradorSesion(BaseModel):
     @property
     def texto_alineado_discourse(self) -> str:
         """Vista compuesta derivada para Discourse: intercala bloques_texto y recursos según (posicion, orden)."""
-        from baco.server.services.orquestador.recursos_service import componer_texto_publicable
+        from baco.server.services.orquestador.recursos_service import (
+            componer_texto_publicable,
+        )
         return componer_texto_publicable(self.bloques_texto, self.recursos)
 
     @computed_field  # type: ignore[prop-decorator]
@@ -340,8 +358,9 @@ class BorradorSesion(BaseModel):
         Calculado estrictamente en el servidor:
         False si el largo efectivo supera TEXTO_MAX (6687).
         """
-        from baco.server.config_limites import TEXTO_MAX
-        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+        from baco.server.services.orquestador.recursos_service import (
+            texto_efectivo_sin_marcadores,
+        )
 
         largo = len(texto_efectivo_sin_marcadores(self.texto_limpio or ""))
         if largo > TEXTO_MAX:
@@ -350,10 +369,11 @@ class BorradorSesion(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def skills_motivo(self) -> Optional[str]:
+    def skills_motivo(self) -> str | None:
         """Texto explicativo del motivo por el cual las skills están deshabilitadas."""
-        from baco.server.config_limites import TEXTO_MAX
-        from baco.server.services.orquestador.recursos_service import texto_efectivo_sin_marcadores
+        from baco.server.services.orquestador.recursos_service import (
+            texto_efectivo_sin_marcadores,
+        )
 
         largo = len(texto_efectivo_sin_marcadores(self.texto_limpio or ""))
         if largo > TEXTO_MAX:
@@ -396,7 +416,7 @@ class BorradorSesion(BaseModel):
             if v_sin_marc == self.texto_limpio and self.bloques_texto:
                 return
             if not v_sin_marc:
-                nuevos_bloques: List[str] = []
+                nuevos_bloques: list[str] = []
             elif self.recursos and len(self.bloques_texto) > 1:
                 nuevos_bloques = [b.strip() for b in re.split(r"\n\s*\n", v_sin_marc) if b.strip()]
             else:
@@ -414,16 +434,16 @@ class BorradorSesion(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def multimedia(self) -> List[Recurso]:
+    def multimedia(self) -> list[Recurso]:
         """Lista de recursos multimedia ordenados por (posicion, orden)."""
         return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
     def reordenar_recurso(
         self,
-        elemento: Union[str, int],
-        nueva_posicion: Optional[int] = None,
-        nuevo_orden: Optional[int] = None,
-    ) -> List[Recurso]:
+        elemento: str | int,
+        nueva_posicion: int | None = None,
+        nuevo_orden: int | None = None,
+    ) -> list[Recurso]:
         """Mueve un recurso (identificado por ID o por su índice de orden actual)
         a un nuevo (posicion, orden), preservando invariantes:
         - posicion en [-1, len(bloques_texto) - 1]
@@ -434,7 +454,7 @@ class BorradorSesion(BaseModel):
         if not items:
             raise ValueError("No hay recursos para reordenar.")
 
-        target_idx: Optional[int] = None
+        target_idx: int | None = None
         if isinstance(elemento, int) or (
             isinstance(elemento, str) and elemento.isdigit() and elemento not in self.recursos
         ):
@@ -485,8 +505,8 @@ class BorradorSesion(BaseModel):
         self,
         from_index: int,
         to_index: int,
-        nueva_posicion: Optional[int] = None,
-    ) -> List[Recurso]:
+        nueva_posicion: int | None = None,
+    ) -> list[Recurso]:
         """Reordena los recursos multimedia moviendo el elemento en from_index a to_index."""
         items = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
         if not (0 <= from_index < len(items) and 0 <= to_index < len(items)):
@@ -504,12 +524,12 @@ class BorradorSesion(BaseModel):
         self._sincronizar_orden_recursos(items)
         return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
-    def reordenar_por_ids(self, orden_ids: List[str]) -> List[Recurso]:
+    def reordenar_por_ids(self, orden_ids: list[str]) -> list[Recurso]:
         """Reordena los recursos multimedia según una lista ordenada de IDs."""
         items_antes = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
         posiciones_slots = [r.posicion for r in items_antes]
         items_map = {r.id: r for r in items_antes}
-        nuevos: List[Recurso] = []
+        nuevos: list[Recurso] = []
         for rid in orden_ids:
             if rid in items_map:
                 nuevos.append(items_map.pop(rid))
@@ -520,11 +540,11 @@ class BorradorSesion(BaseModel):
         self._sincronizar_orden_recursos(nuevos)
         return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
-    def reordenar_por_indices(self, orden_indices: List[int]) -> List[Recurso]:
+    def reordenar_por_indices(self, orden_indices: list[int]) -> list[Recurso]:
         """Reordena los recursos multimedia según una lista ordenada de índices."""
         items = sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
         posiciones_slots = [r.posicion for r in items]
-        nuevos: List[Recurso] = []
+        nuevos: list[Recurso] = []
         vistos = set()
         for idx in orden_indices:
             if 0 <= idx < len(items) and idx not in vistos:
@@ -538,7 +558,7 @@ class BorradorSesion(BaseModel):
         self._sincronizar_orden_recursos(nuevos)
         return sorted(self.recursos.values(), key=lambda r: (r.posicion, r.orden))
 
-    def eliminar_multimedia(self, elemento: Union[str, int]) -> Optional[Recurso]:
+    def eliminar_multimedia(self, elemento: str | int) -> Recurso | None:
         """Elimina un recurso multimedia por ID (str) o por índice (int).
         Regla de fusión de bloques:
         Fusiona bloques_texto[pos] y bloques_texto[pos + 1] SOLO si:
@@ -592,8 +612,8 @@ class BorradorSesion(BaseModel):
     def agregar_multimedia(
         self,
         recurso: Recurso,
-        posicion: Optional[int] = None,
-        orden: Optional[int] = None,
+        posicion: int | None = None,
+        orden: int | None = None,
     ) -> Recurso:
         """Inserta o añade un recurso multimedia respetando (posicion, orden) y los invariantes."""
         items = sorted(
@@ -630,7 +650,7 @@ class BorradorSesion(BaseModel):
 
     def _sincronizar_orden_recursos(
         self,
-        items_ordenados: List[Recurso],
+        items_ordenados: list[Recurso],
         invalidar_conformidad: bool = True,
     ) -> None:
         """Garantiza invariantes:
@@ -665,43 +685,43 @@ class BorradorSesion(BaseModel):
 
 
 class ChatOrquestadorRequest(BaseModel):
-    session_id: Optional[str] = Field(
+    session_id: str | None = Field(
         default=None,
         description="El ID de sesión es gestionado exclusivamente por el servidor mediante cookie 'baco_session' o cabecera 'X-Session-ID'. Cualquier valor enviado en este campo del cuerpo será ignorado."
     )
-    mensaje: Optional[str] = Field(
+    mensaje: str | None = Field(
         default=None,
         description="Entrada del usuario (título, texto o respuesta)."
     )
-    accion: Optional[str] = Field(
+    accion: str | None = Field(
         default=None,
         description="Id de una opción u acción de navegación devuelta en el turno anterior (`opciones`/`navegacion`), una opción global ('reiniciar', 'ayuda') o una acción de panel del estado ('confirmar_texto', 'enviar_datos', 'reaplicar'). Cualquier otra se rechaza. Ver contrato.py."
     )
-    titulo: Optional[str] = Field(
+    titulo: str | None = Field(
         default=None,
         description="Título al editar el borrador."
     )
-    texto: Optional[str] = Field(
+    texto: str | None = Field(
         default=None,
         description="Cuerpo al cargar texto o editar el borrador."
     )
-    texto_editor: Optional[str] = Field(
+    texto_editor: str | None = Field(
         default=None,
         description="Texto escrito exclusivamente por la persona en el Editor."
     )
-    categoria_id: Optional[int] = Field(
+    categoria_id: int | None = Field(
         default=None,
         description="Categoría o ID de módulo ERP del borrador."
     )
-    tags: Optional[List[str]] = Field(
+    tags: list[str] | None = Field(
         default=None,
         description="Lista de tags del borrador."
     )
-    tipo_plantilla: Optional[str] = Field(
+    tipo_plantilla: str | None = Field(
         default=None,
         description="Tipo de plantilla ('instructivo' o 'soluciones') del borrador.",
     )
-    aviso_privacidad_detectado: Optional[str] = Field(
+    aviso_privacidad_detectado: str | None = Field(
         default=None,
         exclude=True,
         description="Aviso de privacidad detectado en las entradas del request.",
@@ -727,7 +747,9 @@ class ChatOrquestadorRequest(BaseModel):
             val = data.get(campo)
             if isinstance(val, str) and val.strip():
                 if base_api and base_api in val:
-                    from baco.server.services.orquestador.validaciones import consolidar_texto_enriquecimiento
+                    from baco.server.services.orquestador.validaciones import (
+                        consolidar_texto_enriquecimiento,
+                    )
                     val_cons, av = consolidar_texto_enriquecimiento(base_api, val)
                     data[campo] = val_cons
                     if av:
@@ -765,7 +787,7 @@ class ChatOrquestadorRequest(BaseModel):
 
     @field_validator("texto", "mensaje", "texto_editor", mode="before")
     @classmethod
-    def validar_longitud_texto(cls, v: Optional[str]) -> Optional[str]:
+    def validar_longitud_texto(cls, v: str | None) -> str | None:
         if v and len(v) > TEXTO_MAX_PERCENTIL_99:
             from baco.server.services.orquestador.recursos_service import (
                 extraer_recursos_y_texto_limpio,
@@ -778,7 +800,7 @@ class ChatOrquestadorRequest(BaseModel):
 
     @field_validator("titulo", mode="before")
     @classmethod
-    def validar_longitud_titulo(cls, v: Optional[str]) -> Optional[str]:
+    def validar_longitud_titulo(cls, v: str | None) -> str | None:
         if v and len(v) > TITULO_MAX:
             raise ValueError(f"El título supera los {TITULO_MAX} caracteres. Resumilo.")
         return v
@@ -792,23 +814,23 @@ class ChatOrquestadorResponse(BaseModel):
         description="Etapa actual del flujo (n de N) y listado de etapas para el stepper."
     )
     mensaje: str = Field(..., description="Mensaje del asistente para mostrar en el chat.")
-    opciones: List[str] = Field(
+    opciones: list[str] = Field(
         default_factory=list,
         description="Botones del chat válidos en el estado actual (no incluye la navegación)."
     )
-    editables: List[str] = Field(
+    editables: list[str] = Field(
         default_factory=list,
         description="Campos del panel que el back acepta en el estado actual; el resto se descarta con aviso.",
     )
-    navegacion: List[str] = Field(
+    navegacion: list[str] = Field(
         default_factory=list,
         description="Acciones de navegación disponibles (p. ej. 'volver'); el front decide cómo mostrarlas.",
     )
-    navegacion_etiquetas: Dict[str, str] = Field(
+    navegacion_etiquetas: dict[str, str] = Field(
         default_factory=dict,
         description="Texto visible de cada acción de `navegacion` (p. ej. {'volver': 'Cambiar el título'}). Si falta, el front usa 'Volver'.",
     )
-    guardan_campos: List[str] = Field(
+    guardan_campos: list[str] = Field(
         default_factory=list,
         description=(
             "Acciones del turno (opciones, navegación o panel) que viajan con los campos `editables`: "
@@ -816,11 +838,11 @@ class ChatOrquestadorResponse(BaseModel):
             "se descarta. Incluye 'reaplicar' (acción del panel) solo si hay un resultado de skill pendiente."
         ),
     )
-    botones: List[BotonOpcion] = Field(
+    botones: list[BotonOpcion] = Field(
         default_factory=list,
         description="Botones inyectados dinámicamente por el servidor.",
     )
-    accion_panel: Optional[AccionPanel] = Field(
+    accion_panel: AccionPanel | None = Field(
         default=None,
         description="Botón principal del panel en el estado actual (None si el estado no tiene).",
     )
@@ -828,34 +850,34 @@ class ChatOrquestadorResponse(BaseModel):
         default_factory=SkillsEstado,
         description="Disponibilidad de cada skill (plantilla, auditor) en el estado actual, según ESTADOS_SKILL.",
     )
-    tags_acumulados: List[str] = Field(
+    tags_acumulados: list[str] = Field(
         default_factory=list,
         description="Etiquetas acumuladas en la sesión o borrador hasta el momento."
     )
-    categorias_disponibles: List[CategoriaOpcion] = Field(
+    categorias_disponibles: list[CategoriaOpcion] = Field(
         default_factory=list,
         description="Categorías elegibles provenientes de la tabla 'categorias' (id y nombre)."
     )
-    tags_disponibles: List[str] = Field(
+    tags_disponibles: list[str] = Field(
         default_factory=list,
         description="Etiquetas disponibles provenientes de la tabla 'tags'."
     )
-    coincidencias: List[CoincidenciaArticulo] = Field(default_factory=list, description="Artículos existentes similares al título o texto (detección de duplicados).")
-    borrador: Optional[BorradorSesion] = Field(default=None, description="Borrador de la sesión, si ya existe.")
-    titulo: Optional[str] = Field(default=None, description="Título limpio y sanitizado actual de la sesión o borrador.")
-    texto_limpio: Optional[str] = Field(
+    coincidencias: list[CoincidenciaArticulo] = Field(default_factory=list, description="Artículos existentes similares al título o texto (detección de duplicados).")
+    borrador: BorradorSesion | None = Field(default=None, description="Borrador de la sesión, si ya existe.")
+    titulo: str | None = Field(default=None, description="Título limpio y sanitizado actual de la sesión o borrador.")
+    texto_limpio: str | None = Field(
         default=None,
         description="Texto limpio y sanitizado actual de la sesión o borrador."
     )
-    texto_original: Optional[str] = Field(
+    texto_original: str | None = Field(
         default=None,
         description="Texto original previo a la aplicación de una skill para el Editor, separado del resultado en Vista previa.",
     )
-    texto_editor: Optional[str] = Field(
+    texto_editor: str | None = Field(
         default=None,
         description="Texto actual destinado al Editor, separado del resultado en Vista previa.",
     )
-    plantilla_pendiente: Optional[str] = Field(
+    plantilla_pendiente: str | None = Field(
         default=None,
         description="Tipo de plantilla pedido en EDICION_FINAL que espera Confirmar/Cancelar (aún no aplicado).",
     )
@@ -871,16 +893,16 @@ class ChatOrquestadorResponse(BaseModel):
         default=True,
         description="Indica si las skills del agente están habilitadas para el borrador actual (calculado en el servidor).",
     )
-    skills_motivo: Optional[str] = Field(
+    skills_motivo: str | None = Field(
         default=None,
         description="Motivo explicativo si las skills están deshabilitadas.",
     )
-    validacion: Optional[ValidarFormatoResponse] = Field(default=None, description="Resultado de la última validación de formato (hallazgos bloqueantes y advertencias).")
-    aviso_privacidad: Optional[str] = Field(
+    validacion: ValidarFormatoResponse | None = Field(default=None, description="Resultado de la última validación de formato (hallazgos bloqueantes y advertencias).")
+    aviso_privacidad: str | None = Field(
         default=None,
         description="Notificación puntual ('flash') emitida cuando se detectan y anonimizan datos sensibles en el turno actual."
     )
-    aviso_metadatos_heredados: Optional[str] = Field(
+    aviso_metadatos_heredados: str | None = Field(
         default=None,
         description="Aviso informativo cuando el borrador heredó metadatos de una versión anterior que aún no fueron confirmados.",
     )
@@ -890,7 +912,9 @@ class ChatOrquestadorResponse(BaseModel):
     def poblar_botones(cls, data: Any) -> Any:
         if isinstance(data, dict):
             if not data.get("botones"):
-                from baco.server.services.orquestador.mensajes import DESCRIPTORES_BOTONES
+                from baco.server.services.orquestador.mensajes import (
+                    DESCRIPTORES_BOTONES,
+                )
                 ops = data.get("opciones") or []
                 bts = []
                 for op in ops:

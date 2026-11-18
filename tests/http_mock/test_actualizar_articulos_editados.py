@@ -1,15 +1,13 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-import pytest
 
+from baco.server.db.ingesta import ResumenIngesta
 from baco.server.discourse.actualizar_articulos_editados import (
-    obtener_articulos_existentes,
     actualizar_embeddings_articulo,
     descargar_articulo,
+    obtener_articulos_existentes,
     sincronizar_articulos_editados,
-    ErrorAPIDiscourse,
 )
-from baco.server.db.ingesta import ResumenIngesta
 
 
 def _mock_conn_cur(cur_mock):

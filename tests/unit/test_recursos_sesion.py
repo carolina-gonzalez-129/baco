@@ -1,6 +1,5 @@
 import io
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,13 +21,7 @@ from baco.server.schemas.recurso import Recurso
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
 from baco.server.services.orquestador.recursos_service import (
     DIR_TEMP_SESIONES,
-    RecursoInvalidoError,
-    SubidaRecursosDeshabilitadaError,
-    clasificar_tipo_recurso,
-    detectar_mime_type_real,
-    eliminar_recurso_borrador as servicio_eliminar_recurso,
     extraer_recursos_y_texto_limpio,
-    guardar_recurso_temporal_sesion,
     limpiar_archivos_temporales_sesion,
     reconstruir_texto_con_recursos,
     sanitizar_nombre_archivo,
@@ -38,7 +31,6 @@ from baco.server.services.orquestador.sesion import (
     SESIONES,
     GestorSesiones,
     SesionChat,
-    gestor_sesiones,
 )
 from baco.server.services.orquestador.validaciones import (
     validar_borrador,

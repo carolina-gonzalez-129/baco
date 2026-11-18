@@ -5,7 +5,12 @@ import httpx
 import pytest
 
 from baco.server.discourse import actualizar_nuevos_articulos as sincronizacion
-from baco.server.services.embeddings import DIM_TEXTO, DIM_TITULO, embedding_texto, embedding_titulo
+from baco.server.services.embeddings import (
+    DIM_TEXTO,
+    DIM_TITULO,
+    embedding_texto,
+    embedding_titulo,
+)
 
 
 @pytest.mark.integration
@@ -49,10 +54,9 @@ def test_postgresql_normalizar_texto_si_se_configura():
 
     psycopg = pytest.importorskip("psycopg")
     try:
-        with psycopg.connect(dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT normalizar_texto(%s);", ("  Configuración  Ágil  ",))
-                resultado = cur.fetchone()[0]
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT normalizar_texto(%s);", ("  Configuración  Ágil  ",))
+            resultado = cur.fetchone()[0]
     except Exception as exc:
         pytest.skip(f"PostgreSQL no disponible o esquema BACO incompleto: {exc}")
 

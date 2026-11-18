@@ -13,6 +13,7 @@ Cubre:
 """
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -21,12 +22,11 @@ from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 from baco.server.services.buscar_duplicados import BuscadorDuplicados
-from baco.server.services.orquestador.validaciones import (
-    resolver_categoria,
-    limpiar_cache_catalogos,
-)
 from baco.server.services.orquestador.sesion import SESIONES
-
+from baco.server.services.orquestador.validaciones import (
+    limpiar_cache_catalogos,
+    resolver_categoria,
+)
 
 TEXTO_VALIDO = (
     "Este es un texto instructivo completo con pasos claros para configurar el sistema.\n\n"

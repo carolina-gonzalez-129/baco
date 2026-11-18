@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+
 import pytest
 
 from baco.server.schemas.chat_orquestado import (

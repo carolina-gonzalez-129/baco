@@ -1,6 +1,6 @@
-import pytest
-import psycopg
 from pathlib import Path
+
+import psycopg
 
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "baco" / "server" / "db" / "schema_completo.sql"
 DDL_SCHEMA = SCHEMA_FILE.read_text(encoding="utf-8")

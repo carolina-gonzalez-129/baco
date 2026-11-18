@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import os
 import logging
+import os
 import re
+from collections.abc import Callable, Sequence
 from functools import lru_cache
-from typing import TYPE_CHECKING, Callable, Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer

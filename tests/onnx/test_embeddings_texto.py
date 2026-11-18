@@ -7,11 +7,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from baco.server.services.embeddings import (
+    DIM_TEXTO,
+    FUNCIONES_LIMPIEZA_SUAVE,
+    embedding_texto,
     limpiar_suave,
     truncar_1000,
-    embedding_texto,
-    FUNCIONES_LIMPIEZA_SUAVE,
-    DIM_TEXTO
 )
 
 

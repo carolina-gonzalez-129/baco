@@ -1,9 +1,7 @@
-import pytest
 from datetime import datetime, timezone
-import numpy as np
 
 from baco.server.db.ingesta import upsert_articulos
-from baco.server.services.embeddings import embedding_titulo, embedding_texto
+from baco.server.services.embeddings import embedding_titulo
 
 
 def test_e2e_niveles_busqueda_y_recuperacion(db_conn):

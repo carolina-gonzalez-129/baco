@@ -1,15 +1,15 @@
 import io
 from unittest.mock import MagicMock, patch
+
 import pytest
 from starlette.testclient import TestClient
 
+from baco.server.app.dependencies import get_buscador_duplicados
 from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
-from baco.server.app.dependencies import get_buscador_duplicados
 from baco.server.config_limites import (
     MAX_RECURSOS_POR_SESION,
     RECURSO_MAX_BYTES,
-    MAX_RECURSOS_TOTAL_BYTES,
 )
 from baco.server.schemas.chat_orquestado import EstadoFlujo
 from baco.server.services.buscar_duplicados import BuscadorDuplicados

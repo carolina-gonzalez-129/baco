@@ -47,8 +47,9 @@ def test_client_expone_credenciales_y_headers_basicos():
 
 
 def test_discourse_base_url_lanza_error_si_no_esta_definida(monkeypatch):
-    from baco.server.db.ingesta import discourse_base_url
     import pytest
+
+    from baco.server.db.ingesta import discourse_base_url
 
     monkeypatch.delenv("DISCOURSE_URL", raising=False)
     with pytest.raises(ValueError, match="DISCOURSE_URL no está configurada"):

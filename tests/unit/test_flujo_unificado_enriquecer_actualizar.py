@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
-from baco.server.app.api import get_buscador_duplicados, get_baco_agent
+from baco.server.app.api import get_baco_agent, get_buscador_duplicados
 from baco.server.app.main import app
 from baco.server.app.middleware import API_KEY
 from baco.server.schemas.chat_orquestado import EstadoFlujo

@@ -1,11 +1,9 @@
-import json
+import httpx
 import pytest
 import respx
-import httpx
-from datetime import datetime, timezone
 
-from baco.server.discourse.actualizar_articulos_editados import pedir, ErrorAPIDiscourse
 from baco.server.db.ingesta import normalizar_articulo
+from baco.server.discourse.actualizar_articulos_editados import ErrorAPIDiscourse, pedir
 
 BASE_URL = "https://bc-dev.finneg.com"
 

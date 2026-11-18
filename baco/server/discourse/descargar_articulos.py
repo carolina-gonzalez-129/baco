@@ -5,12 +5,11 @@ de la base de conocimiento de nuevo
 Idealmente habria q volver a ejecutar esto solo cuando estemos x dar la demo, xq son muchas entradas
 
 """
-from pathlib import Path
 import json
 import os
 import sys
 import time
-
+from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup

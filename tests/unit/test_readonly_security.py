@@ -1,9 +1,9 @@
-import os
 import subprocess
 import sys
-import pytest
+
 import psycopg
 import psycopg_pool
+import pytest
 from psycopg.errors import InsufficientPrivilege, ReadOnlySqlTransaction
 
 import baco.server.db.config as cfg
@@ -96,6 +96,7 @@ def test_fail_fast_sin_db_ro_password():
 def test_consumidores_usan_get_ro_conn_y_no_psycopg_connect_suelto():
     """Verifica estáticamente que dependencies.py use get_ro_conn."""
     import inspect
+
     from baco.server.app import dependencies
 
     src_dep = inspect.getsource(dependencies)
