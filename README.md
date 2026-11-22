@@ -13,6 +13,62 @@ El proyecto tiene tres partes:
 - **Front**: estático, en `frontend/`.
 - **Scripts de sincronización** con Discourse.
 
+## Cómo funciona
+
+### Un asistente no conversacional
+
+Baco no es un chatbot de diálogo libre. El chat es la interfaz, pero el flujo lo conduce una máquina de estados extendida del lado del servidor (`baco/server/services/orquestador/`, endpoint `POST /chat`). El front solo envía eventos y renderiza lo que devuelve el servidor. El LLM no decide el próximo paso ni conversa con la persona: se lo invoca en puntos acotados del flujo, con una entrada ya validada y una tarea cerrada.
+
+```
+título → duplicados (título, luego texto) → tipo de plantilla → skills e imágenes
+→ edición → validaciones (tipo y metadatos) → edición → finalizar
+```
+
+La anonimización de PII se aplica en todo el flujo, y desde cualquier paso se puede volver al anterior.
+
+### Pipeline determinista previo al LLM
+
+Las decisiones críticas se resuelven sin el modelo:
+
+1. **Deduplicación en capas**, de la más barata a la más cara, que prioriza actualizar o enriquecer un artículo existente antes que crear uno nuevo.
+2. **Validaciones**: longitud de título y texto, cantidad de etiquetas (`GET /limites`) y reglas de estilo del título.
+3. Recién después, **el LLM con skills**, que recibe como contexto el resultado del pipeline.
+
+La **anonimización de PII**, que es autosanitizante, no es un paso más: se aplica en todo el flujo. Cubre documentos de identidad, mails, datos financieros, tokens y llaves de API.
+
+Discourse es la fuente de verdad. La base PostgreSQL es una copia derivada y reconstruible (ver [sección 8](#8-actualización-periódica-desde-discourse)).
+
+### Búsqueda de duplicados e índices
+
+| Capa | Técnica | Índice |
+| :--- | :--- | :--- |
+| Título exacto | `md5(normalizar_texto(titulo))`, columna generada | B-tree |
+| Series | Igualdad por `base_titulo` (título sin números de serie, meses, años, etc.); solo entran títulos con `titulo_normalizado <> base_titulo` | B-tree |
+| Título parcial | Similitud de trigramas (`pg_trgm`) sobre `titulo_normalizado` | GIN |
+| Texto exacto | Hash del texto normalizado, con y sin headers de plantilla | B-tree |
+| Texto semántico | Embeddings ONNX de título y texto (ver [sección 11](#11-modelos-de-embeddings)) | HNSW (pgvector) |
+
+La base se organiza en dos schemas:
+
+- `public`: tablas y UDF que calculan los campos derivados. Incluye la normalización (`normalizar_texto`, IMMUTABLE, con `unaccent`), `base_titulo`, los trigramas y los embeddings (con un modelo de Python). Así la ingesta y la búsqueda usan el mismo cálculo.
+- `duplicados`: la lógica de detección que usa el servidor, construida sobre las funciones de `public`.
+
+**Semánticas de exclusión.** Para reducir falsos positivos, algunos candidatos se descartan antes de puntuar:
+
+- Los embeddings se comparan sin los headers de plantilla (`limpiar_headers`), para que la estructura compartida no infle la similitud.
+- La búsqueda semántica por texto solo corre a partir de 400 caracteres, porque los textos cortos (por ejemplo, las series periódicas) dan cosenos altos sin ser duplicados.
+- Se descartan los pares que difieren en entidades discriminantes, como el país o el organismo impositivo. Dos artículos casi iguales que refieren a distintas jurisdicciones no son duplicados.
+- Se usa un `k` reducido, umbrales calibrados y un puntaje combinado de texto y título.
+
+### LLM
+
+- **Rol**: agente acotado dentro de un flujo determinista. Es la capa cognitiva y no detecta duplicados ni PII.
+- **Proveedor**: API compatible con OpenAI (`LLM_BASE_URL`, `LLM_MODEL_ID`). Por defecto, OpenRouter.
+- **Skills** (`SKILL.md` + `references/`):
+  - `plantillas` (`POST /chat/aplicar-plantilla`): reestructura el borrador como `instructivo` o `soluciones`, tomando como referencia las plantillas de la Base de Conocimiento.
+  - `validador` (`POST /chat/auditar-semantica`): audita el borrador contra las pautas de redacción y devuelve `texto_corregido`.
+- **Control posterior**: el resultado vuelve al pipeline determinista (`POST /chat/revalidar-post-skill`) y se muestra en Vista previa. El original se conserva en el Editor y la persona decide si lo usa.
+
 ---
 
 ## Índice
