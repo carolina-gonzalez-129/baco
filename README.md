@@ -69,6 +69,10 @@ La base se organiza en dos schemas:
   - `validador` (`POST /chat/auditar-semantica`): audita el borrador contra las pautas de redacción y devuelve `texto_corregido`.
 - **Control posterior**: el resultado vuelve al pipeline determinista (`POST /chat/revalidar-post-skill`) y se muestra en Vista previa. El original se conserva en el Editor y la persona decide si lo usa.
 
+## Análisis más detallado, guías y más
+
+La documentación ampliada está en esta [carpeta de Google Drive](https://drive.google.com/drive/folders/1fWJZTc_MdcQ-760WfPof0jD3j7KwEX0s).
+
 ---
 
 ## Índice
